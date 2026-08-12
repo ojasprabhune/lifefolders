@@ -48,6 +48,93 @@ button {
   padding: clamp(24px, 7vh, 72px) 24px 96px;
 }
 
+.shell {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 24px;
+}
+
+.shell > .app {
+  margin: 0;
+}
+
+.tasks-panel {
+  width: 420px;
+  flex-shrink: 0;
+  max-height: 100vh;
+  overflow-y: auto;
+  padding: clamp(24px, 7vh, 72px) 24px 96px;
+  animation: panel-in 220ms ease both;
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.tasks-panel.closing {
+  animation: panel-out 220ms ease both;
+}
+
+@keyframes panel-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+}
+
+.panel-backdrop {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .shell {
+    display: block;
+  }
+
+  .panel-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(20, 20, 20, 0.32);
+    z-index: 10;
+    animation: overlay-in 160ms ease both;
+  }
+
+  .panel-backdrop.closing {
+    animation: overlay-out 220ms ease both;
+  }
+
+  @keyframes overlay-out {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+
+  .tasks-panel {
+    position: fixed;
+    inset: 0 0 0 auto;
+    width: min(420px, 100vw);
+    z-index: 11;
+    background: var(--bg);
+    box-shadow: -2px 0 12px rgba(0, 0, 0, 0.15);
+  }
+}
+
 header {
   display: flex;
   align-items: baseline;
@@ -1050,6 +1137,11 @@ header {
 }
 
 .due-label {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.due-date {
   font-size: 11px;
   color: var(--muted);
 }

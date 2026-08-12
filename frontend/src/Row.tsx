@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { deleteLog, updateLog } from './api'
 import type {
   AlbumData,
@@ -203,6 +203,18 @@ function rightSide(log: Log, onRate: (log: Log) => void): React.ReactNode {
 }
 
 export function Row({ log, justParsed, expanded, onToggle, onChange, onDelete, onRate }: RowProps) {
+  const [renderEditor, setRenderEditor] = useState(expanded)
+
+  useEffect(() => {
+    if (expanded) {
+      setRenderEditor(true)
+      return
+    }
+    if (!renderEditor) return
+    const t = setTimeout(() => setRenderEditor(false), 220)
+    return () => clearTimeout(t)
+  }, [expanded, renderEditor])
+
   return (
     <div className={`row-wrap ${expanded ? 'open' : ''}`}>
       <div className={`row ${justParsed ? 'morph' : ''}`} onClick={onToggle}>
@@ -213,7 +225,7 @@ export function Row({ log, justParsed, expanded, onToggle, onChange, onDelete, o
       </div>
       <div className="expand">
         <div className="expand-inner">
-          {expanded && <Editor log={log} onChange={onChange} onDelete={onDelete} onRate={onRate} />}
+          {renderEditor && <Editor log={log} onChange={onChange} onDelete={onDelete} onRate={onRate} />}
         </div>
       </div>
     </div>

@@ -18,3 +18,9 @@ services:
         sync: false
       - key: WGER_API_KEY
         sync: false
+      - key: CALDAV_APPLE_ID
+        sync: false
+      - key: CALDAV_APP_PASSWORD
+        sync: false
+      - key: CALDAV_CALENDAR_URL
+        sync: false

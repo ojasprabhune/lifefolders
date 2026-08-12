@@ -12,6 +12,7 @@ use sqlx::PgPool;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
+mod caldav;
 mod groq;
 mod learning;
 mod models;
@@ -23,6 +24,14 @@ mod usda;
 mod wger;
 
 #[derive(Clone)]
+pub struct CaldavConfig {
+    pub http: reqwest::Client,
+    pub apple_id: String,
+    pub app_password: String,
+    pub calendar_url: String,
+}
+
+#[derive(Clone)]
 pub struct AppState {
     pub pool: PgPool,
     pub http: reqwest::Client,
@@ -30,6 +39,7 @@ pub struct AppState {
     pub usda_key: String,
     pub auth_token: String,
     pub wger_key: Option<String>,
+    pub caldav: Option<CaldavConfig>,
 }
 
 async fn require_auth(State(state): State<AppState>, req: Request, next: Next) -> Response {
@@ -76,6 +86,15 @@ async fn main() -> anyhow::Result<()> {
         .timeout(Duration::from_secs(20))
         .build()?;
 
+    let caldav = (|| {
+        Some(CaldavConfig {
+            http: http.clone(),
+            apple_id: env::var("CALDAV_APPLE_ID").ok().filter(|v| !v.is_empty())?,
+            app_password: env::var("CALDAV_APP_PASSWORD").ok().filter(|v| !v.is_empty())?,
+            calendar_url: env::var("CALDAV_CALENDAR_URL").ok().filter(|v| !v.is_empty())?,
+        })
+    })();
+
     let allowed_origins = [
         "https://ojasprabhune.github.io",
         "http://localhost:5173",
@@ -88,7 +107,7 @@ async fn main() -> anyhow::Result<()> {
         .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE])
         .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]);
 
-    let state = AppState { pool, http, groq_key, usda_key, auth_token, wger_key };
+    let state = AppState { pool, http, groq_key, usda_key, auth_token, wger_key, caldav };
 
     let api = Router::new()
         .route("/api/logs", get(routes::list_logs).post(routes::create_log))

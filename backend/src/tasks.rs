@@ -46,6 +46,12 @@ async fn open_tasks(state: &AppState) -> Result<Vec<Task>, AppError> {
     .await?)
 }
 
+const TITLE_STOPWORDS: &[&str] = &[
+    "test", "exam", "quiz", "homework", "essay", "paper", "assignment", "project", "review",
+    "final", "midterm", "syllabus", "worksheet", "packet", "notes", "lab", "presentation",
+    "outline", "draft", "reading", "chapter", "unit",
+];
+
 fn best_match<'a>(items: &'a [Task], query: &str) -> Option<&'a Task> {
     let q = query.to_lowercase();
     let mut best: Option<(&Task, i32)> = None;
@@ -55,7 +61,9 @@ fn best_match<'a>(items: &'a [Task], query: &str) -> Option<&'a Task> {
             3
         } else if n.contains(&q) || q.contains(&n) {
             2
-        } else if n.split_whitespace().any(|w| q.contains(w) && w.len() > 2) {
+        } else if n.split_whitespace().any(|w| {
+            w.len() > 2 && !TITLE_STOPWORDS.contains(&w) && q.contains(w)
+        }) {
             1
         } else {
             continue;
@@ -95,35 +103,98 @@ fn parse_due(s: Option<&str>) -> Option<NaiveDate> {
 async fn regenerate_checkpoints(
     state: &AppState,
     task_id: Uuid,
+    title: &str,
     due: NaiveDate,
 ) -> Result<(), AppError> {
-    sqlx::query("DELETE FROM task_checkpoints WHERE task_id = $1 AND status = 'todo'")
-        .bind(task_id)
-        .execute(&state.pool)
-        .await?;
+    let deleted: Vec<(Uuid,)> =
+        sqlx::query_as("DELETE FROM task_checkpoints WHERE task_id = $1 AND status = 'todo' RETURNING id")
+            .bind(task_id)
+            .fetch_all(&state.pool)
+            .await?;
+    for (id,) in deleted {
+        spawn_checkpoint_delete(state, id);
+    }
     let today = Utc::now().date_naive();
     for offset in [7, 3, 1] {
         let cp_date = due - Duration::days(offset);
         if cp_date >= today {
-            sqlx::query(
-                "INSERT INTO task_checkpoints (task_id, offset_days, due_date) VALUES ($1, $2, $3)",
+            let (id,): (Uuid,) = sqlx::query_as(
+                "INSERT INTO task_checkpoints (task_id, offset_days, due_date) VALUES ($1, $2, $3) RETURNING id",
             )
             .bind(task_id)
             .bind(offset)
             .bind(cp_date)
-            .execute(&state.pool)
+            .fetch_one(&state.pool)
             .await?;
+            spawn_checkpoint_sync(state, id, title, offset as i32, cp_date);
         }
     }
     Ok(())
 }
 
 async fn clear_pending_checkpoints(state: &AppState, task_id: Uuid) -> Result<(), AppError> {
-    sqlx::query("DELETE FROM task_checkpoints WHERE task_id = $1 AND status = 'todo'")
-        .bind(task_id)
-        .execute(&state.pool)
-        .await?;
+    let deleted: Vec<(Uuid,)> =
+        sqlx::query_as("DELETE FROM task_checkpoints WHERE task_id = $1 AND status = 'todo' RETURNING id")
+            .bind(task_id)
+            .fetch_all(&state.pool)
+            .await?;
+    for (id,) in deleted {
+        spawn_checkpoint_delete(state, id);
+    }
     Ok(())
+}
+
+fn spawn_checkpoint_sync(state: &AppState, checkpoint_id: Uuid, task_title: &str, offset_days: i32, due_date: NaiveDate) {
+    let Some(cfg) = state.caldav.clone() else { return };
+    let title = task_title.to_string();
+    tokio::spawn(async move {
+        let uid = format!("lf-checkpoint-{checkpoint_id}");
+        let summary = format!("study: {title} ({offset_days}d out)");
+        let ical = crate::caldav::vevent(&uid, &summary, due_date);
+        if let Err(e) = crate::caldav::put_ical(&cfg.http, &cfg.calendar_url, &uid, &cfg.apple_id, &cfg.app_password, &ical).await {
+            tracing::warn!("checkpoint calendar sync failed for {checkpoint_id}: {e:#}");
+        }
+    });
+}
+
+fn spawn_checkpoint_delete(state: &AppState, checkpoint_id: Uuid) {
+    let Some(cfg) = state.caldav.clone() else { return };
+    tokio::spawn(async move {
+        let uid = format!("lf-checkpoint-{checkpoint_id}");
+        if let Err(e) = crate::caldav::delete_ical(&cfg.http, &cfg.calendar_url, &uid, &cfg.apple_id, &cfg.app_password).await {
+            tracing::warn!("checkpoint calendar delete failed for {checkpoint_id}: {e:#}");
+        }
+    });
+}
+
+fn spawn_calendar_sync(state: &AppState, task: &Task) {
+    let Some(cfg) = state.caldav.clone() else { return };
+    let task = task.clone();
+    tokio::spawn(async move {
+        let uid = format!("lf-task-{}", task.id);
+        let result = match (task.due_date, task.status.as_str()) {
+            (Some(due), status) if status != "done" => {
+                let label = if task.is_exam { "exam" } else { task.category.as_str() };
+                let summary = format!("[{label}] {}", task.title);
+                let ical = crate::caldav::vevent(&uid, &summary, due);
+                crate::caldav::put_ical(&cfg.http, &cfg.calendar_url, &uid, &cfg.apple_id, &cfg.app_password, &ical).await
+            }
+            _ => crate::caldav::delete_ical(&cfg.http, &cfg.calendar_url, &uid, &cfg.apple_id, &cfg.app_password).await,
+        };
+        if let Err(e) = result {
+            tracing::warn!("calendar sync failed for task {}: {e:#}", task.id);
+        }
+    });
+}
+
+fn spawn_calendar_delete(state: &AppState, task_id: Uuid) {
+    let Some(cfg) = state.caldav.clone() else { return };
+    tokio::spawn(async move {
+        let uid = format!("lf-task-{task_id}");
+        if let Err(e) = crate::caldav::delete_ical(&cfg.http, &cfg.calendar_url, &uid, &cfg.apple_id, &cfg.app_password).await {
+            tracing::warn!("calendar delete failed for task {task_id}: {e:#}");
+        }
+    });
 }
 
 async fn create_task(state: &AppState, req: &TaskRequest) -> Result<Task, AppError> {
@@ -142,9 +213,10 @@ async fn create_task(state: &AppState, req: &TaskRequest) -> Result<Task, AppErr
     .await?;
     if task.is_exam {
         if let Some(due) = task.due_date {
-            regenerate_checkpoints(state, task.id, due).await?;
+            regenerate_checkpoints(state, task.id, &task.title, due).await?;
         }
     }
+    spawn_calendar_sync(state, &task);
     Ok(task)
 }
 
@@ -188,7 +260,7 @@ async fn update_task(
     if due_or_exam_changed {
         if task.is_exam {
             if let Some(due) = task.due_date {
-                regenerate_checkpoints(state, task.id, due).await?;
+                regenerate_checkpoints(state, task.id, &task.title, due).await?;
             }
         } else {
             clear_pending_checkpoints(state, task.id).await?;
@@ -202,6 +274,7 @@ async fn update_task(
     } else {
         "note"
     };
+    spawn_calendar_sync(state, &task);
     Ok((task, action.to_string()))
 }
 
@@ -317,6 +390,8 @@ pub async fn delete_task(
     if result.rows_affected() == 0 {
         return Err(AppError::NotFound);
     }
+    spawn_calendar_delete(&state, id);
+    clear_pending_checkpoints(&state, id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -341,5 +416,19 @@ pub async fn patch_checkpoint(
     .bind(&body.status)
     .fetch_optional(&state.pool)
     .await?;
-    cp.map(Json).ok_or(AppError::NotFound)
+    let Some(cp) = cp else { return Err(AppError::NotFound) };
+
+    if cp.status == "done" {
+        spawn_checkpoint_delete(&state, cp.id);
+    } else {
+        let title: Option<(String,)> = sqlx::query_as("SELECT title FROM tasks WHERE id = $1")
+            .bind(cp.task_id)
+            .fetch_optional(&state.pool)
+            .await?;
+        if let Some((title,)) = title {
+            spawn_checkpoint_sync(&state, cp.id, &title, cp.offset_days, cp.due_date);
+        }
+    }
+
+    Ok(Json(cp))
 }

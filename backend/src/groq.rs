@@ -338,6 +338,11 @@ wording close to an already-tracked task listed below updates it instead: set \
 status done when they say they finished or turned it in, in_progress when they \
 say they started or are working on it. Set is_exam true only for a real test, \
 exam, or quiz — problem sets, homework, and projects are not exams. \
+When a deadline is given as a bare weekday name (\"due Friday\", \"by Monday\") with no \
+qualifier, resolve it to the nearest upcoming occurrence of that weekday - today itself \
+if today is that weekday, otherwise the next date forward within the next 7 days. Only \
+skip ahead to the following week when \"next\" is stated explicitly (\"next Friday\"). For \
+\"in N days/weeks,\" add exactly that many days/weeks to the current local date given above. \
 Always call at least one tool.";
 
 async fn chat(

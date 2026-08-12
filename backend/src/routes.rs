@@ -254,8 +254,9 @@ pub async fn create_log(
 
     let now_local = Utc::now() - Duration::minutes(tz_offset as i64);
     let mut context = format!(
-        "Current local datetime: {}.\n",
-        now_local.format("%Y-%m-%dT%H:%M")
+        "Current local datetime: {} ({}).\n",
+        now_local.format("%Y-%m-%dT%H:%M"),
+        now_local.format("%A")
     );
     context.push_str(&learning::context_block(&state).await);
     context.push_str(&tasks::context_block(&state).await);

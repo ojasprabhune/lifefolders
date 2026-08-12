@@ -81,8 +81,12 @@ export default function App() {
   if (route.startsWith('#/travel')) return <Travel />
   if (route.startsWith('#/sleep')) return <Sleep />
   if (route.startsWith('#/learning')) return <Learning route={route} />
-  if (route.startsWith('#/tasks')) return <Tasks />
-  return <Home />
+  return (
+    <div className="shell">
+      <Home />
+      <Tasks open={route.startsWith('#/tasks')} />
+    </div>
+  )
 }
 
 function Gate({ onUnlock }: { onUnlock: () => void }) {
@@ -152,6 +156,7 @@ function Home() {
       const rest = created.filter((x) => x.parsed_type !== 'sleep')
       setPendings((p) => p.filter((x) => x.tempId !== id))
       setLogs((l) => [...rest, ...l.filter((x) => !createdIds.has(x.id)), ...sleeps])
+      window.dispatchEvent(new Event('life-log-created'))
       if (message) {
         setNotice(message)
         setTimeout(() => setNotice(null), 6000)

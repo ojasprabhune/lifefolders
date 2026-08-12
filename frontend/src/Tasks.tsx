@@ -2,16 +2,32 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { deleteTask, listTasks, patchCheckpoint, patchTask } from './api'
 import type { TaskWithCheckpoints } from './types'
 
-export function Tasks() {
+export function Tasks({ open }: { open: boolean }) {
   const [tasks, setTasks] = useState<TaskWithCheckpoints[]>([])
+  const [mounted, setMounted] = useState(open)
+  const [closing, setClosing] = useState(false)
 
   const refresh = useCallback(() => {
     listTasks().then(setTasks).catch(() => {})
   }, [])
 
   useEffect(() => {
+    if (open) {
+      setMounted(true)
+      setClosing(false)
+    } else if (mounted) {
+      setClosing(true)
+      const t = setTimeout(() => setMounted(false), 220)
+      return () => clearTimeout(t)
+    }
+  }, [open, mounted])
+
+  useEffect(() => {
+    if (!mounted) return
     refresh()
-  }, [refresh])
+    window.addEventListener('life-log-created', refresh)
+    return () => window.removeEventListener('life-log-created', refresh)
+  }, [mounted, refresh])
 
   const cycleStatus = async (t: TaskWithCheckpoints) => {
     const next =
@@ -30,39 +46,52 @@ export function Tasks() {
     refresh()
   }
 
-  const open = tasks.filter((t) => t.status !== 'done')
-  const grouped = useMemo(() => groupByCategory(open), [open])
-  const dayCounts = useMemo(() => buildDayCounts(open, 7), [open])
+  const openTasks = tasks.filter((t) => t.status !== 'done')
+  const grouped = useMemo(() => groupByCategory(openTasks), [openTasks])
+  const dayCounts = useMemo(() => buildDayCounts(openTasks, 7), [openTasks])
+
+  if (!mounted) return null
 
   return (
-    <div className="app">
-      <header>
-        <h1 className="brand">tasks</h1>
-        <a className="guide-link" href="#/">
-          back
-        </a>
-      </header>
+    <>
+      <div
+        className={`panel-backdrop ${closing ? 'closing' : ''}`}
+        onClick={() => { window.location.hash = '#/' }}
+      />
+      <div className={`tasks-panel ${closing ? 'closing' : ''}`}>
+        <header>
+          <h1 className="brand">tasks</h1>
+          <div className="header-nav">
+            <button className="guide-link refresh-btn" onClick={refresh}>
+              ↻
+            </button>
+            <a className="guide-link" href="#/">
+              back
+            </a>
+          </div>
+        </header>
 
-      <DueStrip days={dayCounts} />
+        <DueStrip days={dayCounts} />
 
-      <main className="list">
-        {Object.entries(grouped).map(([category, items]) => (
-          <section key={category} className="music-section">
-            <h2 className="section-title">{category}</h2>
-            {items.map((t) => (
-              <TaskRow
-                key={t.id}
-                task={t}
-                onCycle={() => void cycleStatus(t)}
-                onCheckpoint={toggleCheckpoint}
-                onDelete={() => void remove(t.id)}
-              />
-            ))}
-          </section>
-        ))}
-        {open.length === 0 && <div className="empty">nothing due</div>}
-      </main>
-    </div>
+        <main className="list">
+          {Object.entries(grouped).map(([category, items]) => (
+            <section key={category} className="music-section">
+              <h2 className="section-title">{category}</h2>
+              {items.map((t) => (
+                <TaskRow
+                  key={t.id}
+                  task={t}
+                  onCycle={() => void cycleStatus(t)}
+                  onCheckpoint={toggleCheckpoint}
+                  onDelete={() => void remove(t.id)}
+                />
+              ))}
+            </section>
+          ))}
+          {openTasks.length === 0 && <div className="empty">nothing due</div>}
+        </main>
+      </div>
+    </>
   )
 }
 
@@ -114,6 +143,10 @@ function shortDayLabel(dateStr: string): string {
   return days[d.getDay()]
 }
 
+function dayOfMonth(dateStr: string): number {
+  return new Date(dateStr + 'T00:00').getDate()
+}
+
 function DueStrip({ days }: { days: { date: string; count: number }[] }) {
   const max = Math.max(1, ...days.map((d) => d.count))
   return (
@@ -123,6 +156,7 @@ function DueStrip({ days }: { days: { date: string; count: number }[] }) {
           <span className="due-count">{d.count || ''}</span>
           <div className="due-bar" style={{ height: `${(d.count / max) * 100}%` }} />
           <span className="due-label">{shortDayLabel(d.date)}</span>
+          <span className="due-date">{dayOfMonth(d.date)}</span>
         </div>
       ))}
     </div>
