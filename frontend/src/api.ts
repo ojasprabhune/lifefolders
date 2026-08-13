@@ -17,7 +17,7 @@ import type {
   Topic,
 } from './types'
 
-const API = import.meta.env.VITE_API_URL ?? 'https://tejas-life-api.fly.dev'
+const API = import.meta.env.VITE_API_URL ?? 'https://lifefolders-api.onrender.com'
 const TOKEN_KEY = 'life_token'
 
 export function getToken(): string | null {
