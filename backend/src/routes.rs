@@ -451,15 +451,33 @@ pub async fn delete_log(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    let result = sqlx::query("UPDATE logs SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL")
+    let existing: Option<Log> = sqlx::query_as(&format!(
+        "SELECT {LOG_COLUMNS} FROM logs WHERE id = $1 AND deleted_at IS NULL"
+    ))
+    .bind(id)
+    .fetch_optional(&state.pool)
+    .await?;
+    let existing = existing.ok_or(AppError::NotFound)?;
+
+    sqlx::query("UPDATE logs SET deleted_at = now() WHERE id = $1")
         .bind(id)
         .execute(&state.pool)
         .await?;
 
-    if result.rows_affected() == 0 {
-        return Err(AppError::NotFound);
+    // Task-type log rows just record what happened for the timeline - the
+    // real task lives in its own table. Deleting the timeline entry should
+    // take the actual task with it too, not leave an orphan in the Tasks
+    // panel that no longer has anything to show where it came from.
+    let task_id = (existing.parsed_type == "task")
+        .then(|| existing.data.get("task_id").and_then(|v| v.as_str()))
+        .flatten()
+        .and_then(|s| Uuid::parse_str(s).ok());
+
+    if let Some(task_id) = task_id {
+        tasks::cascade_delete(&state, task_id).await?;
+    } else {
+        set_last(&state, UndoAction::LogDeleted { log_id: id });
     }
-    set_last(&state, UndoAction::LogDeleted { log_id: id });
     Ok(StatusCode::NO_CONTENT)
 }
 

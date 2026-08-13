@@ -195,7 +195,22 @@ fn spawn_calendar_delete(state: &AppState, task_id: Uuid) {
     });
 }
 
+// The LLM is asked to set is_exam itself, but it's inconsistent about it on
+// terse titles ("psych exam", "physics exam friday" have come back false or
+// omitted entirely) - missing a real exam silently drops its study
+// checkpoints, which is worse than the rare false positive of an unrelated
+// task with "test"/"quiz" in the title picking up harmless extra reminders.
+// So back the model's call up with a literal check on the title itself.
+fn looks_like_exam(title: &str) -> bool {
+    const EXAM_WORDS: &[&str] = &["exam", "test", "quiz", "midterm"];
+    title
+        .to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .any(|w| EXAM_WORDS.contains(&w))
+}
+
 async fn create_task(state: &AppState, req: &TaskRequest) -> Result<Task, AppError> {
+    let is_exam = req.is_exam.unwrap_or(false) || looks_like_exam(&req.title);
     let task: Task = sqlx::query_as(&format!(
         "INSERT INTO tasks (title, category, due_date, effort_minutes, status, is_exam, note) \
          VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING {TASK_COLUMNS}"
@@ -205,7 +220,7 @@ async fn create_task(state: &AppState, req: &TaskRequest) -> Result<Task, AppErr
     .bind(parse_due(req.due_date.as_deref()))
     .bind(req.effort_minutes)
     .bind(req.status.as_deref().unwrap_or("not_started"))
-    .bind(req.is_exam.unwrap_or(false))
+    .bind(is_exam)
     .bind(&req.note)
     .fetch_one(&state.pool)
     .await?;
@@ -462,17 +477,14 @@ pub async fn patch_task(
     Ok(Json(task))
 }
 
-pub async fn delete_task(
-    State(state): State<AppState>,
-    Path(id): Path<Uuid>,
-) -> Result<StatusCode, AppError> {
+async fn archive_task(state: &AppState, id: Uuid) -> Result<bool, AppError> {
     let existing: Option<Task> = sqlx::query_as(&format!(
         "SELECT {TASK_COLUMNS} FROM tasks WHERE id = $1 AND archived_at IS NULL"
     ))
     .bind(id)
     .fetch_optional(&state.pool)
     .await?;
-    let existing = existing.ok_or(AppError::NotFound)?;
+    let Some(existing) = existing else { return Ok(false) };
 
     let checkpoints: Vec<Checkpoint> = sqlx::query_as(
         "SELECT id, task_id, offset_days, due_date, status FROM task_checkpoints WHERE task_id = $1",
@@ -485,9 +497,28 @@ pub async fn delete_task(
         .bind(id)
         .execute(&state.pool)
         .await?;
-    spawn_calendar_delete(&state, id);
-    clear_pending_checkpoints(&state, id).await?;
-    set_last(&state, UndoAction::TaskDeleted { snapshot: existing, checkpoints });
+    spawn_calendar_delete(state, id);
+    clear_pending_checkpoints(state, id).await?;
+    set_last(state, UndoAction::TaskDeleted { snapshot: existing, checkpoints });
+    Ok(true)
+}
+
+// Called from routes::delete_log when the deleted timeline entry was a task
+// action - removing the entry should take the real task with it too. Not an
+// error if the task is already gone (e.g. deleting an older "rescheduled"
+// log line for a task that was since completed or removed some other way).
+pub(crate) async fn cascade_delete(state: &AppState, task_id: Uuid) -> Result<(), AppError> {
+    archive_task(state, task_id).await?;
+    Ok(())
+}
+
+pub async fn delete_task(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<StatusCode, AppError> {
+    if !archive_task(&state, id).await? {
+        return Err(AppError::NotFound);
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 

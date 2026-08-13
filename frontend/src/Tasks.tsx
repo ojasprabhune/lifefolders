@@ -98,7 +98,11 @@ export function Tasks({ open }: { open: boolean }) {
 function groupByCategory(tasks: TaskWithCheckpoints[]): Record<string, TaskWithCheckpoints[]> {
   const groups: Record<string, TaskWithCheckpoints[]> = {}
   for (const t of tasks) {
-    const cat = t.category || 'other'
+    // is_exam is a real, LLM-validated flag; category is free text the LLM
+    // picks loosely (often "homework" for schoolwork in general, exams
+    // included). Group on is_exam first so exams always get their own
+    // section instead of blending into whatever category string landed.
+    const cat = t.is_exam ? 'exam' : t.category || 'other'
     if (!groups[cat]) groups[cat] = []
     groups[cat].push(t)
   }
@@ -109,7 +113,13 @@ function groupByCategory(tasks: TaskWithCheckpoints[]): Record<string, TaskWithC
       return a.due_date.localeCompare(b.due_date)
     })
   }
-  return Object.fromEntries(Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0])))
+  return Object.fromEntries(
+    Object.entries(groups).sort((a, b) => {
+      if (a[0] === 'exam') return -1
+      if (b[0] === 'exam') return 1
+      return a[0].localeCompare(b[0])
+    }),
+  )
 }
 
 function buildDayCounts(tasks: TaskWithCheckpoints[], days: number): { date: string; count: number }[] {

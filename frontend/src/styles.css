@@ -339,6 +339,10 @@ header {
   background: var(--task);
 }
 
+.badge.exam {
+  background: var(--accent);
+}
+
 .input-wrap {
   position: relative;
 }

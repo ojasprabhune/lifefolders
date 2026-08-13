@@ -150,7 +150,9 @@ function badge(log: Log): { label: string; kind: string } {
     case 'learning':
       return { label: 'learning', kind: 'learning' }
     case 'task':
-      return { label: 'task', kind: 'task' }
+      return (log.data as TaskData).is_exam
+        ? { label: 'exam', kind: 'exam' }
+        : { label: 'task', kind: 'task' }
   }
 }
 
@@ -220,6 +222,9 @@ export function Row({ log, justParsed, expanded, onToggle, onChange, onDelete, o
     try {
       await deleteLog(log.id)
       onDelete(log.id)
+      // a task-type entry cascades to deleting the real task server-side;
+      // nudge the tasks panel to pick that up right away if it's open
+      window.dispatchEvent(new Event('life-log-created'))
     } catch {
       // leave the row in place if the delete failed
     }
@@ -526,7 +531,11 @@ function TaskLogEditor({ log, onChange, onDelete }: EditorProps) {
   const data = log.data as TaskData
   const [note, setNote] = useState(data.note ?? '')
   const { saving, error, save, remove } = useEditor(log, onChange, onDelete)
-  const meta = [data.category, data.status, data.due_date ? `due ${data.due_date}` : null]
+  const meta = [
+    data.is_exam ? 'exam' : data.category,
+    data.status,
+    data.due_date ? `due ${data.due_date}` : null,
+  ]
     .filter(Boolean)
     .join(' · ')
   return (
@@ -625,6 +634,9 @@ function useEditor(log: Log, onChange: (log: Log) => void, onDelete: (id: string
     try {
       await deleteLog(log.id)
       onDelete(log.id)
+      // a task-type entry cascades to deleting the real task server-side;
+      // nudge the tasks panel to pick that up right away if it's open
+      window.dispatchEvent(new Event('life-log-created'))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'delete failed')
     }
