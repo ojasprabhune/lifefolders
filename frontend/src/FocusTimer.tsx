@@ -73,7 +73,9 @@ export function FocusTimer() {
     if (!s || ended.current) return
     ended.current = true
     const actual = Math.round((Date.now() - s.startMs) / 60000)
-    if (completed && audio.current) playChime(audio.current)
+    // A long-backgrounded tab can suspend the AudioContext; resume is a
+    // no-op if it's already running, so this is safe to always call.
+    if (completed && audio.current) void audio.current.resume().then(() => playChime(audio.current!))
     document.title = origTitle.current
     setSummary({ taskTitle: s.taskTitle, planned: s.planned, actual, completed })
     setMode('done')
@@ -102,8 +104,13 @@ export function FocusTimer() {
     return () => clearInterval(iv)
   }, [mode, finish])
 
-  // If the tab is closed or hidden mid-session, best-effort end it as a manual
-  // stop so no session is left dangling open in the database.
+  // If the tab is actually closed mid-session, best-effort end it as a manual
+  // stop so no session is left dangling open in the database. Backgrounding
+  // the tab (switching away, not closing it) is normal mid-focus-session
+  // behavior and must NOT bail - it used to, via visibilitychange, which
+  // marked the session ended without updating the UI, so the countdown would
+  // reach 0:00 and silently no-op (finish() saw ended.current already true)
+  // instead of ever showing "done" or playing the chime.
   useEffect(() => {
     if (mode !== 'running') return
     const bail = () => {
@@ -113,16 +120,11 @@ export function FocusTimer() {
         beaconEndFocusSession(s.id, false)
       }
     }
-    const onVisibility = () => {
-      if (document.visibilityState === 'hidden') bail()
-    }
     window.addEventListener('beforeunload', bail)
     window.addEventListener('pagehide', bail)
-    document.addEventListener('visibilitychange', onVisibility)
     return () => {
       window.removeEventListener('beforeunload', bail)
       window.removeEventListener('pagehide', bail)
-      document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [mode])
 
