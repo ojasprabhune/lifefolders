@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 use crate::models::{Log, TaskData, TaskRequest};
 use crate::routes::AppError;
+use crate::undo::{set_last, UndoAction};
 use crate::AppState;
 
 #[derive(Debug, Serialize, FromRow, Clone)]
@@ -25,7 +26,7 @@ pub struct Task {
     pub completed_at: Option<chrono::DateTime<Utc>>,
 }
 
-#[derive(Debug, Serialize, FromRow)]
+#[derive(Debug, Serialize, FromRow, Clone)]
 pub struct Checkpoint {
     pub id: Uuid,
     pub task_id: Uuid,
@@ -46,24 +47,21 @@ async fn open_tasks(state: &AppState) -> Result<Vec<Task>, AppError> {
     .await?)
 }
 
-const TITLE_STOPWORDS: &[&str] = &[
-    "test", "exam", "quiz", "homework", "essay", "paper", "assignment", "project", "review",
-    "final", "midterm", "syllabus", "worksheet", "packet", "notes", "lab", "presentation",
-    "outline", "draft", "reading", "chapter", "unit",
-];
-
+// Only match on the whole title being equal to (or a substring of) an
+// existing one. A weaker "shares one word" tier used to live here, but any
+// two tasks on the same subject ("US History Project" / "US History
+// Syllabus", "Math HW1" / "Math Edpuzzle") share their subject word, so it
+// kept silently rescheduling one task instead of creating the other. A
+// missed update just leaves a harmless duplicate; a false match silently
+// clobbers the wrong task, which is worse, so we bias toward the former.
 fn best_match<'a>(items: &'a [Task], query: &str) -> Option<&'a Task> {
-    let q = query.to_lowercase();
+    let q = query.trim().to_lowercase();
     let mut best: Option<(&Task, i32)> = None;
     for item in items {
-        let n = item.title.to_lowercase();
+        let n = item.title.trim().to_lowercase();
         let score = if n == q {
-            3
-        } else if n.contains(&q) || q.contains(&n) {
             2
-        } else if n.split_whitespace().any(|w| {
-            w.len() > 2 && !TITLE_STOPWORDS.contains(&w) && q.contains(w)
-        }) {
+        } else if n.contains(&q) || q.contains(&n) {
             1
         } else {
             continue;
@@ -278,15 +276,98 @@ async fn update_task(
     Ok((task, action.to_string()))
 }
 
+async fn restore_task_fields(state: &AppState, snapshot: &Task) -> Result<Task, AppError> {
+    let task: Task = sqlx::query_as(&format!(
+        "UPDATE tasks SET status = $2, due_date = $3, is_exam = $4, \
+            effort_minutes = $5, note = $6, completed_at = $7 \
+         WHERE id = $1 RETURNING {TASK_COLUMNS}"
+    ))
+    .bind(snapshot.id)
+    .bind(&snapshot.status)
+    .bind(snapshot.due_date)
+    .bind(snapshot.is_exam)
+    .bind(snapshot.effort_minutes)
+    .bind(&snapshot.note)
+    .bind(snapshot.completed_at)
+    .fetch_one(&state.pool)
+    .await?;
+
+    if task.is_exam {
+        if let Some(due) = task.due_date {
+            regenerate_checkpoints(state, task.id, &task.title, due).await?;
+        } else {
+            clear_pending_checkpoints(state, task.id).await?;
+        }
+    } else {
+        clear_pending_checkpoints(state, task.id).await?;
+    }
+    spawn_calendar_sync(state, &task);
+    Ok(task)
+}
+
+// The three entry points undo.rs calls into for a TaskCreated/TaskUpdated/
+// TaskDeleted action - reverse exactly what create_task/update_task/
+// delete_task did, including their calendar and checkpoint side effects.
+pub(crate) async fn undo_created(state: &AppState, task_id: Uuid) -> Result<(), AppError> {
+    sqlx::query("UPDATE tasks SET archived_at = now() WHERE id = $1")
+        .bind(task_id)
+        .execute(&state.pool)
+        .await?;
+    spawn_calendar_delete(state, task_id);
+    clear_pending_checkpoints(state, task_id).await?;
+    Ok(())
+}
+
+pub(crate) async fn undo_updated(state: &AppState, snapshot: &Task) -> Result<(), AppError> {
+    restore_task_fields(state, snapshot).await?;
+    Ok(())
+}
+
+pub(crate) async fn undo_deleted(
+    state: &AppState,
+    snapshot: &Task,
+    checkpoints: &[Checkpoint],
+) -> Result<(), AppError> {
+    sqlx::query("UPDATE tasks SET archived_at = NULL WHERE id = $1")
+        .bind(snapshot.id)
+        .execute(&state.pool)
+        .await?;
+    for cp in checkpoints {
+        sqlx::query(
+            "INSERT INTO task_checkpoints (id, task_id, offset_days, due_date, status) \
+             VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO NOTHING",
+        )
+        .bind(cp.id)
+        .bind(cp.task_id)
+        .bind(cp.offset_days)
+        .bind(cp.due_date)
+        .bind(&cp.status)
+        .execute(&state.pool)
+        .await?;
+        if cp.status == "todo" {
+            spawn_checkpoint_sync(state, cp.id, &snapshot.title, cp.offset_days, cp.due_date);
+        }
+    }
+    spawn_calendar_sync(state, snapshot);
+    Ok(())
+}
+
 pub async fn apply(state: &AppState, raw: &str, req: TaskRequest) -> Result<Log, AppError> {
     let open = open_tasks(state).await?;
-    let matched = best_match(&open, &req.title);
+    let matched = best_match(&open, &req.title).cloned();
 
     let (task, action) = match matched {
         Some(existing) if req.status.is_some() || req.due_date.is_some() || req.note.is_some() => {
-            update_task(state, existing, &req).await?
+            let snapshot = existing.clone();
+            let (task, action) = update_task(state, &existing, &req).await?;
+            set_last(state, UndoAction::TaskUpdated { snapshot });
+            (task, action)
         }
-        _ => (create_task(state, &req).await?, "created".to_string()),
+        _ => {
+            let task = create_task(state, &req).await?;
+            set_last(state, UndoAction::TaskCreated { task_id: task.id });
+            (task, "created".to_string())
+        }
     };
 
     let data = TaskData {
@@ -375,7 +456,9 @@ pub async fn patch_task(
         is_exam: body.is_exam,
         note: None,
     };
+    let snapshot = existing.clone();
     let (task, _) = update_task(&state, &existing, &req).await?;
+    set_last(&state, UndoAction::TaskUpdated { snapshot });
     Ok(Json(task))
 }
 
@@ -383,15 +466,28 @@ pub async fn delete_task(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    let result = sqlx::query("UPDATE tasks SET archived_at = now() WHERE id = $1 AND archived_at IS NULL")
+    let existing: Option<Task> = sqlx::query_as(&format!(
+        "SELECT {TASK_COLUMNS} FROM tasks WHERE id = $1 AND archived_at IS NULL"
+    ))
+    .bind(id)
+    .fetch_optional(&state.pool)
+    .await?;
+    let existing = existing.ok_or(AppError::NotFound)?;
+
+    let checkpoints: Vec<Checkpoint> = sqlx::query_as(
+        "SELECT id, task_id, offset_days, due_date, status FROM task_checkpoints WHERE task_id = $1",
+    )
+    .bind(id)
+    .fetch_all(&state.pool)
+    .await?;
+
+    sqlx::query("UPDATE tasks SET archived_at = now() WHERE id = $1")
         .bind(id)
         .execute(&state.pool)
         .await?;
-    if result.rows_affected() == 0 {
-        return Err(AppError::NotFound);
-    }
     spawn_calendar_delete(&state, id);
     clear_pending_checkpoints(&state, id).await?;
+    set_last(&state, UndoAction::TaskDeleted { snapshot: existing, checkpoints });
     Ok(StatusCode::NO_CONTENT)
 }
 

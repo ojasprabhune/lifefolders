@@ -215,6 +215,16 @@ export function Row({ log, justParsed, expanded, onToggle, onChange, onDelete, o
     return () => clearTimeout(t)
   }, [expanded, renderEditor])
 
+  const quickDelete = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    try {
+      await deleteLog(log.id)
+      onDelete(log.id)
+    } catch {
+      // leave the row in place if the delete failed
+    }
+  }
+
   return (
     <div className={`row-wrap ${expanded ? 'open' : ''}`}>
       <div className={`row ${justParsed ? 'morph' : ''}`} onClick={onToggle}>
@@ -222,6 +232,9 @@ export function Row({ log, justParsed, expanded, onToggle, onChange, onDelete, o
         <span className={`badge ${badge(log).kind}`}>{badge(log).label}</span>
         <span className="row-main">{summary(log)}</span>
         <span className="row-right">{rightSide(log, onRate)}</span>
+        <button className="delete-btn" onClick={quickDelete} aria-label="delete entry">
+          ✕
+        </button>
       </div>
       <div className="expand">
         <div className="expand-inner">

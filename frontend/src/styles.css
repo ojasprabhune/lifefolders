@@ -1244,3 +1244,7 @@ header {
   align-items: center;
   justify-content: center;
 }
+
+.row .delete-btn {
+  align-self: center;
+}

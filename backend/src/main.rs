@@ -1,4 +1,5 @@
 use std::env;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use axum::extract::{Request, State};
@@ -20,6 +21,7 @@ mod music;
 mod rank;
 mod routes;
 mod tasks;
+mod undo;
 mod usda;
 mod wger;
 
@@ -40,6 +42,7 @@ pub struct AppState {
     pub auth_token: String,
     pub wger_key: Option<String>,
     pub caldav: Option<CaldavConfig>,
+    pub last_action: Arc<Mutex<Option<undo::UndoAction>>>,
 }
 
 async fn require_auth(State(state): State<AppState>, req: Request, next: Next) -> Response {
@@ -107,10 +110,21 @@ async fn main() -> anyhow::Result<()> {
         .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE])
         .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]);
 
-    let state = AppState { pool, http, groq_key, usda_key, auth_token, wger_key, caldav };
+    let last_action = Arc::new(Mutex::new(None));
+    let state = AppState {
+        pool,
+        http,
+        groq_key,
+        usda_key,
+        auth_token,
+        wger_key,
+        caldav,
+        last_action,
+    };
 
     let api = Router::new()
         .route("/api/logs", get(routes::list_logs).post(routes::create_log))
+        .route("/api/undo", post(undo::undo_last))
         .route(
             "/api/logs/{id}",
             get(routes::get_log)

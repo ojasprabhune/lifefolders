@@ -222,7 +222,11 @@ fn tools() -> Value {
                         },
                         "at": {
                             "type": "string",
-                            "description": "ISO timestamp override when the user states a time, e.g. 'went to bed at 11'; compute from the current local time given in the system prompt"
+                            "description": "ISO timestamp override when the user states a time, e.g. 'went to bed at 11'; compute from the current local time given in the system prompt. For action both, this is the bedtime."
+                        },
+                        "wake_at": {
+                            "type": "string",
+                            "description": "ISO timestamp for the wake-up time, only when action is both, e.g. 'slept from 12:35am to 7:25am' - at is 12:35am and wake_at is 7:25am"
                         }
                     },
                     "required": ["action"]
@@ -284,7 +288,7 @@ fn tools() -> Value {
                     "type": "object",
                     "properties": {
                         "title": { "type": "string", "description": "Short task title. When updating an existing task, phrase this close to its tracked title so it matches." },
-                        "category": { "type": "string", "description": "e.g. homework, project, debate, robotics, outreach, volunteering, research, personal, or another short label" },
+                        "category": { "type": "string", "description": "homework for schoolwork/studying (notes, reading, vocab, worksheets, memorization, etc.), project for larger multi-step deliverables, or a specific extracurricular label (debate, robotics, outreach, volunteering, research, clubs); personal only for non-school errands/to-dos" },
                         "due_date": { "type": "string", "description": "YYYY-MM-DD if a deadline is stated or already known for this task" },
                         "effort_minutes": { "type": "integer", "description": "Estimated time needed in minutes, if stated or clearly implied" },
                         "status": {
@@ -329,7 +333,9 @@ Adding one thing to an existing trip is log_itinerary_item. \
 Sleeping now or going to bed is log_sleep action start; waking up is action end; \
 when a clock time is stated, compute the ISO timestamp from the current local time. \
 A phrase stating both a bedtime and waking up means one log_sleep call with action \
-both and at set to the stated bedtime. \
+both, at set to the stated bedtime, and wake_at set to the stated wake-up time - both \
+are required together for action both, and if the wake time crosses midnight into the \
+next day, that's still the correct date for wake_at, not the bedtime's date. \
 Study progress, watched lectures, finished chapters, or practice problems are \
 log_learning; match names against the configured fields listed below when present. \
 Homework, projects, and extracurricular commitments (debate, robotics, outreach, \
@@ -338,6 +344,13 @@ wording close to an already-tracked task listed below updates it instead: set \
 status done when they say they finished or turned it in, in_progress when they \
 say they started or are working on it. Set is_exam true only for a real test, \
 exam, or quiz — problem sets, homework, and projects are not exams. \
+For the category field, default to \"homework\" for anything that's schoolwork for \
+a class — notes, vocab, reading, worksheets, maps, packets, study guides, labs, \
+outlines, and similar, even when they don't sound like a formal assignment — and \
+only use \"project\" for a larger multi-step deliverable. Only use a specific \
+extracurricular label (debate, robotics, outreach, volunteering, research, clubs) \
+when the task is actually tied to that activity, and reserve \"personal\" for \
+non-school errands and to-dos, not schoolwork. \
 When a deadline is given as a bare weekday name (\"due Friday\", \"by Monday\") with no \
 qualifier, resolve it to the nearest upcoming occurrence of that weekday - today itself \
 if today is that weekday, otherwise the next date forward within the next 7 days. Only \
@@ -559,7 +572,11 @@ pub async fn parse(
                 if !matches!(action.as_str(), "start" | "end" | "both") {
                     bail!("sleep action must be start, end or both");
                 }
-                results.push(Action::Sleep { action, at: opt_str(&args, "at") });
+                results.push(Action::Sleep {
+                    action,
+                    at: opt_str(&args, "at"),
+                    wake_at: opt_str(&args, "wake_at"),
+                });
             }
             "log_learning" => {
                 let kind = as_str(&args, "kind")?;

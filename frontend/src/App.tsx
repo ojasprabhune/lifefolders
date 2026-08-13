@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { createLog, getToken, listLogs, setToken, transcribe } from './api'
+import { createLog, getToken, listLogs, setToken, transcribe, undoLast } from './api'
 import type { Category, Log, PendingLog } from './types'
 import { Row } from './Row'
 import { Guide } from './Guide'
@@ -140,6 +140,34 @@ function Home() {
 
   useEffect(() => {
     void refresh(date)
+  }, [date, refresh])
+
+  const flash = (message: string) => {
+    setNotice(message)
+    setTimeout(() => setNotice(null), 2500)
+  }
+
+  // Cmd/Ctrl+Z undoes the last logged entry's add/edit/delete, but only
+  // when focus isn't in a text field - typing in the entry input should
+  // still get plain browser undo for the text itself.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'z' || e.shiftKey) return
+      const target = e.target as HTMLElement | null
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        return
+      }
+      e.preventDefault()
+      undoLast()
+        .then(() => {
+          flash('undone')
+          void refresh(date)
+          window.dispatchEvent(new Event('life-log-created'))
+        })
+        .catch(() => flash('nothing to undo'))
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
   }, [date, refresh])
 
   const submit = async (rawText: string, tempId?: string) => {

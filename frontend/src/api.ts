@@ -149,6 +149,11 @@ export async function deleteLog(id: string): Promise<void> {
   await check(res)
 }
 
+export async function undoLast(): Promise<void> {
+  const res = await fetch(`${API}/api/undo`, { method: 'POST', headers: authHeaders() })
+  await check(res)
+}
+
 const tz = () => String(new Date().getTimezoneOffset())
 
 export async function listFields(): Promise<FieldSummary[]> {

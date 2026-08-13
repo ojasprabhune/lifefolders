@@ -6,6 +6,7 @@ use chrono::{Duration, NaiveDate, TimeZone, Utc};
 use uuid::Uuid;
 
 use crate::models::{Action, CreateLog, ItineraryEntry, ListQuery, Log, SleepData, UpdateLog};
+use crate::undo::{set_last, UndoAction};
 use crate::{groq, learning, tasks, wger, AppState};
 
 pub enum AppError {
@@ -41,6 +42,7 @@ pub struct CreateResponse {
     pub logs: Vec<Log>,
     pub notice: Option<String>,
 }
+
 
 async fn insert_log(state: &AppState, raw: &str, parsed_type: &str, data: serde_json::Value) -> Result<Log, AppError> {
     let log: Log = sqlx::query_as(
@@ -269,7 +271,9 @@ pub async fn create_log(
     for action in actions {
         match action {
             Action::Entry(entry) => {
-                logs.push(insert_log(&state, raw, entry.type_name(), entry.to_json()).await?);
+                let log = insert_log(&state, raw, entry.type_name(), entry.to_json()).await?;
+                set_last(&state, UndoAction::LogCreated { log_ids: vec![log.id] });
+                logs.push(log);
             }
             Action::Workout { note, allow_not_today } => {
                 let Some(wger_key) = state.wger_key.as_deref() else {
@@ -278,7 +282,9 @@ pub async fn create_log(
                 };
                 match wger::sync(&state.http, wger_key, tz_offset, note, allow_not_today).await {
                     Ok(wger::Outcome::Synced(data)) => {
-                        logs.push(upsert_workout(&state, raw, &data).await?);
+                        let log = upsert_workout(&state, raw, &data).await?;
+                        set_last(&state, UndoAction::LogCreated { log_ids: vec![log.id] });
+                        logs.push(log);
                     }
                     Ok(wger::Outcome::Notice(msg)) => notices.push(msg),
                     Err(e) => {
@@ -287,25 +293,40 @@ pub async fn create_log(
                     }
                 }
             }
-            Action::Sleep { action, at } => {
+            Action::Sleep { action, at, wake_at } => {
                 let at_ts = parse_at(&at, tz_offset);
                 if action == "both" {
-                    handle_sleep(&state, raw, "start", at_ts, tz_offset).await?;
-                    logs.push(handle_sleep(&state, raw, "end", None, tz_offset).await?);
+                    let wake_ts = parse_at(&wake_at, tz_offset);
+                    let start_log = handle_sleep(&state, raw, "start", at_ts, tz_offset).await?;
+                    let end_log = handle_sleep(&state, raw, "end", wake_ts, tz_offset).await?;
+                    set_last(
+                        &state,
+                        UndoAction::LogCreated { log_ids: vec![start_log.id, end_log.id] },
+                    );
+                    logs.push(end_log);
                 } else {
-                    logs.push(handle_sleep(&state, raw, &action, at_ts, tz_offset).await?);
+                    let log = handle_sleep(&state, raw, &action, at_ts, tz_offset).await?;
+                    set_last(&state, UndoAction::LogCreated { log_ids: vec![log.id] });
+                    logs.push(log);
                 }
             }
             Action::ItineraryItem { destination, name, note } => {
                 match append_itinerary(&state, destination.as_deref(), &name, note).await? {
-                    Some(log) => logs.push(log),
+                    Some(log) => {
+                        set_last(&state, UndoAction::LogCreated { log_ids: vec![log.id] });
+                        logs.push(log);
+                    }
                     None => notices.push("No trip found to add to.".to_string()),
                 }
             }
             Action::Learning(req) => {
-                logs.push(learning::apply(&state, raw, req).await?);
+                let log = learning::apply(&state, raw, req).await?;
+                set_last(&state, UndoAction::LogCreated { log_ids: vec![log.id] });
+                logs.push(log);
             }
             Action::Task(req) => {
+                // tasks::apply already records its own richer undo (calendar
+                // and checkpoint aware) before returning.
                 logs.push(tasks::apply(&state, raw, req).await?);
             }
         }
@@ -400,6 +421,14 @@ pub async fn update_log(
         }
     }
 
+    let before: Option<Log> = sqlx::query_as(&format!(
+        "SELECT {LOG_COLUMNS} FROM logs WHERE id = $1 AND deleted_at IS NULL"
+    ))
+    .bind(id)
+    .fetch_optional(&state.pool)
+    .await?;
+    let before = before.ok_or(AppError::NotFound)?;
+
     let log: Option<Log> = sqlx::query_as(&format!(
         "UPDATE logs SET \
             data = data || COALESCE($2, '{{}}'::jsonb), \
@@ -412,8 +441,10 @@ pub async fn update_log(
     .bind(body.raw_input)
     .fetch_optional(&state.pool)
     .await?;
+    let log = log.ok_or(AppError::NotFound)?;
 
-    log.map(Json).ok_or(AppError::NotFound)
+    set_last(&state, UndoAction::LogUpdated { snapshot: before });
+    Ok(Json(log))
 }
 
 pub async fn delete_log(
@@ -428,6 +459,7 @@ pub async fn delete_log(
     if result.rows_affected() == 0 {
         return Err(AppError::NotFound);
     }
+    set_last(&state, UndoAction::LogDeleted { log_id: id });
     Ok(StatusCode::NO_CONTENT)
 }
 

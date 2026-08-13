@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
-#[derive(Debug, Serialize, FromRow)]
+#[derive(Debug, Serialize, FromRow, Clone)]
 pub struct Log {
     pub id: Uuid,
     pub created_at: DateTime<Utc>,
@@ -196,7 +196,7 @@ pub enum Action {
     Entry(Parsed),
     Workout { note: Option<String>, allow_not_today: bool },
     ItineraryItem { destination: Option<String>, name: String, note: Option<String> },
-    Sleep { action: String, at: Option<String> },
+    Sleep { action: String, at: Option<String>, wake_at: Option<String> },
     Learning(LearningRequest),
     Task(TaskRequest),
 }
