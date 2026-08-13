@@ -7,11 +7,12 @@ use uuid::Uuid;
 
 use crate::models::{Action, CreateLog, ItineraryEntry, ListQuery, Log, SleepData, UpdateLog};
 use crate::undo::{set_last, UndoAction};
-use crate::{groq, learning, tasks, wger, AppState};
+use crate::{groq, cadences, learning, tasks, wger, AppState};
 
 pub enum AppError {
     NotFound,
     BadRequest(String),
+    Unauthorized,
     Internal(anyhow::Error),
 }
 
@@ -26,6 +27,7 @@ impl IntoResponse for AppError {
         let (status, message) = match self {
             AppError::NotFound => (StatusCode::NOT_FOUND, "not found".to_string()),
             AppError::BadRequest(m) => (StatusCode::BAD_REQUEST, m),
+            AppError::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized".to_string()),
             AppError::Internal(e) => {
                 tracing::error!("internal error: {e:#}");
                 (StatusCode::INTERNAL_SERVER_ERROR, "internal error".to_string())
@@ -262,6 +264,7 @@ pub async fn create_log(
     );
     context.push_str(&learning::context_block(&state).await);
     context.push_str(&tasks::context_block(&state).await);
+    context.push_str(&cadences::context_block(&state).await);
 
     let actions =
         groq::parse(&state.http, &state.groq_key, &state.usda_key, raw, &context).await?;
@@ -329,6 +332,13 @@ pub async fn create_log(
                 // and checkpoint aware) before returning.
                 logs.push(tasks::apply(&state, raw, req).await?);
             }
+            Action::Cadence(req) => match cadences::apply(&state, raw, &req).await? {
+                Some(log) => {
+                    set_last(&state, UndoAction::LogCreated { log_ids: vec![log.id] });
+                    logs.push(log);
+                }
+                None => notices.push(format!("No cadence matches \"{}\".", req.cadence_name)),
+            },
         }
     }
 
@@ -479,6 +489,17 @@ pub async fn delete_log(
         set_last(&state, UndoAction::LogDeleted { log_id: id });
     }
     Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn list_weights(State(state): State<AppState>) -> Result<Json<Vec<Log>>, AppError> {
+    let weights: Vec<Log> = sqlx::query_as(&format!(
+        "SELECT {LOG_COLUMNS} FROM logs \
+         WHERE parsed_type = 'weight' AND deleted_at IS NULL \
+         ORDER BY created_at DESC LIMIT 180"
+    ))
+    .fetch_all(&state.pool)
+    .await?;
+    Ok(Json(weights))
 }
 
 pub async fn list_sleep(State(state): State<AppState>) -> Result<Json<Vec<Log>>, AppError> {

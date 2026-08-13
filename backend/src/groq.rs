@@ -3,8 +3,8 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::models::{
-    Action, AlbumData, ItineraryEntry, LearningRequest, NutritionData, Parsed, PersonData,
-    PlaceData, SongData, TaskRequest, TripData,
+    Action, AlbumData, CadenceCompletionRequest, ItineraryEntry, LearningRequest, NutritionData,
+    Parsed, PersonData, PlaceData, SongData, TaskRequest, TripData, WeightData,
 };
 use crate::usda;
 
@@ -302,6 +302,39 @@ fn tools() -> Value {
                     "required": ["title"]
                 }
             }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "log_cadence_completion",
+                "description": "Mark one of the user's tracked cadences (recurring habits/routines) as done for the day, e.g. 'meditated', 'drank water', 'went for a run'. Only use when the entry matches one of the active cadences listed in the system prompt.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "cadence_name": { "type": "string", "description": "The cadence that was completed, phrased close to its tracked name so it matches, e.g. 'Water', 'Meditation'." }
+                    },
+                    "required": ["cadence_name"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "log_weight",
+                "description": "Log the user's own body weight, e.g. 'weighed 158 this morning', '72 kg', 'bodyweight 155 lbs'. This is body weight only, never food portion weights.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "value": { "type": "number", "description": "The body-weight number as stated" },
+                        "unit": {
+                            "type": "string",
+                            "enum": ["lb", "kg"],
+                            "description": "lb or kg; default lb when the user gives no unit"
+                        }
+                    },
+                    "required": ["value"]
+                }
+            }
         }
     ])
 }
@@ -356,6 +389,15 @@ qualifier, resolve it to the nearest upcoming occurrence of that weekday - today
 if today is that weekday, otherwise the next date forward within the next 7 days. Only \
 skip ahead to the following week when \"next\" is stated explicitly (\"next Friday\"). For \
 \"in N days/weeks,\" add exactly that many days/weeks to the current local date given above. \
+A short phrase that names doing one of the active cadences (recurring habits/routines) \
+listed below (\"meditated\", \
+\"drank water\", \"journaled\") is log_cadence_completion with cadence_name matching the \
+tracked cadence. Only call it when the entry clearly maps to a listed cadence; if nothing \
+matches, use the most fitting other tool instead of inventing a cadence. \
+A stated body weight (\"weighed 158 this morning\", \"158 lbs\", \"72 kg\", \"bodyweight \
+155\") is log_weight, with the number as value and lb or kg as unit, defaulting to lb \
+when no unit is given. Body weight is never a food portion: \"2 rotis\", \"150g of rice\", \
+or \"a 200g steak\" is log_nutrition, not log_weight. \
 Always call at least one tool.";
 
 async fn chat(
@@ -609,6 +651,9 @@ pub async fn parse(
                     note: opt_str(&args, "note"),
                 }));
             }
+            "log_cadence_completion" => results.push(Action::Cadence(CadenceCompletionRequest {
+                cadence_name: as_str(&args, "cadence_name")?,
+            })),
             _ => results.extend(
                 parse_call(http, usda_key, &name, args)
                     .await?
@@ -764,6 +809,16 @@ async fn parse_call(
                 thoughts: opt_str(&args, "thoughts"),
                 context: opt_str(&args, "context"),
                 source: opt_str(&args, "source"),
+            })])
+        }
+        "log_weight" => {
+            let unit = opt_str(&args, "unit")
+                .filter(|u| matches!(u.as_str(), "lb" | "kg"))
+                .unwrap_or_else(|| "lb".to_string());
+            Ok(vec![Parsed::Weight(WeightData {
+                value: as_f64(&args, "value")?,
+                unit,
+                workout_id: None,
             })])
         }
         other => bail!("unexpected tool call {other}"),

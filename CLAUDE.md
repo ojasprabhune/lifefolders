@@ -57,6 +57,20 @@ Entities that need side effects beyond "insert into `logs`" (workout session tra
 
 9. **Frontend optional**: Add a page like `Learning.tsx` or `Tasks.tsx` if a summary/dashboard view makes sense. Add a paragraph to `Guide.tsx` documenting example phrasing.
 
+## Second pattern: direct-UI entities (not LLM-parsed)
+
+Most domains are entered through the one text/voice input and the `groq.rs` parse loop (the recipe above). A few are **entered through dedicated UI instead** — the LLM is not involved — but they still write a `logs` row so they show up in the daily timeline like everything else. This is the pattern for anything with a live/structured interaction that doesn't fit "type a sentence": `daily_notes` (autosaving Today/Tomorrow scratchpad, `daily.rs` + `DailyPlan.tsx`) and `focus_sessions` (live countdown timer, `focus.rs` + `FocusTimer.tsx`).
+
+How it differs from the recipe:
+
+- **No tool def, no `SYSTEM_PROMPT` paragraph, no `parse()` arm, no `Action`/`Parsed` variant.** The frontend calls a purpose-built endpoint directly (`POST /api/focus-sessions`, `PATCH /api/daily-notes/:date`), not `POST /api/logs`.
+- **Relational table + its own module** (`daily.rs`, `focus.rs`) registered in `main.rs`, same as `tasks.rs`/`learning.rs`.
+- **A `logs` row is still written** at the meaningful moment (a focus session *ending* writes `parsed_type: 'focus_session'`; the migration still widens `logs_parsed_type_check`). Timeline rendering in `Row.tsx` (`summary`/`badge`/`rightSide`/`Editor`) is added exactly as in the recipe — the timeline doesn't care how the row got there.
+- **Filtering** can piggyback on an existing chip instead of adding one: `matches()` in `App.tsx` groups `weight` under the `workout`/soma chip and `focus_session` under the `task` chip, rather than giving every sub-type its own filter.
+- **Auth edge case**: a `logs`-writing action triggered outside a normal fetch (e.g. `focus_sessions` ending via `navigator.sendBeacon` on tab close, which can't set the bearer header) needs a route *outside* the `require_auth` layer that checks the token itself (header or body) — see `focus::end_session` and its registration on the unauthenticated `app` router in `main.rs`.
+
+When adding a new domain, pick this pattern over the recipe only when the interaction is genuinely structured/live (a timer, an autosaving field, a stepper) rather than a phrase the LLM could parse.
+
 ## Frontend architecture
 
 Hash-based router (no library): `#/` = home (daily timeline), `#/music` / `#/sleep` / `#/tasks` / etc. = dedicated dashboard pages for complex domains.

@@ -14,7 +14,11 @@ use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
 mod caldav;
+mod daily;
+mod focus;
 mod groq;
+mod recap;
+mod cadences;
 mod learning;
 mod models;
 mod music;
@@ -34,6 +38,14 @@ pub struct CaldavConfig {
 }
 
 #[derive(Clone)]
+pub struct RecapConfig {
+    pub api_key: String,
+    pub from: String,
+    pub to: String,
+    pub tz_offset_min: i32,
+}
+
+#[derive(Clone)]
 pub struct AppState {
     pub pool: PgPool,
     pub http: reqwest::Client,
@@ -42,6 +54,7 @@ pub struct AppState {
     pub auth_token: String,
     pub wger_key: Option<String>,
     pub caldav: Option<CaldavConfig>,
+    pub recap: Option<RecapConfig>,
     pub last_action: Arc<Mutex<Option<undo::UndoAction>>>,
 }
 
@@ -110,6 +123,23 @@ async fn main() -> anyhow::Result<()> {
         .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE])
         .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]);
 
+    // Recap email is optional: without a Resend key and recipient the endpoint
+    // just reports it's unconfigured.
+    let recap = (|| {
+        Some(RecapConfig {
+            api_key: env::var("RESEND_API_KEY").ok().filter(|v| !v.is_empty())?,
+            to: env::var("RECAP_TO").ok().filter(|v| !v.is_empty())?,
+            from: env::var("RECAP_FROM")
+                .ok()
+                .filter(|v| !v.is_empty())
+                .unwrap_or_else(|| "onboarding@resend.dev".into()),
+            tz_offset_min: env::var("RECAP_TZ_OFFSET_MIN")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(420),
+        })
+    })();
+
     let last_action = Arc::new(Mutex::new(None));
     let state = AppState {
         pool,
@@ -119,6 +149,7 @@ async fn main() -> anyhow::Result<()> {
         auth_token,
         wger_key,
         caldav,
+        recap,
         last_action,
     };
 
@@ -134,6 +165,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/albums", get(music::list_albums))
         .route("/api/songs", get(music::list_songs))
         .route("/api/workouts", get(routes::list_workouts))
+        .route("/api/weights", get(routes::list_weights))
         .route("/api/rank", post(rank::rank))
         .route("/api/rank/list", get(rank::list))
         .route("/api/sleep", get(routes::list_sleep))
@@ -151,11 +183,23 @@ async fn main() -> anyhow::Result<()> {
             axum::routing::patch(tasks::patch_task).delete(tasks::delete_task),
         )
         .route("/api/task-checkpoints/{id}", axum::routing::patch(tasks::patch_checkpoint))
+        .route("/api/cadences", get(cadences::list_cadences).post(cadences::create_cadence))
+        .route("/api/cadences/{id}", axum::routing::delete(cadences::archive_cadence))
+        .route("/api/cadences/{id}/completions", get(cadences::completions))
+        .route("/api/daily-notes", get(daily::list))
+        .route("/api/daily-notes/{date}", axum::routing::patch(daily::patch))
+        .route("/api/focus-sessions", post(focus::create_session))
+        .route("/api/tasks/{id}/focus-sessions", get(focus::list_for_task))
+        .route("/api/recap/send", post(recap::send))
         .route_layer(middleware::from_fn_with_state(state.clone(), require_auth))
         .layer(axum::extract::DefaultBodyLimit::max(60 * 1024 * 1024));
 
     let app = Router::new()
         .route("/health", get(routes::health))
+        // Ended via navigator.sendBeacon on tab close, which cannot send the
+        // bearer header, so this route sits outside require_auth and checks the
+        // token itself (header or body).
+        .route("/api/focus-sessions/{id}/end", post(focus::end_session))
         .merge(api)
         .layer(cors)
         .layer(TraceLayer::new_for_http())

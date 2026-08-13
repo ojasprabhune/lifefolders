@@ -14,6 +14,8 @@
   --learning: #0891b2;
   --sleep: #64748b;
   --task: #4338ca;
+  --cadence: #65a30d;
+  --focus: #e11d48;
 }
 
 * {
@@ -341,6 +343,14 @@ header {
 
 .badge.exam {
   background: var(--accent);
+}
+
+.badge.cadence {
+  background: var(--cadence);
+}
+
+.badge.focus {
+  background: var(--focus);
 }
 
 .input-wrap {
@@ -858,6 +868,25 @@ header {
 .header-nav {
   display: flex;
   gap: 18px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.header-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.header-nav .guide-link {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* the brand keeps its size so the nav scrolls beside it instead of
+   crowding into it */
+header > .brand {
+  flex-shrink: 0;
+  margin-right: 16px;
 }
 
 .rate-link {
@@ -1251,4 +1280,415 @@ header {
 
 .row .delete-btn {
   align-self: center;
+}
+
+/* cadences */
+
+.link-btn {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.cadence-chips {
+  flex-wrap: wrap;
+  margin: 20px 0 4px;
+}
+
+.cadence-board {
+  margin-top: 18px;
+}
+
+.cadence-stats {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.stat-tile {
+  flex: 1;
+  border: 1px solid var(--line);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stat-num {
+  font-family: 'mencken-std-text', serif;
+  font-weight: 400;
+  font-size: 34px;
+  line-height: 1;
+  color: var(--cadence);
+}
+
+.stat-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.cadence-grid {
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.cadence-months {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.cadence-month {
+  width: 14px;
+  font-size: 9px;
+  color: var(--faint);
+  text-align: left;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.cadence-weeks {
+  display: flex;
+  gap: 4px;
+}
+
+.cadence-week {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cadence-cell {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: var(--line);
+  flex-shrink: 0;
+}
+
+.cadence-cell.done {
+  background: var(--cadence);
+}
+
+.cadence-cell.future {
+  background: transparent;
+}
+
+.cadence-manage {
+  margin: 18px 0 8px;
+  border: 1px solid var(--line);
+  padding: 14px 16px;
+}
+
+.cadence-manage-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.cadence-manage-add {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* daily plan */
+
+.daily {
+  margin-top: 20px;
+  border: 1px solid var(--line);
+  padding: 12px 16px 14px;
+}
+
+.daily-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.daily-nav {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.daily-daylabel {
+  min-width: 84px;
+  text-align: center;
+}
+
+.daily-saved {
+  font-size: 11px;
+  color: var(--faint);
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+
+.daily-saved.saving,
+.daily-saved.saved {
+  opacity: 1;
+}
+
+.daily-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 560px) {
+  .daily-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+}
+
+.daily-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.daily-label {
+  font-size: 11px;
+  color: var(--faint);
+  text-transform: lowercase;
+}
+
+.daily-text {
+  font-family: inherit;
+  font-weight: 500;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  padding: 0;
+  min-height: 1.45em;
+}
+
+.daily-text::placeholder {
+  color: var(--faint);
+}
+
+/* focus timer */
+
+.focus-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 380px;
+}
+
+.focus-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.focus-select {
+  font: inherit;
+  font-size: 17px;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid var(--ink);
+  padding: 8px 0;
+  outline: none;
+  border-radius: 0;
+}
+
+.focus-custom {
+  width: 72px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  outline: none;
+  padding: 2px 0;
+}
+
+.focus-start {
+  align-self: flex-start;
+  font-size: 16px;
+  color: var(--bg);
+  background: var(--focus);
+  padding: 10px 22px;
+}
+
+.focus-start:disabled {
+  background: var(--faint);
+  cursor: default;
+}
+
+.focus-error {
+  color: var(--accent);
+  font-size: 13px;
+}
+
+.focus-running,
+.focus-done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding-top: clamp(24px, 12vh, 120px);
+}
+
+.focus-clock {
+  font-family: 'mencken-std-text', serif;
+  font-weight: 400;
+  font-size: clamp(72px, 20vw, 128px);
+  line-height: 1;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.focus-task {
+  font-size: 17px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.focus-stop {
+  margin-top: 8px;
+  font-size: 15px;
+  color: var(--accent);
+  border: 1px solid var(--line);
+  padding: 8px 24px;
+}
+
+.focus-badge {
+  font-family: 'calling-code', monospace;
+  font-size: 12px;
+  color: var(--bg);
+  padding: 4px 10px 3px;
+  text-transform: lowercase;
+}
+
+.focus-badge.complete {
+  background: var(--food);
+}
+
+.focus-badge.stopped {
+  background: var(--sleep);
+}
+
+.focus-summary {
+  font-size: 15px;
+  color: var(--muted);
+}
+
+/* task focus-session history */
+
+.task-row-wrap {
+  border-bottom: 1px solid var(--line);
+}
+
+.task-main {
+  cursor: pointer;
+}
+
+.task-focus {
+  flex-shrink: 0;
+  color: var(--focus);
+  font-size: 12px;
+  text-decoration: none;
+  padding: 0 4px;
+}
+
+.task-sessions {
+  padding: 0 0 12px 34px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.task-session {
+  display: flex;
+  gap: 14px;
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.task-session .done {
+  color: var(--food);
+}
+
+.task-session .stopped {
+  color: var(--faint);
+}
+
+.task-session-empty {
+  font-size: 13px;
+  color: var(--faint);
+}
+
+/* soma / weight */
+
+.weight-trend {
+  margin: 4px 0 20px;
+  border: 1px solid var(--line);
+  padding: 14px 16px;
+}
+
+.weight-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.weight-current {
+  font-family: 'mencken-std-text', serif;
+  font-weight: 400;
+  font-size: 30px;
+  line-height: 1;
+  color: var(--gym);
+}
+
+.weight-unit {
+  font-family: 'neue-haas-grotesk-display', sans-serif;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.weight-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.weight-spark {
+  display: block;
+  width: 100%;
+  height: 56px;
+}
+
+.weight-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.weight-delta.down {
+  color: var(--food);
+}
+
+.weight-delta.up {
+  color: var(--accent);
 }

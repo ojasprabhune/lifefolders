@@ -101,6 +101,13 @@ pub struct WorkoutData {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct WeightData {
+    pub value: f64,
+    pub unit: String,
+    pub workout_id: Option<Uuid>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct PlaceData {
     pub name: String,
     pub category: String,
@@ -177,6 +184,27 @@ pub struct TaskRequest {
     pub note: Option<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CadenceData {
+    pub cadence_id: Uuid,
+    pub cadence_name: String,
+}
+
+#[derive(Debug)]
+pub struct CadenceCompletionRequest {
+    pub cadence_name: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FocusSessionData {
+    pub session_id: Uuid,
+    pub task_id: Uuid,
+    pub task_title: String,
+    pub planned_minutes: i32,
+    pub actual_minutes: i32,
+    pub completed: bool,
+}
+
 #[derive(Debug)]
 pub struct LearningRequest {
     pub field: Option<String>,
@@ -199,6 +227,7 @@ pub enum Action {
     Sleep { action: String, at: Option<String>, wake_at: Option<String> },
     Learning(LearningRequest),
     Task(TaskRequest),
+    Cadence(CadenceCompletionRequest),
 }
 
 pub enum Parsed {
@@ -208,6 +237,7 @@ pub enum Parsed {
     Song(SongData),
     Place(PlaceData),
     Trip(TripData),
+    Weight(WeightData),
 }
 
 impl Parsed {
@@ -219,6 +249,7 @@ impl Parsed {
             Parsed::Song(_) => "song",
             Parsed::Place(_) => "place",
             Parsed::Trip(_) => "trip",
+            Parsed::Weight(_) => "weight",
         }
     }
 
@@ -230,6 +261,7 @@ impl Parsed {
             Parsed::Song(s) => serde_json::to_value(s).unwrap(),
             Parsed::Place(p) => serde_json::to_value(p).unwrap(),
             Parsed::Trip(t) => serde_json::to_value(t).unwrap(),
+            Parsed::Weight(w) => serde_json::to_value(w).unwrap(),
         }
     }
 }

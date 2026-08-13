@@ -1,0 +1,21 @@
+name: weekly-recap
+
+# Saturday ~08:00 America/Los_Angeles (15:00 UTC). GitHub cron is UTC-only, so
+# this drifts an hour with US daylight saving — fine for a weekly digest.
+on:
+  schedule:
+    - cron: '0 15 * * 6'
+  workflow_dispatch: {}
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger recap email
+        env:
+          RECAP_URL: ${{ secrets.RECAP_URL }}
+          AUTH_TOKEN: ${{ secrets.AUTH_TOKEN }}
+        run: |
+          curl -fsS -X POST "$RECAP_URL" \
+            -H "Authorization: Bearer $AUTH_TOKEN" \
+            -H "Content-Type: application/json"

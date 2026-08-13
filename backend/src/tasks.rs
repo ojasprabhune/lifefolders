@@ -209,7 +209,7 @@ fn looks_like_exam(title: &str) -> bool {
         .any(|w| EXAM_WORDS.contains(&w))
 }
 
-async fn create_task(state: &AppState, req: &TaskRequest) -> Result<Task, AppError> {
+pub(crate) async fn create_task(state: &AppState, req: &TaskRequest) -> Result<Task, AppError> {
     let is_exam = req.is_exam.unwrap_or(false) || looks_like_exam(&req.title);
     let task: Task = sqlx::query_as(&format!(
         "INSERT INTO tasks (title, category, due_date, effort_minutes, status, is_exam, note) \
