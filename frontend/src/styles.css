@@ -62,8 +62,6 @@ button {
 .tasks-panel {
   width: 420px;
   flex-shrink: 0;
-  max-height: 100vh;
-  overflow-y: auto;
   padding: clamp(24px, 7vh, 72px) 24px 96px;
   animation: panel-in 220ms ease both;
 }
@@ -132,6 +130,7 @@ button {
     z-index: 11;
     background: var(--bg);
     box-shadow: -2px 0 12px rgba(0, 0, 0, 0.15);
+    overflow-y: auto;
   }
 }
 
@@ -1156,6 +1155,22 @@ header {
   padding: 12px;
   border-left: 3px solid var(--line);
   align-items: flex-start;
+  cursor: grab;
+}
+
+.task-row:active {
+  cursor: grabbing;
+}
+
+.task-section {
+  border-radius: 8px;
+  transition: background-color 120ms ease;
+}
+
+.task-section.drag-over {
+  background-color: var(--accent-soft, rgba(228, 64, 42, 0.08));
+  outline: 1px dashed var(--accent);
+  outline-offset: 4px;
 }
 
 .task-status {
@@ -1215,6 +1230,13 @@ header {
 .task-effort {
   font-size: 12px;
   color: var(--faint);
+}
+
+.task-note {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+  margin-top: 2px;
 }
 
 .checkpoints {

@@ -46,6 +46,13 @@ export function Tasks({ open }: { open: boolean }) {
     refresh()
   }
 
+  const moveToCategory = async (id: string, category: string) => {
+    await patchTask(id, { category }).catch(() => {})
+    refresh()
+  }
+
+  const [dragOver, setDragOver] = useState<string | null>(null)
+
   const openTasks = tasks.filter((t) => t.status !== 'done')
   const grouped = useMemo(() => groupByCategory(openTasks), [openTasks])
   const dayCounts = useMemo(() => buildDayCounts(openTasks, 7), [openTasks])
@@ -75,7 +82,21 @@ export function Tasks({ open }: { open: boolean }) {
 
         <main className="list">
           {Object.entries(grouped).map(([category, items]) => (
-            <section key={category} className="music-section">
+            <section
+              key={category}
+              className={`music-section task-section ${dragOver === category ? 'drag-over' : ''}`}
+              onDragOver={(e) => {
+                e.preventDefault()
+                if (dragOver !== category) setDragOver(category)
+              }}
+              onDragLeave={() => setDragOver((c) => (c === category ? null : c))}
+              onDrop={(e) => {
+                e.preventDefault()
+                setDragOver(null)
+                const id = e.dataTransfer.getData('text/plain')
+                if (id) void moveToCategory(id, category)
+              }}
+            >
               <h2 className="section-title">{category}</h2>
               {items.map((t) => (
                 <TaskRow
@@ -186,9 +207,21 @@ function TaskRow({
 }) {
   const isOverdue = task.due_date && task.due_date < dateToStr(new Date())
   const isSoon = !isOverdue && task.due_date && daysUntil(task.due_date) <= 2
+  const lastNote = task.note
+    ?.split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .pop()
 
   return (
-    <div className="task-row">
+    <div
+      className="task-row"
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData('text/plain', task.id)
+        e.dataTransfer.effectAllowed = 'move'
+      }}
+    >
       <button className={`task-status ${task.status}`} onClick={onCycle}>
         {task.status === 'done' ? '✓' : task.status === 'in_progress' ? '→' : '○'}
       </button>
@@ -200,6 +233,7 @@ function TaskRow({
           </div>
         )}
         {task.effort_minutes && <div className="task-effort">{task.effort_minutes} min</div>}
+        {lastNote && <div className="task-note">{lastNote}</div>}
       </div>
       {task.is_exam && task.checkpoints.length > 0 && (
         <div className="checkpoints">

@@ -120,7 +120,7 @@ export interface TaskData {
   due_date: string | null
   status: 'not_started' | 'in_progress' | 'done'
   is_exam: boolean
-  action: 'created' | 'status' | 'rescheduled' | 'note'
+  action: 'created' | 'status' | 'rescheduled' | 'note' | 'moved'
   note: string | null
 }
 

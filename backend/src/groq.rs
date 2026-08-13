@@ -356,6 +356,11 @@ qualifier, resolve it to the nearest upcoming occurrence of that weekday - today
 if today is that weekday, otherwise the next date forward within the next 7 days. Only \
 skip ahead to the following week when \"next\" is stated explicitly (\"next Friday\"). For \
 \"in N days/weeks,\" add exactly that many days/weeks to the current local date given above. \
+An entry starting with \"task:\" is always log_task, no matter what it otherwise sounds \
+like - exclude that literal prefix from the title. An entry containing a \"#tag\" (e.g. \
+\"clean the garage #personal\") is an explicit category override for log_task - use \
+exactly that word, lowercased and without the #, as the category, and exclude the tag \
+itself from the title. \
 Always call at least one tool.";
 
 async fn chat(
@@ -363,9 +368,14 @@ async fn chat(
     api_key: &str,
     raw_text: &str,
     context: &str,
+    forced_tool: Option<&str>,
 ) -> Result<Vec<(String, Value)>> {
     let mut last_err = anyhow!("no groq models attempted");
     let system = format!("{SYSTEM_PROMPT}\n\n{context}");
+    let tool_choice = match forced_tool {
+        Some(name) => json!({ "type": "function", "function": { "name": name } }),
+        None => json!("required"),
+    };
 
     for model in MODELS {
         let body = json!({
@@ -375,7 +385,7 @@ async fn chat(
                 { "role": "user", "content": raw_text }
             ],
             "tools": tools(),
-            "tool_choice": "required",
+            "tool_choice": tool_choice,
             "temperature": 0.2
         });
 
@@ -551,7 +561,16 @@ pub async fn parse(
     raw_text: &str,
     context: &str,
 ) -> Result<Vec<Action>> {
-    let calls = chat(http, groq_key, raw_text, context).await?;
+    // An entry starting with "task:" is an unambiguous, deterministic
+    // override - skip the model's own tool judgment entirely rather than
+    // just hinting, since a bare word (e.g. "exam") has already proven
+    // unreliable as a soft signal.
+    let forced_tool = raw_text
+        .trim_start()
+        .to_lowercase()
+        .starts_with("task:")
+        .then_some("log_task");
+    let calls = chat(http, groq_key, raw_text, context, forced_tool).await?;
     let mut results = Vec::with_capacity(calls.len());
     for (name, args) in calls {
         match name.as_str() {

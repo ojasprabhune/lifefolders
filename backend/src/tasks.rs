@@ -253,9 +253,19 @@ async fn update_task(
         existing.completed_at
     };
 
+    // A new note (e.g. "did 1 module of psych notes") reads as progress on
+    // the task, not a correction - append it to whatever's already there
+    // instead of silently overwriting it, so repeated check-ins build up a
+    // visible log instead of each one erasing the last.
     let task: Task = sqlx::query_as(&format!(
         "UPDATE tasks SET status = $2, due_date = $3, is_exam = $4, \
-            effort_minutes = COALESCE($5, effort_minutes), note = COALESCE($6, note), \
+            category = COALESCE($8, category), \
+            effort_minutes = COALESCE($5, effort_minutes), \
+            note = CASE \
+                WHEN $6::text IS NULL THEN note \
+                WHEN note IS NULL OR note = '' THEN $6 \
+                ELSE note || E'\\n' || $6 \
+            END, \
             completed_at = $7 \
          WHERE id = $1 RETURNING {TASK_COLUMNS}"
     ))
@@ -266,6 +276,7 @@ async fn update_task(
     .bind(req.effort_minutes)
     .bind(&req.note)
     .bind(completed_at)
+    .bind(&req.category)
     .fetch_one(&state.pool)
     .await?;
 
@@ -284,6 +295,8 @@ async fn update_task(
         "status"
     } else if new_due != existing.due_date {
         "rescheduled"
+    } else if task.category != existing.category {
+        "moved"
     } else {
         "note"
     };
@@ -367,12 +380,43 @@ pub(crate) async fn undo_deleted(
     Ok(())
 }
 
-pub async fn apply(state: &AppState, raw: &str, req: TaskRequest) -> Result<Log, AppError> {
+// A trailing "#word" anywhere in the raw entry is an explicit, deterministic
+// category override - lets you pin exactly where a task lands instead of
+// hoping the LLM's free-text category guess matches what you meant.
+fn explicit_category(raw: &str) -> Option<String> {
+    raw.split_whitespace()
+        .find_map(|w| w.strip_prefix('#'))
+        .map(|s| s.trim_matches(|c: char| !c.is_alphanumeric()).to_lowercase())
+        .filter(|s| !s.is_empty())
+}
+
+// The LLM is told to leave any "#tag" out of the title, but strip it here
+// too as a backstop in case it echoes it back verbatim.
+fn strip_hashtag(title: &str) -> String {
+    title
+        .split_whitespace()
+        .filter(|w| !w.starts_with('#'))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+pub async fn apply(state: &AppState, raw: &str, mut req: TaskRequest) -> Result<Log, AppError> {
+    if let Some(tag) = explicit_category(raw) {
+        req.category = Some(tag);
+    }
+    req.title = strip_hashtag(&req.title);
+
     let open = open_tasks(state).await?;
     let matched = best_match(&open, &req.title).cloned();
 
     let (task, action) = match matched {
-        Some(existing) if req.status.is_some() || req.due_date.is_some() || req.note.is_some() => {
+        Some(existing)
+            if req.status.is_some()
+                || req.due_date.is_some()
+                || req.note.is_some()
+                || req.category.is_some()
+                || req.is_exam.is_some() =>
+        {
             let snapshot = existing.clone();
             let (task, action) = update_task(state, &existing, &req).await?;
             set_last(state, UndoAction::TaskUpdated { snapshot });

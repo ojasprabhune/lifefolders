@@ -125,6 +125,8 @@ function summary(log: Log): string {
       const due = t.due_date ? `, due ${t.due_date}` : ''
       if (t.action === 'status') return `${t.status === 'done' ? 'completed' : t.status === 'in_progress' ? 'started' : 'updated'}: ${t.title}`
       if (t.action === 'rescheduled') return `rescheduled: ${t.title}${due}`
+      if (t.action === 'moved') return `moved: ${t.title} → ${t.is_exam ? 'exam' : t.category}`
+      if (t.action === 'note') return t.note ? `${t.title}: ${t.note}` : `updated: ${t.title}`
       return `added task: ${t.title}${due}`
     }
   }
