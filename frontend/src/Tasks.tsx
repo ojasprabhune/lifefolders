@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { deleteTask, listTasks, patchCheckpoint, patchTask } from './api'
-import type { TaskWithCheckpoints } from './types'
+import { deleteTask, listTaskFocusSessions, listTasks, patchCheckpoint, patchTask } from './api'
+import type { FocusSession, TaskWithCheckpoints } from './types'
 
 export function Tasks({ open }: { open: boolean }) {
   const [tasks, setTasks] = useState<TaskWithCheckpoints[]>([])
@@ -212,45 +212,74 @@ function TaskRow({
     .map((line) => line.trim())
     .filter(Boolean)
     .pop()
+  const [expanded, setExpanded] = useState(false)
+  const [sessions, setSessions] = useState<FocusSession[] | null>(null)
+
+  const toggle = () => {
+    const next = !expanded
+    setExpanded(next)
+    if (next && sessions === null) {
+      listTaskFocusSessions(task.id).then(setSessions).catch(() => setSessions([]))
+    }
+  }
 
   return (
-    <div
-      className="task-row"
-      draggable
-      onDragStart={(e) => {
-        e.dataTransfer.setData('text/plain', task.id)
-        e.dataTransfer.effectAllowed = 'move'
-      }}
-    >
-      <button className={`task-status ${task.status}`} onClick={onCycle}>
-        {task.status === 'done' ? '✓' : task.status === 'in_progress' ? '→' : '○'}
-      </button>
-      <div className="task-main">
-        <div className="task-title">{task.title}</div>
-        {task.due_date && (
-          <div className={`task-due ${isOverdue ? 'overdue' : isSoon ? 'soon' : ''}`}>
-            {task.due_date}
+    <div className={`task-row-wrap ${expanded ? 'open' : ''}`}>
+      <div
+        className="task-row"
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.setData('text/plain', task.id)
+          e.dataTransfer.effectAllowed = 'move'
+        }}
+      >
+        <button className={`task-status ${task.status}`} onClick={onCycle}>
+          {task.status === 'done' ? '✓' : task.status === 'in_progress' ? '→' : '○'}
+        </button>
+        <div className="task-main" onClick={toggle}>
+          <div className="task-title">{task.title}</div>
+          {task.due_date && (
+            <div className={`task-due ${isOverdue ? 'overdue' : isSoon ? 'soon' : ''}`}>
+              {task.due_date}
+            </div>
+          )}
+          {task.effort_minutes && <div className="task-effort">{task.effort_minutes} min</div>}
+          {lastNote && <div className="task-note">{lastNote}</div>}
+        </div>
+        {task.is_exam && task.checkpoints.length > 0 && (
+          <div className="checkpoints">
+            {task.checkpoints.map((cp) => (
+              <button
+                key={cp.id}
+                className={`checkpoint-pill ${cp.status}`}
+                onClick={() => onCheckpoint(cp.id, cp.status === 'todo' ? 'done' : 'todo')}
+              >
+                {cp.offset_days}d
+              </button>
+            ))}
           </div>
         )}
-        {task.effort_minutes && <div className="task-effort">{task.effort_minutes} min</div>}
-        {lastNote && <div className="task-note">{lastNote}</div>}
+        <a className="task-focus" href={`#/focus?task=${task.id}`} aria-label="focus on this task">
+          ▷
+        </a>
+        <button className="delete-btn" onClick={onDelete}>
+          ✕
+        </button>
       </div>
-      {task.is_exam && task.checkpoints.length > 0 && (
-        <div className="checkpoints">
-          {task.checkpoints.map((cp) => (
-            <button
-              key={cp.id}
-              className={`checkpoint-pill ${cp.status}`}
-              onClick={() => onCheckpoint(cp.id, cp.status === 'todo' ? 'done' : 'todo')}
-            >
-              {cp.offset_days}d
-            </button>
+      {expanded && sessions !== null && (
+        <div className="task-sessions">
+          {sessions.length === 0 && <div className="task-session-empty">no focus sessions yet</div>}
+          {sessions.map((s) => (
+            <div key={s.id} className="task-session">
+              <span>{s.started_at.slice(5, 10)}</span>
+              <span>
+                {s.actual_minutes ?? 0} / {s.planned_minutes}m
+              </span>
+              <span className={s.completed ? 'done' : 'stopped'}>{s.completed ? '✓' : '⊘'}</span>
+            </div>
           ))}
         </div>
       )}
-      <button className="delete-btn" onClick={onDelete}>
-        ✕
-      </button>
     </div>
   )
 }

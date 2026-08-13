@@ -2,10 +2,15 @@ import type {
   AlbumGroups,
   Category,
   CreateResponse,
+  DailyNote,
   Field,
   FieldDetail,
   FieldSummary,
+  Cadence,
+  CadenceCompletions,
+  FocusSession,
   Log,
+  StartedSession,
   ProposedTopic,
   RankComparison,
   RankResponse,
@@ -70,6 +75,11 @@ export async function createLog(rawText: string): Promise<CreateResponse> {
 
 export async function listWorkouts(): Promise<Log[]> {
   const res = await fetch(`${API}/api/workouts`, { headers: authHeaders() })
+  return (await check(res)).json()
+}
+
+export async function listWeights(): Promise<Log[]> {
+  const res = await fetch(`${API}/api/weights`, { headers: authHeaders() })
   return (await check(res)).json()
 }
 
@@ -262,5 +272,89 @@ export async function patchCheckpoint(id: string, status: 'todo' | 'done'): Prom
     headers: { 'content-type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ status }),
   })
+  return (await check(res)).json()
+}
+
+export async function listCadences(): Promise<Cadence[]> {
+  const res = await fetch(`${API}/api/cadences`, { headers: authHeaders() })
+  return (await check(res)).json()
+}
+
+export async function createCadence(body: {
+  name: string
+  target_frequency: 'daily' | 'weekly'
+}): Promise<Cadence> {
+  const res = await fetch(`${API}/api/cadences`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(body),
+  })
+  return (await check(res)).json()
+}
+
+export async function archiveCadence(id: string): Promise<void> {
+  const res = await fetch(`${API}/api/cadences/${id}`, { method: 'DELETE', headers: authHeaders() })
+  await check(res)
+}
+
+export async function getCadenceCompletions(id: string, days = 90): Promise<CadenceCompletions> {
+  const params = new URLSearchParams({ days: String(days), tz_offset_min: tz() })
+  const res = await fetch(`${API}/api/cadences/${id}/completions?${params}`, {
+    headers: authHeaders(),
+  })
+  return (await check(res)).json()
+}
+
+export async function listDailyNotes(days = 7): Promise<DailyNote[]> {
+  const params = new URLSearchParams({ days: String(days), tz_offset_min: tz() })
+  const res = await fetch(`${API}/api/daily-notes?${params}`, { headers: authHeaders() })
+  return (await check(res)).json()
+}
+
+export async function patchDailyNote(
+  date: string,
+  body: { today_text?: string; tomorrow_text?: string },
+): Promise<DailyNote> {
+  const res = await fetch(`${API}/api/daily-notes/${date}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(body),
+  })
+  return (await check(res)).json()
+}
+
+export async function startFocusSession(body: {
+  task_id?: string
+  new_task?: { title: string; category?: string }
+  planned_minutes: number
+}): Promise<StartedSession> {
+  const res = await fetch(`${API}/api/focus-sessions`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(body),
+  })
+  return (await check(res)).json()
+}
+
+export async function endFocusSession(id: string, completed: boolean): Promise<void> {
+  const res = await fetch(`${API}/api/focus-sessions/${id}/end`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ completed }),
+  })
+  await check(res)
+}
+
+// Fire-and-forget end for tab close. sendBeacon can't set an auth header, so
+// the token rides in the body; text/plain keeps it a "simple" request (no CORS
+// preflight) so it actually goes out during unload.
+export function beaconEndFocusSession(id: string, completed: boolean): void {
+  const token = getToken()
+  const blob = new Blob([JSON.stringify({ completed, token })], { type: 'text/plain' })
+  navigator.sendBeacon(`${API}/api/focus-sessions/${id}/end`, blob)
+}
+
+export async function listTaskFocusSessions(taskId: string): Promise<FocusSession[]> {
+  const res = await fetch(`${API}/api/tasks/${taskId}/focus-sessions`, { headers: authHeaders() })
   return (await check(res)).json()
 }

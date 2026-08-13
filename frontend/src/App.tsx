@@ -2,8 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createLog, getToken, listLogs, setToken, transcribe, undoLast } from './api'
 import type { Category, Log, PendingLog } from './types'
 import { Row } from './Row'
+import { DailyPlan } from './DailyPlan'
 import { Guide } from './Guide'
-import { Gym } from './Gym'
+import { Soma } from './Soma'
+import { Cadences } from './Cadences'
+import { FocusTimer } from './FocusTimer'
 import { Learning } from './Learning'
 import { Music } from './Music'
 import { Places } from './Places'
@@ -49,17 +52,20 @@ const FILTERS: { value: Category; label: string }[] = [
   { value: 'nutrition', label: 'food' },
   { value: 'person', label: 'people' },
   { value: 'music', label: 'music' },
-  { value: 'workout', label: 'gym' },
+  { value: 'workout', label: 'soma' },
   { value: 'place', label: 'places' },
   { value: 'trip', label: 'travel' },
   { value: 'learning', label: 'learning' },
   { value: 'sleep', label: 'sleep' },
   { value: 'task', label: 'tasks' },
+  { value: 'cadence_completion', label: 'cadence' },
 ]
 
 function matches(log: Log, category: Category): boolean {
   if (category === 'all') return true
   if (category === 'music') return log.parsed_type === 'album' || log.parsed_type === 'song'
+  if (category === 'workout') return log.parsed_type === 'workout' || log.parsed_type === 'weight'
+  if (category === 'task') return log.parsed_type === 'task' || log.parsed_type === 'focus_session'
   return log.parsed_type === category
 }
 
@@ -76,10 +82,12 @@ export default function App() {
   if (!authed) return <Gate onUnlock={() => setAuthed(true)} />
   if (route.startsWith('#/guide')) return <Guide />
   if (route.startsWith('#/music')) return <Music />
-  if (route.startsWith('#/gym')) return <Gym />
+  if (route.startsWith('#/soma')) return <Soma />
   if (route.startsWith('#/places')) return <Places />
   if (route.startsWith('#/travel')) return <Travel />
   if (route.startsWith('#/sleep')) return <Sleep />
+  if (route.startsWith('#/cadences')) return <Cadences />
+  if (route.startsWith('#/focus')) return <FocusTimer />
   if (route.startsWith('#/learning')) return <Learning route={route} />
   return (
     <div className="shell">
@@ -278,8 +286,8 @@ function Home() {
           <a className="guide-link" href="#/learning">
             learning
           </a>
-          <a className="guide-link" href="#/gym">
-            gym
+          <a className="guide-link" href="#/soma">
+            soma
           </a>
           <a className="guide-link" href="#/music">
             music
@@ -293,8 +301,14 @@ function Home() {
           <a className="guide-link" href="#/sleep">
             sleep
           </a>
+          <a className="guide-link" href="#/cadences">
+            cadence
+          </a>
           <a className="guide-link" href="#/tasks">
             tasks
+          </a>
+          <a className="guide-link" href="#/focus">
+            focus
           </a>
           <a className="guide-link" href="#/guide">
             guide
@@ -352,6 +366,8 @@ function Home() {
           </button>
         </div>
       </div>
+
+      <DailyPlan />
 
       <div className="dateline">
         <div className="datenav">

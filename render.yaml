@@ -24,3 +24,11 @@ services:
         sync: false
       - key: CALDAV_CALENDAR_URL
         sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RECAP_TO
+        sync: false
+      - key: RECAP_FROM
+        sync: false
+      - key: RECAP_TZ_OFFSET_MIN
+        sync: false

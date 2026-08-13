@@ -62,6 +62,12 @@ export interface WorkoutData {
   total_volume: number | null
 }
 
+export interface WeightData {
+  value: number
+  unit: 'lb' | 'kg'
+  workout_id: string | null
+}
+
 export type PlaceCategory = 'coffee' | 'restaurant' | 'bar' | 'dessert' | 'other'
 
 export interface PlaceData {
@@ -149,6 +155,25 @@ export interface TaskWithCheckpoints extends Task {
   checkpoints: TaskCheckpoint[]
 }
 
+export interface CadenceData {
+  cadence_id: string
+  cadence_name: string
+}
+
+export interface Cadence {
+  id: string
+  name: string
+  target_frequency: 'daily' | 'weekly'
+  active: boolean
+  created_at: string
+}
+
+export interface CadenceCompletions {
+  dates: string[]
+  current_streak: number
+  longest_streak: number
+}
+
 export type ParsedType =
   | 'nutrition'
   | 'person'
@@ -160,6 +185,9 @@ export type ParsedType =
   | 'trip'
   | 'sleep'
   | 'task'
+  | 'cadence_completion'
+  | 'weight'
+  | 'focus_session'
 
 export interface Log {
   id: string
@@ -177,6 +205,9 @@ export interface Log {
     | SleepData
     | LearningData
     | TaskData
+    | CadenceData
+    | WeightData
+    | FocusSessionData
 }
 
 export interface Field {
@@ -237,6 +268,36 @@ export interface CreateResponse {
   notice: string | null
 }
 
+export interface DailyNote {
+  date: string
+  today_text: string
+  tomorrow_text: string
+  updated_at: string
+}
+
+export interface FocusSessionData {
+  session_id: string
+  task_id: string
+  task_title: string
+  planned_minutes: number
+  actual_minutes: number
+  completed: boolean
+}
+
+export interface FocusSession {
+  id: string
+  task_id: string
+  planned_minutes: number
+  actual_minutes: number | null
+  started_at: string
+  ended_at: string | null
+  completed: boolean
+}
+
+export interface StartedSession extends FocusSession {
+  task_title: string
+}
+
 export type Tier = 'loved' | 'fine' | 'disliked'
 
 export interface Opponent {
@@ -281,5 +342,6 @@ export type Category =
   | 'learning'
   | 'sleep'
   | 'task'
+  | 'cadence_completion'
 
 export type RankDomain = 'album' | 'place' | 'trip'

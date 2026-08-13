@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { deleteLog, updateLog } from './api'
 import type {
   AlbumData,
+  CadenceData,
+  FocusSessionData,
   LearningData,
   Log,
   NutritionData,
@@ -12,6 +14,7 @@ import type {
   SongStatus,
   TaskData,
   TripData,
+  WeightData,
   WorkoutData,
 } from './types'
 
@@ -129,6 +132,17 @@ function summary(log: Log): string {
       if (t.action === 'note') return t.note ? `${t.title}: ${t.note}` : `updated: ${t.title}`
       return `added task: ${t.title}${due}`
     }
+    case 'cadence_completion':
+      return `${(log.data as CadenceData).cadence_name} ✓`
+    case 'weight': {
+      const w = log.data as WeightData
+      return `weighed ${w.value} ${w.unit}`
+    }
+    case 'focus_session': {
+      const f = log.data as FocusSessionData
+      const verb = f.completed ? 'focused' : 'focus (stopped)'
+      return `${verb} ${f.actual_minutes}m · ${f.task_title}`
+    }
   }
 }
 
@@ -155,6 +169,12 @@ function badge(log: Log): { label: string; kind: string } {
       return (log.data as TaskData).is_exam
         ? { label: 'exam', kind: 'exam' }
         : { label: 'task', kind: 'task' }
+    case 'cadence_completion':
+      return { label: 'cadence', kind: 'cadence' }
+    case 'weight':
+      return { label: 'weight', kind: 'gym' }
+    case 'focus_session':
+      return { label: 'focus', kind: 'focus' }
   }
 }
 
@@ -201,6 +221,14 @@ function rightSide(log: Log, onRate: (log: Log) => void): React.ReactNode {
       const s = log.data as SleepData
       return s.sleep_end === null ? <span className="status-label">zzz</span> : ''
     }
+    case 'weight':
+      return (log.data as WeightData).workout_id ? (
+        <span className="status-label">linked</span>
+      ) : (
+        ''
+      )
+    case 'focus_session':
+      return `${(log.data as FocusSessionData).actual_minutes}m`
     default:
       return ''
   }
@@ -279,6 +307,12 @@ function Editor({
       return <LearningEditor log={log} onChange={onChange} onDelete={onDelete} />
     case 'task':
       return <TaskLogEditor log={log} onChange={onChange} onDelete={onDelete} />
+    case 'cadence_completion':
+      return <CadenceLogEditor log={log} onChange={onChange} onDelete={onDelete} />
+    case 'weight':
+      return <WeightEditor log={log} onChange={onChange} onDelete={onDelete} />
+    case 'focus_session':
+      return <FocusLogEditor log={log} onChange={onChange} onDelete={onDelete} />
   }
 }
 
@@ -553,6 +587,86 @@ function TaskLogEditor({ log, onChange, onDelete }: EditorProps) {
         onSave={() => save({ note: note.trim() || null })}
         onDelete={remove}
       />
+    </div>
+  )
+}
+
+function CadenceLogEditor({ log, onChange, onDelete }: EditorProps) {
+  const data = log.data as CadenceData
+  const { error, remove } = useEditor(log, onChange, onDelete)
+  return (
+    <div className="editor">
+      <span className="workout-meta">{data.cadence_name} · completed</span>
+      <div className="editor-footer">
+        <span className="editor-meta">{error}</span>
+        <div className="editor-actions">
+          <button className="action delete" onClick={remove}>
+            delete
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const WEIGHT_UNITS = ['lb', 'kg'] as const
+
+function WeightEditor({ log, onChange, onDelete }: EditorProps) {
+  const data = log.data as WeightData
+  const [value, setValue] = useState(String(data.value))
+  const [unit, setUnit] = useState<WeightData['unit']>(data.unit)
+  const { saving, error, save, remove } = useEditor(log, onChange, onDelete)
+
+  const submit = () => save({ value: Number(value) || 0, unit })
+
+  return (
+    <div className="editor">
+      <div className="editor-grid two">
+        <label>
+          <span>weight</span>
+          <input inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} />
+        </label>
+        <label>
+          <span>unit</span>
+          <div className="status-buttons">
+            {WEIGHT_UNITS.map((u) => (
+              <button key={u} className={`filter ${unit === u ? 'active' : ''}`} onClick={() => setUnit(u)}>
+                {u}
+              </button>
+            ))}
+          </div>
+        </label>
+      </div>
+      <EditorFooter
+        meta={data.workout_id ? 'linked to a workout' : 'standalone'}
+        saving={saving}
+        error={error}
+        onSave={submit}
+        onDelete={remove}
+      />
+    </div>
+  )
+}
+
+function FocusLogEditor({ log, onChange, onDelete }: EditorProps) {
+  const data = log.data as FocusSessionData
+  const { error, remove } = useEditor(log, onChange, onDelete)
+  const meta = [
+    data.task_title,
+    `${data.actual_minutes} of ${data.planned_minutes} min`,
+    data.completed ? 'completed' : 'stopped early',
+  ].join(' · ')
+  return (
+    <div className="editor">
+      <span className="workout-meta">{meta}</span>
+      <div className="editor-footer">
+        <span className="editor-meta">{error}</span>
+        <div className="editor-actions">
+          <button className="action delete" onClick={remove}>
+            delete
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

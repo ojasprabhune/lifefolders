@@ -70,20 +70,24 @@ export function Guide() {
       </section>
 
       <section>
-        <h2>gym</h2>
+        <h2>soma</h2>
         <p>
           Log the session itself in wger during the workout. Then say "worked out" here and
           the latest wger session is pulled in with its exercises, sets and volume. Only
           sessions from today are logged unless you explicitly ask otherwise. Set data is
-          owned by wger; the note field is editable here.
+          owned by wger; the note field is editable here. Body weight lives here too: say a
+          weight and it's logged and charted as a trend on the soma page.
         </p>
         <ul>
           <li>worked out</li>
           <li>worked out, felt strong on squats</li>
           <li>log my last gym session even though it was yesterday</li>
+          <li>weighed 158 this morning</li>
+          <li>72 kg</li>
         </ul>
         <p className="schema">
-          fields: date, exercises and sets (read-only), impression, duration, note
+          workout fields: date, exercises and sets (read-only), impression, duration, note.
+          weight fields: value, unit
         </p>
       </section>
 
@@ -137,6 +141,45 @@ export function Guide() {
           <li>did 6 implementation problems on actor-critic, felt shaky</li>
           <li>read chapter 3 of Sutton and Barto, feeling confident</li>
         </ul>
+      </section>
+
+      <section>
+        <h2>cadence</h2>
+        <p>
+          Define a cadence in the cadences tab (name and a daily or weekly target), then log a
+          completion the same way as everything else: say you did it and it matches an active
+          cadence by name. The tab shows a binary calendar grid of the last few months plus your
+          current and longest streaks. Hydration is just a cadence named "Water."
+        </p>
+        <ul>
+          <li>meditated</li>
+          <li>drank water</li>
+          <li>journaled before bed</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>focus</h2>
+        <p>
+          A live timer in the focus tab, attached to a task. Pick an open task or type a new
+          one, choose a length (25/30/45/60 or custom), and start — the countdown mirrors into
+          the browser tab title so it's glanceable from another tab. It chimes when the time
+          is up, or hit stop to end early. Either way a session is logged to the timeline and
+          shows in the task's history (expand a task in the tasks panel). Closing the tab
+          mid-session ends it as a stop, keeping whatever time elapsed. The ▷ on a task row
+          jumps straight here with it selected.
+        </p>
+      </section>
+
+      <section>
+        <h2>daily plan</h2>
+        <p>
+          Two boxes under the input: <em>today</em> and <em>tomorrow</em>. Jot the day's plan
+          and anything to carry forward — they autosave as you type. Whatever you put in
+          tomorrow's box seeds the next day's today box automatically, so a running plan
+          carries over on its own. Page back through the last 7 days with the arrows; older
+          days stay editable.
+        </p>
       </section>
 
       <section>
