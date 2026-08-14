@@ -182,16 +182,22 @@ export function Guide() {
           it gets spaced study reminders 7, 3, and 1 day out, plus its own section in the panel
           regardless of category. Drag a card onto a different section to recategorize it.
           Progress notes ("did 1 module of X") build a running history instead of overwriting
-          the last one — the panel shows the latest line under the title.
+          the last one — the panel shows the latest line under the title. A deadline with an
+          actual clock time ("presentation friday at 2pm") syncs to the calendar at that exact
+          time instead of the usual afternoon placeholder; add <em>@time</em> anywhere (e.g.
+          "dentist tuesday @3pm") to pin the time exactly, the same idea as #tag for category.
+          Marking one done tucks it into the <em>resolved</em> dropdown at the bottom of the
+          panel instead of cluttering the open sections.
         </p>
         <ul>
           <li>psych mcq exam due next friday</li>
           <li>task: return library books #personal</li>
           <li>do 1 module of psych notes</li>
           <li>finished the chem lab writeup</li>
+          <li>dentist appointment tuesday @3pm</li>
         </ul>
         <p className="schema">
-          fields: title, category, due date, effort minutes, status, is exam, note
+          fields: title, category, due date, due time, effort minutes, status, is exam, note
         </p>
       </section>
 

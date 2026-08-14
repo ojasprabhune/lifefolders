@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use chrono::NaiveDate;
+use chrono::{Duration, NaiveDate, NaiveTime};
 use reqwest::{Method, StatusCode};
 
 fn escape_ical(s: &str) -> String {
@@ -57,10 +57,14 @@ pub async fn delete_ical(
 // matter what - that injection specifically targets all-day events, so a
 // timed event (literally starting at 3:30pm) sidesteps it entirely, and the
 // alarm collapses to "fire at start" instead of needing duration math.
-// Hardcoded to Pacific time since this is a single-user app.
-pub fn vevent(uid: &str, summary: &str, due_date: NaiveDate) -> String {
-    let start = due_date.format("%Y%m%dT153000");
-    let end = due_date.format("%Y%m%dT154500");
+// Hardcoded to Pacific time since this is a single-user app. due_time lets a
+// task with an actual clock deadline (a meeting, a presentation) land on its
+// real time instead of the generic 3:30pm placeholder.
+pub fn vevent(uid: &str, summary: &str, due_date: NaiveDate, due_time: Option<NaiveTime>) -> String {
+    let start_time = due_time.unwrap_or_else(|| NaiveTime::from_hms_opt(15, 30, 0).unwrap());
+    let end_time = start_time + Duration::minutes(15);
+    let start = due_date.and_time(start_time).format("%Y%m%dT%H%M%S");
+    let end = due_date.and_time(end_time).format("%Y%m%dT%H%M%S");
     let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
     format!(
         "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//lifefolders//task-sync//EN\r\n\

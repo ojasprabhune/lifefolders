@@ -62,6 +62,13 @@ export function Tasks({ open }: { open: boolean }) {
     () => buildDayCounts(openTasks, DUE_STRIP_DAYS_BEFORE, DUE_STRIP_DAYS_AFTER),
     [openTasks],
   )
+  const resolvedTasks = useMemo(
+    () =>
+      tasks
+        .filter((t) => t.status === 'done')
+        .sort((a, b) => (b.completed_at ?? '').localeCompare(a.completed_at ?? '')),
+    [tasks],
+  )
 
   if (!mounted) return null
 
@@ -116,6 +123,17 @@ export function Tasks({ open }: { open: boolean }) {
             </section>
           ))}
           {openTasks.length === 0 && <div className="empty">nothing due</div>}
+
+          {resolvedTasks.length > 0 && (
+            <details className="resolved-section">
+              <summary className="section-title">resolved ({resolvedTasks.length})</summary>
+              <div className="resolved-list">
+                {resolvedTasks.map((t) => (
+                  <ResolvedRow key={t.id} task={t} onCycle={() => void cycleStatus(t)} onDelete={() => void remove(t.id)} />
+                ))}
+              </div>
+            </details>
+          )}
         </main>
       </div>
     </>
@@ -186,6 +204,13 @@ function shortDayLabel(dateStr: string): string {
 
 function dayOfMonth(dateStr: string): number {
   return new Date(dateStr + 'T00:00').getDate()
+}
+
+function formatDueTime(timeStr: string): string {
+  return new Date(`2000-01-01T${timeStr}`)
+    .toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    .toLowerCase()
+    .replace(' ', '')
 }
 
 function DueStrip({
@@ -270,6 +295,7 @@ function TaskRow({
           {task.due_date && (
             <div className={`task-due ${isOverdue ? 'overdue' : isSoon ? 'soon' : ''}`}>
               {task.due_date}
+              {task.due_time && ` · ${formatDueTime(task.due_time)}`}
             </div>
           )}
           {task.effort_minutes && <div className="task-effort">{task.effort_minutes} min</div>}
@@ -309,6 +335,39 @@ function TaskRow({
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+function ResolvedRow({
+  task,
+  onCycle,
+  onDelete,
+}: {
+  task: TaskWithCheckpoints
+  onCycle: () => void
+  onDelete: () => void
+}) {
+  return (
+    <div className="resolved-row">
+      <button className={`task-status ${task.status}`} onClick={onCycle}>
+        ✓
+      </button>
+      <div className="task-main">
+        <div className="task-title">{task.title}</div>
+        {task.due_date && (
+          <div className="task-due">
+            {task.due_date}
+            {task.due_time && ` · ${formatDueTime(task.due_time)}`}
+          </div>
+        )}
+      </div>
+      <button className="delete-btn" onClick={onDelete}>
+        ✕
+      </button>
+      <span className={`badge resolved-tag ${task.is_exam ? 'exam' : 'task'}`}>
+        {task.is_exam ? 'exam' : task.category}
+      </span>
     </div>
   )
 }

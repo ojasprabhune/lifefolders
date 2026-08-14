@@ -124,6 +124,7 @@ export interface TaskData {
   title: string
   category: string
   due_date: string | null
+  due_time: string | null
   status: 'not_started' | 'in_progress' | 'done'
   is_exam: boolean
   action: 'created' | 'status' | 'rescheduled' | 'note' | 'moved'
@@ -135,6 +136,7 @@ export interface Task {
   title: string
   category: string
   due_date: string | null
+  due_time: string | null
   effort_minutes: number | null
   status: 'not_started' | 'in_progress' | 'done'
   is_exam: boolean

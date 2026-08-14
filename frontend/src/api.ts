@@ -266,7 +266,14 @@ export async function listTasks(): Promise<TaskWithCheckpoints[]> {
 
 export async function patchTask(
   id: string,
-  body: Partial<{ status: string; due_date: string; category: string; effort_minutes: number; is_exam: boolean }>,
+  body: Partial<{
+    status: string
+    due_date: string
+    due_time: string
+    category: string
+    effort_minutes: number
+    is_exam: boolean
+  }>,
 ): Promise<Task> {
   const res = await fetch(`${API}/api/tasks/${id}`, {
     method: 'PATCH',

@@ -1308,6 +1308,41 @@ header > .brand {
   margin-top: 2px;
 }
 
+.resolved-section {
+  margin-top: 28px;
+}
+
+.resolved-section > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.resolved-section > summary::-webkit-details-marker {
+  display: none;
+}
+
+.resolved-list {
+  display: flex;
+  flex-direction: column;
+  margin-top: 10px;
+}
+
+.resolved-row {
+  position: relative;
+  display: flex;
+  gap: 12px;
+  padding: 12px 60px 12px 12px;
+  border-left: 3px solid var(--line);
+  align-items: flex-start;
+  opacity: 0.65;
+}
+
+.resolved-tag {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+}
+
 .checkpoints {
   display: flex;
   gap: 4px;

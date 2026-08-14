@@ -69,6 +69,7 @@ pub async fn create_session(
                 title: nt.title,
                 category: nt.category,
                 due_date: nt.due_date,
+                due_time: None,
                 effort_minutes: nt.effort_minutes,
                 status: None,
                 is_exam: None,

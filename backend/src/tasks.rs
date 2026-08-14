@@ -2,7 +2,7 @@ use anyhow::Result;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
-use chrono::{Duration, NaiveDate, Utc};
+use chrono::{Duration, NaiveDate, NaiveTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
@@ -18,6 +18,7 @@ pub struct Task {
     pub title: String,
     pub category: String,
     pub due_date: Option<NaiveDate>,
+    pub due_time: Option<NaiveTime>,
     pub effort_minutes: Option<i32>,
     pub status: String,
     pub is_exam: bool,
@@ -36,7 +37,7 @@ pub struct Checkpoint {
 }
 
 const TASK_COLUMNS: &str =
-    "id, title, category, due_date, effort_minutes, status, is_exam, note, created_at, completed_at";
+    "id, title, category, due_date, due_time, effort_minutes, status, is_exam, note, created_at, completed_at";
 
 async fn open_tasks(state: &AppState) -> Result<Vec<Task>, AppError> {
     Ok(sqlx::query_as(&format!(
@@ -82,10 +83,11 @@ pub async fn context_block(state: &AppState) -> String {
     }
     let mut out = String::from("Open tasks:\n");
     for t in tasks.iter().take(40) {
-        let due = t
-            .due_date
-            .map(|d| d.to_string())
-            .unwrap_or_else(|| "no due date".into());
+        let due = match (t.due_date, t.due_time) {
+            (Some(d), Some(time)) => format!("{d} {time}"),
+            (Some(d), None) => d.to_string(),
+            (None, _) => "no due date".into(),
+        };
         out.push_str(&format!(
             "- [{}] {} (due {due}, {})\n",
             t.category, t.title, t.status
@@ -96,6 +98,15 @@ pub async fn context_block(state: &AppState) -> String {
 
 fn parse_due(s: Option<&str>) -> Option<NaiveDate> {
     s.and_then(|s| NaiveDate::parse_from_str(s.trim(), "%Y-%m-%d").ok())
+}
+
+fn parse_due_time(s: Option<&str>) -> Option<NaiveTime> {
+    s.and_then(|s| {
+        let s = s.trim();
+        NaiveTime::parse_from_str(s, "%H:%M")
+            .or_else(|_| NaiveTime::parse_from_str(s, "%H:%M:%S"))
+            .ok()
+    })
 }
 
 async fn regenerate_checkpoints(
@@ -148,7 +159,7 @@ fn spawn_checkpoint_sync(state: &AppState, checkpoint_id: Uuid, task_title: &str
     tokio::spawn(async move {
         let uid = format!("lf-checkpoint-{checkpoint_id}");
         let summary = format!("study: {title} ({offset_days}d out)");
-        let ical = crate::caldav::vevent(&uid, &summary, due_date);
+        let ical = crate::caldav::vevent(&uid, &summary, due_date, None);
         if let Err(e) = crate::caldav::put_ical(&cfg.http, &cfg.calendar_url, &uid, &cfg.apple_id, &cfg.app_password, &ical).await {
             tracing::warn!("checkpoint calendar sync failed for {checkpoint_id}: {e:#}");
         }
@@ -174,7 +185,7 @@ fn spawn_calendar_sync(state: &AppState, task: &Task) {
             (Some(due), status) if status != "done" => {
                 let label = if task.is_exam { "exam" } else { task.category.as_str() };
                 let summary = format!("[{label}] {}", task.title);
-                let ical = crate::caldav::vevent(&uid, &summary, due);
+                let ical = crate::caldav::vevent(&uid, &summary, due, task.due_time);
                 crate::caldav::put_ical(&cfg.http, &cfg.calendar_url, &uid, &cfg.apple_id, &cfg.app_password, &ical).await
             }
             _ => crate::caldav::delete_ical(&cfg.http, &cfg.calendar_url, &uid, &cfg.apple_id, &cfg.app_password).await,
@@ -212,12 +223,13 @@ fn looks_like_exam(title: &str) -> bool {
 pub(crate) async fn create_task(state: &AppState, req: &TaskRequest) -> Result<Task, AppError> {
     let is_exam = req.is_exam.unwrap_or(false) || looks_like_exam(&req.title);
     let task: Task = sqlx::query_as(&format!(
-        "INSERT INTO tasks (title, category, due_date, effort_minutes, status, is_exam, note) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING {TASK_COLUMNS}"
+        "INSERT INTO tasks (title, category, due_date, due_time, effort_minutes, status, is_exam, note) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING {TASK_COLUMNS}"
     ))
     .bind(req.title.trim())
     .bind(req.category.as_deref().unwrap_or("other"))
     .bind(parse_due(req.due_date.as_deref()))
+    .bind(parse_due_time(req.due_time.as_deref()))
     .bind(req.effort_minutes)
     .bind(req.status.as_deref().unwrap_or("not_started"))
     .bind(is_exam)
@@ -244,6 +256,11 @@ async fn update_task(
         .as_deref()
         .map(|s| parse_due(Some(s)))
         .unwrap_or(existing.due_date);
+    let new_due_time = req
+        .due_time
+        .as_deref()
+        .map(|s| parse_due_time(Some(s)))
+        .unwrap_or(existing.due_time);
     let new_is_exam = req.is_exam.unwrap_or(existing.is_exam);
     let completed_at = if new_status == "done" && existing.status != "done" {
         Some(Utc::now())
@@ -258,7 +275,7 @@ async fn update_task(
     // instead of silently overwriting it, so repeated check-ins build up a
     // visible log instead of each one erasing the last.
     let task: Task = sqlx::query_as(&format!(
-        "UPDATE tasks SET status = $2, due_date = $3, is_exam = $4, \
+        "UPDATE tasks SET status = $2, due_date = $3, due_time = $9, is_exam = $4, \
             category = COALESCE($8, category), \
             effort_minutes = COALESCE($5, effort_minutes), \
             note = CASE \
@@ -277,6 +294,7 @@ async fn update_task(
     .bind(&req.note)
     .bind(completed_at)
     .bind(&req.category)
+    .bind(new_due_time)
     .fetch_one(&state.pool)
     .await?;
 
@@ -293,7 +311,7 @@ async fn update_task(
 
     let action = if new_status != existing.status {
         "status"
-    } else if new_due != existing.due_date {
+    } else if new_due != existing.due_date || new_due_time != existing.due_time {
         "rescheduled"
     } else if task.category != existing.category {
         "moved"
@@ -306,7 +324,7 @@ async fn update_task(
 
 async fn restore_task_fields(state: &AppState, snapshot: &Task) -> Result<Task, AppError> {
     let task: Task = sqlx::query_as(&format!(
-        "UPDATE tasks SET status = $2, due_date = $3, is_exam = $4, \
+        "UPDATE tasks SET status = $2, due_date = $3, due_time = $8, is_exam = $4, \
             effort_minutes = $5, note = $6, completed_at = $7 \
          WHERE id = $1 RETURNING {TASK_COLUMNS}"
     ))
@@ -317,6 +335,7 @@ async fn restore_task_fields(state: &AppState, snapshot: &Task) -> Result<Task, 
     .bind(snapshot.effort_minutes)
     .bind(&snapshot.note)
     .bind(snapshot.completed_at)
+    .bind(snapshot.due_time)
     .fetch_one(&state.pool)
     .await?;
 
@@ -390,12 +409,31 @@ fn explicit_category(raw: &str) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
-// The LLM is told to leave any "#tag" out of the title, but strip it here
-// too as a backstop in case it echoes it back verbatim.
-fn strip_hashtag(title: &str) -> String {
+// A trailing "@time" anywhere in the raw entry is an explicit, deterministic
+// due-time override, the same idea as "#tag" for category - lets you pin an
+// exact clock time (a meeting, a presentation) instead of relying on the
+// model to notice a time phrase and format it correctly. Accepts common
+// shorthand ("@3pm", "@3:30pm", "@15:30") since this is typed by hand.
+fn explicit_time(raw: &str) -> Option<NaiveTime> {
+    raw.split_whitespace()
+        .find_map(|w| w.strip_prefix('@'))
+        .and_then(parse_flexible_time)
+}
+
+fn parse_flexible_time(s: &str) -> Option<NaiveTime> {
+    let cleaned = s.trim_matches(|c: char| !c.is_alphanumeric() && c != ':');
+    let upper = cleaned.to_uppercase();
+    ["%I:%M%p", "%I%p", "%H:%M", "%H:%M:%S"]
+        .iter()
+        .find_map(|fmt| NaiveTime::parse_from_str(&upper, fmt).ok())
+}
+
+// The LLM is told to leave any "#tag"/"@time" out of the title, but strip
+// them here too as a backstop in case it echoes one back verbatim.
+fn strip_markers(title: &str) -> String {
     title
         .split_whitespace()
-        .filter(|w| !w.starts_with('#'))
+        .filter(|w| !w.starts_with('#') && !w.starts_with('@'))
         .collect::<Vec<_>>()
         .join(" ")
 }
@@ -404,7 +442,10 @@ pub async fn apply(state: &AppState, raw: &str, mut req: TaskRequest) -> Result<
     if let Some(tag) = explicit_category(raw) {
         req.category = Some(tag);
     }
-    req.title = strip_hashtag(&req.title);
+    if let Some(time) = explicit_time(raw) {
+        req.due_time = Some(time.format("%H:%M").to_string());
+    }
+    req.title = strip_markers(&req.title);
 
     let open = open_tasks(state).await?;
     let matched = best_match(&open, &req.title).cloned();
@@ -413,6 +454,7 @@ pub async fn apply(state: &AppState, raw: &str, mut req: TaskRequest) -> Result<
         Some(existing)
             if req.status.is_some()
                 || req.due_date.is_some()
+                || req.due_time.is_some()
                 || req.note.is_some()
                 || req.category.is_some()
                 || req.is_exam.is_some() =>
@@ -434,6 +476,7 @@ pub async fn apply(state: &AppState, raw: &str, mut req: TaskRequest) -> Result<
         title: task.title.clone(),
         category: task.category.clone(),
         due_date: task.due_date,
+        due_time: task.due_time,
         status: task.status.clone(),
         is_exam: task.is_exam,
         action,
@@ -483,6 +526,7 @@ pub async fn list_tasks(State(state): State<AppState>) -> Result<Json<Vec<TaskWi
 pub struct PatchTask {
     pub status: Option<String>,
     pub due_date: Option<String>,
+    pub due_time: Option<String>,
     pub category: Option<String>,
     pub effort_minutes: Option<i32>,
     pub is_exam: Option<bool>,
@@ -510,6 +554,7 @@ pub async fn patch_task(
         title: existing.title.clone(),
         category: body.category,
         due_date: body.due_date,
+        due_time: body.due_time,
         effort_minutes: body.effort_minutes,
         status: body.status,
         is_exam: body.is_exam,

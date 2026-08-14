@@ -125,7 +125,8 @@ function summary(log: Log): string {
       return learningSummary(log.data as LearningData)
     case 'task': {
       const t = log.data as TaskData
-      const due = t.due_date ? `, due ${t.due_date}` : ''
+      const dueTime = t.due_time ? ` ${timeOf(`2000-01-01T${t.due_time}`)}` : ''
+      const due = t.due_date ? `, due ${t.due_date}${dueTime}` : ''
       if (t.action === 'status') return `${t.status === 'done' ? 'completed' : t.status === 'in_progress' ? 'started' : 'updated'}: ${t.title}`
       if (t.action === 'rescheduled') return `rescheduled: ${t.title}${due}`
       if (t.action === 'moved') return `moved: ${t.title} → ${t.is_exam ? 'exam' : t.category}`
@@ -570,7 +571,9 @@ function TaskLogEditor({ log, onChange, onDelete }: EditorProps) {
   const meta = [
     data.is_exam ? 'exam' : data.category,
     data.status,
-    data.due_date ? `due ${data.due_date}` : null,
+    data.due_date
+      ? `due ${data.due_date}${data.due_time ? ` ${timeOf(`2000-01-01T${data.due_time}`)}` : ''}`
+      : null,
   ]
     .filter(Boolean)
     .join(' · ')

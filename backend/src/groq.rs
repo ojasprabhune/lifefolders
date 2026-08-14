@@ -290,6 +290,7 @@ fn tools() -> Value {
                         "title": { "type": "string", "description": "Short task title. When updating an existing task, phrase this close to its tracked title so it matches." },
                         "category": { "type": "string", "description": "homework for schoolwork/studying (notes, reading, vocab, worksheets, memorization, etc.), project for larger multi-step deliverables, or a specific extracurricular label (debate, robotics, outreach, volunteering, research, clubs); personal only for non-school errands/to-dos" },
                         "due_date": { "type": "string", "description": "YYYY-MM-DD if a deadline is stated or already known for this task" },
+                        "due_time": { "type": "string", "description": "HH:MM in 24-hour time, only when a specific clock time is stated for the deadline itself (e.g. 'presentation at 2pm', 'due by 11:59pm'), not for a vague time of day like 'morning' or 'tonight'" },
                         "effort_minutes": { "type": "integer", "description": "Estimated time needed in minutes, if stated or clearly implied" },
                         "status": {
                             "type": "string",
@@ -393,7 +394,12 @@ An entry starting with \"task:\" is always log_task, no matter what it otherwise
 like - exclude that literal prefix from the title. An entry containing a \"#tag\" (e.g. \
 \"clean the garage #personal\") is an explicit category override for log_task - use \
 exactly that word, lowercased and without the #, as the category, and exclude the tag \
-itself from the title. \
+itself from the title. When a task's deadline names an actual clock time, not just a \
+day (\"chem presentation friday at 2pm\", \"essay due 11:59pm\"), also set due_time so \
+it lands on the calendar at that exact time instead of the default afternoon slot. An \
+entry containing an explicit \"@time\" (e.g. \"dentist tuesday @3pm\") is a deterministic \
+due_time override for log_task, the same idea as \"#tag\" for category - exclude it from \
+the title too. \
 A short phrase that names doing one of the active cadences (recurring habits/routines) \
 listed below (\"meditated\", \
 \"drank water\", \"journaled\") is log_cadence_completion with cadence_name matching the \
@@ -664,6 +670,7 @@ pub async fn parse(
                     title: as_str(&args, "title")?,
                     category: opt_str(&args, "category"),
                     due_date: opt_str(&args, "due_date"),
+                    due_time: opt_str(&args, "due_time"),
                     effort_minutes: args.get("effort_minutes").and_then(Value::as_i64).map(|n| n as i32),
                     status,
                     is_exam: args.get("is_exam").and_then(Value::as_bool),
