@@ -63,7 +63,8 @@ pub fn vevent(uid: &str, summary: &str, due_date: NaiveDate) -> String {
         "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//lifefolders//task-sync//EN\r\n\
          BEGIN:VEVENT\r\nUID:{uid}\r\nDTSTAMP:{stamp}\r\nDTSTART;VALUE=DATE:{dt}\r\n\
          DTEND;VALUE=DATE:{dt}\r\nSUMMARY:{}\r\n\
-         BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:{}\r\nTRIGGER:PT15H\r\nEND:VALARM\r\n\
+         BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:{}\r\nTRIGGER:PT15H\r\n\
+         X-APPLE-DEFAULT-ALARM:TRUE\r\nEND:VALARM\r\n\
          END:VEVENT\r\nEND:VCALENDAR\r\n",
         escape_ical(summary),
         escape_ical(summary)
