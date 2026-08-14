@@ -175,14 +175,14 @@ export function FocusTimer() {
       {mode === 'setup' && (
         <div className="focus-setup">
           <label className="focus-block">
-            <span className="daily-label">task</span>
+            <span className="daily-label">sidequest</span>
             <select className="focus-select" value={taskId} onChange={(e) => setTaskId(e.target.value)}>
               {tasks.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.title}
                 </option>
               ))}
-              <option value={NEW_TASK}>+ new task…</option>
+              <option value={NEW_TASK}>+ new sidequest…</option>
             </select>
           </label>
 
@@ -191,7 +191,7 @@ export function FocusTimer() {
               className="entry-input"
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
-              placeholder="new task title"
+              placeholder="new sidequest title"
               autoFocus
             />
           )}

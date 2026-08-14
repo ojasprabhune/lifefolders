@@ -73,7 +73,7 @@ export function Tasks({ open }: { open: boolean }) {
       />
       <div className={`tasks-panel ${closing ? 'closing' : ''}`}>
         <header>
-          <h1 className="brand">tasks</h1>
+          <h1 className="brand">sidequests</h1>
           <div className="header-nav">
             <button className="guide-link refresh-btn" onClick={refresh}>
               ↻
@@ -288,7 +288,7 @@ function TaskRow({
             ))}
           </div>
         )}
-        <a className="task-focus" href={`#/focus?task=${task.id}`} aria-label="focus on this task">
+        <a className="task-focus" href={`#/focus?task=${task.id}`} aria-label="focus on this sidequest">
           ▷
         </a>
         <button className="delete-btn" onClick={onDelete}>

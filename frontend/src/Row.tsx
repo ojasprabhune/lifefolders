@@ -130,7 +130,7 @@ function summary(log: Log): string {
       if (t.action === 'rescheduled') return `rescheduled: ${t.title}${due}`
       if (t.action === 'moved') return `moved: ${t.title} → ${t.is_exam ? 'exam' : t.category}`
       if (t.action === 'note') return t.note ? `${t.title}: ${t.note}` : `updated: ${t.title}`
-      return `added task: ${t.title}${due}`
+      return `added sidequest: ${t.title}${due}`
     }
     case 'cadence_completion':
       return `${(log.data as CadenceData).cadence_name} ✓`
@@ -168,7 +168,7 @@ function badge(log: Log): { label: string; kind: string } {
     case 'task':
       return (log.data as TaskData).is_exam
         ? { label: 'exam', kind: 'exam' }
-        : { label: 'task', kind: 'task' }
+        : { label: 'sidequest', kind: 'task' }
     case 'cadence_completion':
       return { label: 'cadence', kind: 'cadence' }
     case 'weight':

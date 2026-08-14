@@ -37,6 +37,21 @@ export function clearToken() {
   localStorage.removeItem(TOKEN_KEY)
 }
 
+const HIDDEN_DOMAINS_KEY = 'life_hidden_domains'
+
+export function getHiddenDomains(): string[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(HIDDEN_DOMAINS_KEY) ?? '[]')
+    return Array.isArray(raw) ? raw : []
+  } catch {
+    return []
+  }
+}
+
+export function saveHiddenDomains(ids: string[]) {
+  localStorage.setItem(HIDDEN_DOMAINS_KEY, JSON.stringify(ids))
+}
+
 function authHeaders(): Record<string, string> {
   const token = getToken()
   return token ? { authorization: `Bearer ${token}` } : {}

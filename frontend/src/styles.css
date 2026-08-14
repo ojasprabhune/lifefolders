@@ -1115,6 +1115,34 @@ header > .brand {
   color: var(--muted);
 }
 
+.hidden-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.hidden-list li {
+  padding-left: 0;
+}
+
+.hidden-list li::before {
+  display: none;
+}
+
+.hidden-list label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.hidden-list input[type='checkbox'] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 @media (max-width: 480px) {
   .app {
     padding-left: 18px;

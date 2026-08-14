@@ -1,4 +1,16 @@
+import { useState } from 'react'
+import { getHiddenDomains, saveHiddenDomains } from './api'
+import { DOMAINS } from './domains'
+
 export function Guide() {
+  const [hidden, setHidden] = useState<string[]>(() => getHiddenDomains())
+
+  const toggle = (id: string) => {
+    const next = hidden.includes(id) ? hidden.filter((h) => h !== id) : [...hidden, id]
+    setHidden(next)
+    saveHiddenDomains(next)
+  }
+
   return (
     <div className="app guide">
       <header>
@@ -159,15 +171,40 @@ export function Guide() {
       </section>
 
       <section>
+        <h2>sidequests</h2>
+        <p>
+          Homework, projects, extracurriculars, exams — anything with a deadline. A new title
+          creates one; wording close to an already-tracked title updates it instead, whether
+          that's rescheduling, marking it done, or moving it to a different category. Start an
+          entry with <em>task:</em> to force it to log as a sidequest no matter how it reads,
+          and add a <em>#tag</em> anywhere to pin its category exactly, e.g. "clean the garage
+          #personal." Set is_exam true (the model does this itself for real tests/quizzes) and
+          it gets spaced study reminders 7, 3, and 1 day out, plus its own section in the panel
+          regardless of category. Drag a card onto a different section to recategorize it.
+          Progress notes ("did 1 module of X") build a running history instead of overwriting
+          the last one — the panel shows the latest line under the title.
+        </p>
+        <ul>
+          <li>psych mcq exam due next friday</li>
+          <li>task: return library books #personal</li>
+          <li>do 1 module of psych notes</li>
+          <li>finished the chem lab writeup</li>
+        </ul>
+        <p className="schema">
+          fields: title, category, due date, effort minutes, status, is exam, note
+        </p>
+      </section>
+
+      <section>
         <h2>focus</h2>
         <p>
-          A live timer in the focus tab, attached to a task. Pick an open task or type a new
-          one, choose a length (25/30/45/60 or custom), and start — the countdown mirrors into
-          the browser tab title so it's glanceable from another tab. It chimes when the time
-          is up, or hit stop to end early. Either way a session is logged to the timeline and
-          shows in the task's history (expand a task in the tasks panel). Closing the tab
-          mid-session ends it as a stop, keeping whatever time elapsed. The ▷ on a task row
-          jumps straight here with it selected.
+          A live timer in the focus tab, attached to a sidequest. Pick an open one or type a
+          new one, choose a length (25/30/45/60 or custom), and start — the countdown mirrors
+          into the browser tab title so it's glanceable from another tab. It chimes when the
+          time is up, or hit stop to end early. Either way a session is logged to the timeline
+          and shows in the sidequest's history (expand one in the sidequests panel). Closing
+          the tab mid-session ends it as a stop, keeping whatever time elapsed. The ▷ on a
+          sidequest row jumps straight here with it selected.
         </p>
       </section>
 
@@ -198,6 +235,29 @@ export function Guide() {
           <li>One thing per entry parses best. Log a meal as separate items for cleaner macros.</li>
           <li>Use the arrows next to the date to browse past days.</li>
           <li>Numbers are editable. Click a row and correct anything the parser got wrong.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>hidden</h2>
+        <p>
+          Check a domain to hide it everywhere — its nav link, its filter chip, and its
+          entries in the timeline. Stored on this device only, so it doesn't affect anything
+          synced elsewhere.
+        </p>
+        <ul className="hidden-list">
+          {DOMAINS.map((d) => (
+            <li key={d.id}>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={hidden.includes(d.id)}
+                  onChange={() => toggle(d.id)}
+                />
+                {d.label}
+              </label>
+            </li>
+          ))}
         </ul>
       </section>
     </div>

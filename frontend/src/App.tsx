@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { createLog, getToken, listLogs, setToken, transcribe, undoLast } from './api'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createLog, getHiddenDomains, getToken, listLogs, setToken, transcribe, undoLast } from './api'
 import type { Category, Log, PendingLog } from './types'
+import { DOMAINS } from './domains'
 import { Row } from './Row'
 import { DailyPlan } from './DailyPlan'
 import { Guide } from './Guide'
@@ -57,7 +58,7 @@ const FILTERS: { value: Category; label: string }[] = [
   { value: 'trip', label: 'travel' },
   { value: 'learning', label: 'learning' },
   { value: 'sleep', label: 'sleep' },
-  { value: 'task', label: 'tasks' },
+  { value: 'task', label: 'sidequests' },
   { value: 'cadence_completion', label: 'cadence' },
 ]
 
@@ -128,6 +129,23 @@ function Home() {
   const [date, setDate] = useState(() => localDateStr(new Date()))
   const [category, setCategory] = useState<Category>('all')
   const [logs, setLogs] = useState<Log[]>([])
+  const [hiddenDomains] = useState<string[]>(() => getHiddenDomains())
+  const hiddenParsedTypes = useMemo(
+    () =>
+      new Set(
+        DOMAINS.filter((d) => hiddenDomains.includes(d.id)).flatMap((d) => d.parsedTypes),
+      ),
+    [hiddenDomains],
+  )
+  const hiddenFilterValues = useMemo(
+    () =>
+      new Set(
+        DOMAINS.filter((d) => hiddenDomains.includes(d.id) && d.filterValue).map(
+          (d) => d.filterValue as Category,
+        ),
+      ),
+    [hiddenDomains],
+  )
   const [pendings, setPendings] = useState<PendingLog[]>([])
   const [justParsed, setJustParsed] = useState<Set<string>>(new Set())
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -273,7 +291,8 @@ function Home() {
     }
   }
 
-  const visible = logs.filter((l) => matches(l, category))
+  const visible = logs.filter((l) => matches(l, category) && !hiddenParsedTypes.has(l.parsed_type))
+  const visibleFilters = FILTERS.filter((f) => f.value === 'all' || !hiddenFilterValues.has(f.value))
   const totalCals = logs
     .filter((l) => l.parsed_type === 'nutrition')
     .reduce((sum, l) => sum + (Number((l.data as { calories?: number }).calories) || 0), 0)
@@ -283,33 +302,11 @@ function Home() {
       <header>
         <h1 className="brand">life</h1>
         <nav className="header-nav">
-          <a className="guide-link" href="#/learning">
-            learning
-          </a>
-          <a className="guide-link" href="#/soma">
-            soma
-          </a>
-          <a className="guide-link" href="#/music">
-            music
-          </a>
-          <a className="guide-link" href="#/places">
-            places
-          </a>
-          <a className="guide-link" href="#/travel">
-            travel
-          </a>
-          <a className="guide-link" href="#/sleep">
-            sleep
-          </a>
-          <a className="guide-link" href="#/cadences">
-            cadence
-          </a>
-          <a className="guide-link" href="#/tasks">
-            tasks
-          </a>
-          <a className="guide-link" href="#/focus">
-            focus
-          </a>
+          {DOMAINS.filter((d) => d.navHref && !hiddenDomains.includes(d.id)).map((d) => (
+            <a key={d.id} className="guide-link" href={d.navHref}>
+              {d.label}
+            </a>
+          ))}
           <a className="guide-link" href="#/guide">
             guide
           </a>
@@ -367,7 +364,7 @@ function Home() {
         </div>
       </div>
 
-      <DailyPlan />
+      {!hiddenDomains.includes('dailyplan') && <DailyPlan />}
 
       <div className="dateline">
         <div className="datenav">
@@ -385,7 +382,7 @@ function Home() {
           </button>
         </div>
         <div className="filters">
-          {FILTERS.map((f) => (
+          {visibleFilters.map((f) => (
             <button
               key={f.value}
               className={`filter ${category === f.value ? 'active' : ''}`}
