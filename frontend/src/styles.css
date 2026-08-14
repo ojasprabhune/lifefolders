@@ -1332,7 +1332,6 @@ header > .brand {
 }
 
 .resolved-row .task-row {
-  padding-bottom: 26px;
   opacity: 0.65;
   cursor: default;
 }
@@ -1340,7 +1339,7 @@ header > .brand {
 .resolved-tag {
   position: absolute;
   right: 12px;
-  bottom: 8px;
+  bottom: 10px;
 }
 
 .checkpoints {
