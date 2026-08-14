@@ -55,12 +55,12 @@ pub async fn delete_ical(
 // Used to be an all-day event with a PT15H (midnight+15h) duration alarm,
 // but Apple injects its own extra default alert onto all-day events no
 // matter what - that injection specifically targets all-day events, so a
-// timed event (literally starting at 3pm) sidesteps it entirely, and the
+// timed event (literally starting at 3:30pm) sidesteps it entirely, and the
 // alarm collapses to "fire at start" instead of needing duration math.
 // Hardcoded to Pacific time since this is a single-user app.
 pub fn vevent(uid: &str, summary: &str, due_date: NaiveDate) -> String {
-    let start = due_date.format("%Y%m%dT150000");
-    let end = due_date.format("%Y%m%dT151500");
+    let start = due_date.format("%Y%m%dT153000");
+    let end = due_date.format("%Y%m%dT154500");
     let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
     format!(
         "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//lifefolders//task-sync//EN\r\n\
