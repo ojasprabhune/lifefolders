@@ -52,19 +52,22 @@ pub async fn delete_ical(
     Ok(())
 }
 
-// PT15H: all-day events are floating (no TZID), so a duration-based alarm relative
-// to the start of the day is interpreted in the device's current local timezone -
-// this is the same mechanism Apple's own "time of event" alerts use, and it means
-// the 3pm alert stays correct across timezone changes and DST with no tz math here.
+// Used to be an all-day event with a PT15H (midnight+15h) duration alarm,
+// but Apple injects its own extra default alert onto all-day events no
+// matter what - that injection specifically targets all-day events, so a
+// timed event (literally starting at 3pm) sidesteps it entirely, and the
+// alarm collapses to "fire at start" instead of needing duration math.
+// Hardcoded to Pacific time since this is a single-user app.
 pub fn vevent(uid: &str, summary: &str, due_date: NaiveDate) -> String {
-    let dt = due_date.format("%Y%m%d");
+    let start = due_date.format("%Y%m%dT150000");
+    let end = due_date.format("%Y%m%dT151500");
     let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
     format!(
         "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//lifefolders//task-sync//EN\r\n\
-         BEGIN:VEVENT\r\nUID:{uid}\r\nDTSTAMP:{stamp}\r\nDTSTART;VALUE=DATE:{dt}\r\n\
-         DTEND;VALUE=DATE:{dt}\r\nSUMMARY:{}\r\n\
-         BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:{}\r\nTRIGGER:PT15H\r\n\
-         X-APPLE-DEFAULT-ALARM:TRUE\r\nEND:VALARM\r\n\
+         BEGIN:VEVENT\r\nUID:{uid}\r\nDTSTAMP:{stamp}\r\n\
+         DTSTART;TZID=America/Los_Angeles:{start}\r\nDTEND;TZID=America/Los_Angeles:{end}\r\n\
+         SUMMARY:{}\r\n\
+         BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:{}\r\nTRIGGER:PT0M\r\nEND:VALARM\r\n\
          END:VEVENT\r\nEND:VCALENDAR\r\n",
         escape_ical(summary),
         escape_ical(summary)
