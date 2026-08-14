@@ -350,21 +350,23 @@ function ResolvedRow({
 }) {
   return (
     <div className="resolved-row">
-      <button className={`task-status ${task.status}`} onClick={onCycle}>
-        ✓
-      </button>
-      <div className="task-main">
-        <div className="task-title">{task.title}</div>
-        {task.due_date && (
-          <div className="task-due">
-            {task.due_date}
-            {task.due_time && ` · ${formatDueTime(task.due_time)}`}
-          </div>
-        )}
+      <div className="task-row">
+        <button className={`task-status ${task.status}`} onClick={onCycle}>
+          ✓
+        </button>
+        <div className="task-main">
+          <div className="task-title">{task.title}</div>
+          {task.due_date && (
+            <div className="task-due">
+              {task.due_date}
+              {task.due_time && ` · ${formatDueTime(task.due_time)}`}
+            </div>
+          )}
+        </div>
+        <button className="delete-btn" onClick={onDelete}>
+          ✕
+        </button>
       </div>
-      <button className="delete-btn" onClick={onDelete}>
-        ✕
-      </button>
       <span className={`badge resolved-tag ${task.is_exam ? 'exam' : 'task'}`}>
         {task.is_exam ? 'exam' : task.category}
       </span>

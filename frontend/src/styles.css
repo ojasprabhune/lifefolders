@@ -1329,18 +1329,18 @@ header > .brand {
 
 .resolved-row {
   position: relative;
-  display: flex;
-  gap: 12px;
-  padding: 12px 60px 12px 12px;
-  border-left: 3px solid var(--line);
-  align-items: flex-start;
+}
+
+.resolved-row .task-row {
+  padding-bottom: 26px;
   opacity: 0.65;
+  cursor: default;
 }
 
 .resolved-tag {
   position: absolute;
-  right: 10px;
-  bottom: 10px;
+  right: 12px;
+  bottom: 8px;
 }
 
 .checkpoints {
