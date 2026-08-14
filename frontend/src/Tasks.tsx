@@ -1,6 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { deleteTask, listTaskFocusSessions, listTasks, patchCheckpoint, patchTask } from './api'
 import type { FocusSession, TaskWithCheckpoints } from './types'
+
+const DUE_STRIP_DAYS_BEFORE = 5
+const DUE_STRIP_DAYS_AFTER = 16
 
 export function Tasks({ open }: { open: boolean }) {
   const [tasks, setTasks] = useState<TaskWithCheckpoints[]>([])
@@ -55,7 +58,10 @@ export function Tasks({ open }: { open: boolean }) {
 
   const openTasks = tasks.filter((t) => t.status !== 'done')
   const grouped = useMemo(() => groupByCategory(openTasks), [openTasks])
-  const dayCounts = useMemo(() => buildDayCounts(openTasks, 7), [openTasks])
+  const dayCounts = useMemo(
+    () => buildDayCounts(openTasks, DUE_STRIP_DAYS_BEFORE, DUE_STRIP_DAYS_AFTER),
+    [openTasks],
+  )
 
   if (!mounted) return null
 
@@ -78,7 +84,7 @@ export function Tasks({ open }: { open: boolean }) {
           </div>
         </header>
 
-        <DueStrip days={dayCounts} />
+        <DueStrip days={dayCounts} todayIndex={DUE_STRIP_DAYS_BEFORE} />
 
         <main className="list">
           {Object.entries(grouped).map(([category, items]) => (
@@ -143,10 +149,14 @@ function groupByCategory(tasks: TaskWithCheckpoints[]): Record<string, TaskWithC
   )
 }
 
-function buildDayCounts(tasks: TaskWithCheckpoints[], days: number): { date: string; count: number }[] {
+function buildDayCounts(
+  tasks: TaskWithCheckpoints[],
+  daysBefore: number,
+  daysAfter: number,
+): { date: string; count: number }[] {
   const today = new Date()
   const counts: Record<string, number> = {}
-  for (let i = 0; i < days; i++) {
+  for (let i = -daysBefore; i < daysAfter; i++) {
     const d = new Date(today)
     d.setDate(d.getDate() + i)
     const dateStr = dateToStr(d)
@@ -178,12 +188,31 @@ function dayOfMonth(dateStr: string): number {
   return new Date(dateStr + 'T00:00').getDate()
 }
 
-function DueStrip({ days }: { days: { date: string; count: number }[] }) {
+function DueStrip({
+  days,
+  todayIndex,
+}: {
+  days: { date: string; count: number }[]
+  todayIndex: number
+}) {
   const max = Math.max(1, ...days.map((d) => d.count))
+  const todayRef = useRef<HTMLDivElement>(null)
+
+  // The strip spans a couple weeks each side of today so it scrolls left
+  // (past) and right (future), but should still open with today in view
+  // instead of the earliest past day.
+  useEffect(() => {
+    todayRef.current?.scrollIntoView({ inline: 'start', block: 'nearest' })
+  }, [])
+
   return (
     <div className="due-strip">
-      {days.map((d) => (
-        <div key={d.date} className="due-col">
+      {days.map((d, i) => (
+        <div
+          key={d.date}
+          ref={i === todayIndex ? todayRef : undefined}
+          className={`due-col ${i === todayIndex ? 'today' : ''}`}
+        >
           <span className="due-count">{d.count || ''}</span>
           <div className="due-bar" style={{ height: `${(d.count / max) * 100}%` }} />
           <span className="due-label">{shortDayLabel(d.date)}</span>
