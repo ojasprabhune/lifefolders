@@ -1070,6 +1070,11 @@ header > .brand {
   font-size: 14px;
 }
 
+.sleep-day {
+  width: 78px;
+  text-transform: lowercase;
+}
+
 .guide section {
   margin-bottom: 32px;
 }
