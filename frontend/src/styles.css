@@ -1075,6 +1075,41 @@ header > .brand {
   text-transform: lowercase;
 }
 
+.sleep-nag {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--sleep);
+  color: var(--bg);
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.25);
+  animation: row-in 200ms ease both;
+  max-width: calc(100% - 32px);
+}
+
+.sleep-nag button {
+  background: none;
+  border: none;
+  color: var(--bg);
+  opacity: 0.7;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.sleep-nag button:hover {
+  opacity: 1;
+}
+
 .guide section {
   margin-bottom: 32px;
 }

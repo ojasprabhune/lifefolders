@@ -13,6 +13,7 @@ import { Music } from './Music'
 import { Places } from './Places'
 import { RateModal, rateProps } from './RateModal'
 import { Sleep } from './Sleep'
+import { SleepReminder } from './SleepReminder'
 import { Tasks } from './Tasks'
 import { Travel } from './Travel'
 
@@ -81,20 +82,30 @@ export default function App() {
   }, [])
 
   if (!authed) return <Gate onUnlock={() => setAuthed(true)} />
-  if (route.startsWith('#/guide')) return <Guide />
-  if (route.startsWith('#/music')) return <Music />
-  if (route.startsWith('#/soma')) return <Soma />
-  if (route.startsWith('#/places')) return <Places />
-  if (route.startsWith('#/travel')) return <Travel />
-  if (route.startsWith('#/sleep')) return <Sleep />
-  if (route.startsWith('#/cadences')) return <Cadences />
-  if (route.startsWith('#/focus')) return <FocusTimer />
-  if (route.startsWith('#/learning')) return <Learning route={route} />
+
+  let content: React.ReactNode
+  if (route.startsWith('#/guide')) content = <Guide />
+  else if (route.startsWith('#/music')) content = <Music />
+  else if (route.startsWith('#/soma')) content = <Soma />
+  else if (route.startsWith('#/places')) content = <Places />
+  else if (route.startsWith('#/travel')) content = <Travel />
+  else if (route.startsWith('#/sleep')) content = <Sleep />
+  else if (route.startsWith('#/cadences')) content = <Cadences />
+  else if (route.startsWith('#/focus')) content = <FocusTimer />
+  else if (route.startsWith('#/learning')) content = <Learning route={route} />
+  else
+    content = (
+      <div className="shell">
+        <Home />
+        <Tasks open={route.startsWith('#/tasks')} />
+      </div>
+    )
+
   return (
-    <div className="shell">
-      <Home />
-      <Tasks open={route.startsWith('#/tasks')} />
-    </div>
+    <>
+      {content}
+      <SleepReminder />
+    </>
   )
 }
 
