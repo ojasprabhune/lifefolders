@@ -184,7 +184,10 @@ async fn main() -> anyhow::Result<()> {
         )
         .route("/api/task-checkpoints/{id}", axum::routing::patch(tasks::patch_checkpoint))
         .route("/api/cadences", get(cadences::list_cadences).post(cadences::create_cadence))
-        .route("/api/cadences/{id}", axum::routing::delete(cadences::archive_cadence))
+        .route(
+            "/api/cadences/{id}",
+            axum::routing::delete(cadences::archive_cadence).patch(cadences::patch_cadence),
+        )
         .route("/api/cadences/{id}/completions", get(cadences::completions))
         .route("/api/daily-notes", get(daily::list))
         .route("/api/daily-notes/{date}", axum::routing::patch(daily::patch))

@@ -314,6 +314,15 @@ export async function createCadence(body: {
   return (await check(res)).json()
 }
 
+export async function patchCadence(id: string, name: string): Promise<Cadence> {
+  const res = await fetch(`${API}/api/cadences/${id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ name }),
+  })
+  return (await check(res)).json()
+}
+
 export async function archiveCadence(id: string): Promise<void> {
   const res = await fetch(`${API}/api/cadences/${id}`, { method: 'DELETE', headers: authHeaders() })
   await check(res)

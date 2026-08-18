@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { archiveCadence, createCadence, getCadenceCompletions, listCadences } from './api'
+import { archiveCadence, createCadence, getCadenceCompletions, listCadences, patchCadence } from './api'
 import type { Cadence, CadenceCompletions } from './types'
 
 const WEEKS = 14
@@ -184,12 +184,28 @@ function Manage({ cadences, onChange }: { cadences: Cadence[]; onChange: () => v
     onChange()
   }
 
+  const rename = async (id: string, current: string, next: string) => {
+    const trimmed = next.trim()
+    if (!trimmed || trimmed === current) return
+    await patchCadence(id, trimmed).catch(() => {})
+    onChange()
+  }
+
   return (
     <div className="cadence-manage">
       {cadences.map((h) => (
         <div key={h.id} className="cadence-manage-row">
           <span>
-            {h.name} <span className="row-sub">{h.target_frequency}</span>
+            <input
+              className="cadence-name-input"
+              defaultValue={h.name}
+              size={Math.max(h.name.length, 1)}
+              onBlur={(e) => void rename(h.id, h.name, e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur()
+              }}
+            />{' '}
+            <span className="row-sub">{h.target_frequency}</span>
           </span>
           <button className="delete-btn" onClick={() => void remove(h.id)} aria-label="archive cadence">
             ✕

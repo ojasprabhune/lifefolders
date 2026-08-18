@@ -128,6 +128,30 @@ pub async fn create_cadence(
     Ok(Json(cadence))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct PatchCadence {
+    pub name: String,
+}
+
+pub async fn patch_cadence(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<PatchCadence>,
+) -> Result<Json<Cadence>, AppError> {
+    let name = body.name.trim();
+    if name.is_empty() {
+        return Err(AppError::BadRequest("name is empty".into()));
+    }
+    let cadence: Option<Cadence> = sqlx::query_as(&format!(
+        "UPDATE cadences SET name = $2 WHERE id = $1 AND active RETURNING {CADENCE_COLUMNS}"
+    ))
+    .bind(id)
+    .bind(name)
+    .fetch_optional(&state.pool)
+    .await?;
+    cadence.map(Json).ok_or(AppError::NotFound)
+}
+
 // Archive rather than delete: past completion logs still reference the cadence
 // by name for the timeline, so keeping the definition around costs nothing and
 // avoids dangling ids.
