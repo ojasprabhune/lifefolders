@@ -180,7 +180,9 @@ export function Guide() {
           and add a <em>#tag</em> anywhere to pin its category exactly, e.g. "clean the garage
           #personal." Set is_exam true (the model does this itself for real tests/quizzes) and
           it gets spaced study reminders 7, 3, and 1 day out, plus its own section in the panel
-          regardless of category. Drag a card onto a different section to recategorize it.
+          regardless of category. Whichever of those pills has arrived (and isn't checked off
+          yet) highlights in red so it's obvious you're due to study; expand the card to see the
+          actual date each one lands on. Drag a card onto a different section to recategorize it.
           Progress notes ("did 1 module of X") build a running history instead of overwriting
           the last one — the panel shows the latest line under the title. A deadline with an
           actual clock time ("presentation friday at 2pm") syncs to the calendar at that exact

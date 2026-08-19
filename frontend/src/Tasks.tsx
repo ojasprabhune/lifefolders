@@ -306,7 +306,7 @@ function TaskRow({
             {task.checkpoints.map((cp) => (
               <button
                 key={cp.id}
-                className={`checkpoint-pill ${cp.status}`}
+                className={`checkpoint-pill ${cp.status} ${cp.status === 'todo' && daysUntil(cp.due_date) <= 0 ? 'due' : ''}`}
                 onClick={() => onCheckpoint(cp.id, cp.status === 'todo' ? 'done' : 'todo')}
               >
                 {cp.offset_days}d
@@ -321,6 +321,22 @@ function TaskRow({
           ✕
         </button>
       </div>
+      {expanded && task.is_exam && task.due_date && (
+        <div className="task-checkpoint-dates">
+          {[7, 3, 1].map((offset) => {
+            const due = shiftDateStr(task.due_date as string, -offset)
+            const cp = task.checkpoints.find((c) => c.offset_days === offset)
+            const isDue = (cp?.status ?? 'todo') === 'todo' && daysUntil(due) <= 0
+            return (
+              <div key={offset} className={`checkpoint-date-row ${isDue ? 'due' : ''} ${cp?.status ?? ''}`}>
+                <span className="checkpoint-date-label">{offset}d</span>
+                <span className="checkpoint-date-value">{due}</span>
+                {cp?.status === 'done' && <span>✓</span>}
+              </div>
+            )
+          })}
+        </div>
+      )}
       {expanded && sessions !== null && (
         <div className="task-sessions">
           {sessions.length === 0 && <div className="task-session-empty">no focus sessions yet</div>}
@@ -379,4 +395,10 @@ function daysUntil(dateStr: string): number {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   return Math.ceil((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+}
+
+function shiftDateStr(dateStr: string, days: number): string {
+  const d = new Date(dateStr + 'T00:00')
+  d.setDate(d.getDate() + days)
+  return dateToStr(d)
 }

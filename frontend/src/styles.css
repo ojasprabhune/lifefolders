@@ -1439,6 +1439,13 @@ header > .brand {
   color: var(--bg);
 }
 
+.checkpoint-pill.due {
+  background: var(--accent-soft, rgba(228, 64, 42, 0.15));
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .delete-btn {
   flex-shrink: 0;
   color: var(--faint);
@@ -1834,6 +1841,37 @@ header > .brand {
 .task-session-empty {
   font-size: 13px;
   color: var(--faint);
+}
+
+.task-checkpoint-dates {
+  padding: 0 0 4px 34px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.checkpoint-date-row {
+  display: flex;
+  gap: 14px;
+  align-items: baseline;
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.checkpoint-date-label {
+  width: 24px;
+}
+
+.checkpoint-date-row.due .checkpoint-date-label,
+.checkpoint-date-row.due .checkpoint-date-value {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.checkpoint-date-row.done .checkpoint-date-value {
+  color: var(--faint);
+  text-decoration: line-through;
 }
 
 /* soma / weight */
