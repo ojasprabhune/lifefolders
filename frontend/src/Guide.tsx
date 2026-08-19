@@ -204,13 +204,15 @@ export function Guide() {
       <section>
         <h2>focus</h2>
         <p>
-          A live timer in the focus tab, attached to a sidequest. Pick an open one or type a
-          new one, choose a length (25/30/45/60 or custom), and start — the countdown mirrors
+          A live timer in the focus tab, attached to a sidequest or a cadence. Pick "sidequest"
+          for an open one (or type a new one) or "cadence" to work against a habit you're
+          tracking, choose a length (25/30/45/60 or custom), and start — the countdown mirrors
           into the browser tab title so it's glanceable from another tab. It chimes when the
           time is up, or hit stop to end early. Either way a session is logged to the timeline
-          and shows in the sidequest's history (expand one in the sidequests panel). Closing
-          the tab mid-session ends it as a stop, keeping whatever time elapsed. The ▷ on a
-          sidequest row jumps straight here with it selected.
+          and shows in the sidequest's history (expand one in the sidequests panel); a completed
+          cadence session also marks that cadence done for the day, same as logging it by text.
+          Closing the tab mid-session ends it as a stop, keeping whatever time elapsed. The ▷ on
+          a sidequest row jumps straight here with it selected.
         </p>
       </section>
 

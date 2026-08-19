@@ -68,6 +68,23 @@ pub async fn context_block(state: &AppState) -> String {
     out
 }
 
+/// Write a cadence_completion log row for an already-resolved cadence.
+pub async fn log_completion(state: &AppState, cadence_id: Uuid, cadence_name: &str, raw: &str) -> Result<Log, AppError> {
+    let data = CadenceData {
+        cadence_id,
+        cadence_name: cadence_name.to_string(),
+    };
+    let log: Log = sqlx::query_as(
+        "INSERT INTO logs (raw_input, parsed_type, data) VALUES ($1, 'cadence_completion', $2) \
+         RETURNING id, created_at, raw_input, parsed_type, data",
+    )
+    .bind(raw)
+    .bind(serde_json::to_value(&data).unwrap())
+    .fetch_one(&state.pool)
+    .await?;
+    Ok(log)
+}
+
 /// Resolve the free-text cadence name against the active cadences and, on a match,
 /// write a completion log row. Returns None when nothing matches so the caller
 /// can surface a notice rather than inventing a cadence.
@@ -80,20 +97,7 @@ pub async fn apply(
     let Some(cadence) = best_match(&cadences, &req.cadence_name) else {
         return Ok(None);
     };
-
-    let data = CadenceData {
-        cadence_id: cadence.id,
-        cadence_name: cadence.name.clone(),
-    };
-    let log: Log = sqlx::query_as(
-        "INSERT INTO logs (raw_input, parsed_type, data) VALUES ($1, 'cadence_completion', $2) \
-         RETURNING id, created_at, raw_input, parsed_type, data",
-    )
-    .bind(raw)
-    .bind(serde_json::to_value(&data).unwrap())
-    .fetch_one(&state.pool)
-    .await?;
-    Ok(Some(log))
+    Ok(Some(log_completion(state, cadence.id, &cadence.name, raw).await?))
 }
 
 pub async fn list_cadences(State(state): State<AppState>) -> Result<Json<Vec<Cadence>>, AppError> {

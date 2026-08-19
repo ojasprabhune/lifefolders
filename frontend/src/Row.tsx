@@ -142,7 +142,7 @@ function summary(log: Log): string {
     case 'focus_session': {
       const f = log.data as FocusSessionData
       const verb = f.completed ? 'focused' : 'focus (stopped)'
-      return `${verb} ${f.actual_minutes}m · ${f.task_title}`
+      return `${verb} ${f.actual_minutes}m · ${f.title}`
     }
   }
 }
@@ -655,7 +655,7 @@ function FocusLogEditor({ log, onChange, onDelete }: EditorProps) {
   const data = log.data as FocusSessionData
   const { error, remove } = useEditor(log, onChange, onDelete)
   const meta = [
-    data.task_title,
+    data.title,
     `${data.actual_minutes} of ${data.planned_minutes} min`,
     data.completed ? 'completed' : 'stopped early',
   ].join(' · ')

@@ -279,8 +279,9 @@ export interface DailyNote {
 
 export interface FocusSessionData {
   session_id: string
-  task_id: string
-  task_title: string
+  task_id: string | null
+  cadence_id: string | null
+  title: string
   planned_minutes: number
   actual_minutes: number
   completed: boolean
@@ -288,7 +289,8 @@ export interface FocusSessionData {
 
 export interface FocusSession {
   id: string
-  task_id: string
+  task_id: string | null
+  cadence_id: string | null
   planned_minutes: number
   actual_minutes: number | null
   started_at: string
@@ -297,7 +299,7 @@ export interface FocusSession {
 }
 
 export interface StartedSession extends FocusSession {
-  task_title: string
+  title: string
 }
 
 export type Tier = 'loved' | 'fine' | 'disliked'

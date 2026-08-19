@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { beaconEndFocusSession, endFocusSession, listTasks, startFocusSession } from './api'
-import type { TaskWithCheckpoints } from './types'
+import { beaconEndFocusSession, endFocusSession, listCadences, listTasks, startFocusSession } from './api'
+import type { Cadence, TaskWithCheckpoints } from './types'
 
 const PRESETS = [25, 30, 45, 60]
 const NEW_TASK = '__new__'
@@ -32,8 +32,8 @@ function playChime(ctx: AudioContext) {
   })
 }
 
-type Session = { id: string; planned: number; taskTitle: string; startMs: number }
-type Summary = { taskTitle: string; planned: number; actual: number; completed: boolean }
+type Session = { id: string; planned: number; title: string; startMs: number }
+type Summary = { title: string; planned: number; actual: number; completed: boolean }
 
 function preselectedTask(): string {
   const q = window.location.hash.split('?')[1] ?? ''
@@ -42,8 +42,11 @@ function preselectedTask(): string {
 
 export function FocusTimer() {
   const [tasks, setTasks] = useState<TaskWithCheckpoints[]>([])
+  const [cadences, setCadences] = useState<Cadence[]>([])
+  const [target, setTarget] = useState<'task' | 'cadence'>('task')
   const [mode, setMode] = useState<'setup' | 'running' | 'done'>('setup')
   const [taskId, setTaskId] = useState<string>(NEW_TASK)
+  const [cadenceId, setCadenceId] = useState<string>('')
   const [newTitle, setNewTitle] = useState('')
   const [minutes, setMinutes] = useState(25)
   const [custom, setCustom] = useState('')
@@ -66,6 +69,12 @@ export function FocusTimer() {
         else if (open.length > 0) setTaskId(open[0].id)
       })
       .catch(() => {})
+    listCadences()
+      .then((all) => {
+        setCadences(all)
+        if (all.length > 0) setCadenceId(all[0].id)
+      })
+      .catch(() => {})
   }, [])
 
   const finish = useCallback(async (completed: boolean) => {
@@ -77,7 +86,7 @@ export function FocusTimer() {
     // no-op if it's already running, so this is safe to always call.
     if (completed && audio.current) void audio.current.resume().then(() => playChime(audio.current!))
     document.title = origTitle.current
-    setSummary({ taskTitle: s.taskTitle, planned: s.planned, actual, completed })
+    setSummary({ title: s.title, planned: s.planned, actual, completed })
     setMode('done')
     try {
       await endFocusSession(s.id, completed)
@@ -96,7 +105,7 @@ export function FocusTimer() {
       if (!s) return
       const left = s.planned * 60 - (Date.now() - s.startMs) / 1000
       setRemaining(left)
-      document.title = `${mmss(left)} · ${s.taskTitle}`
+      document.title = `${mmss(left)} · ${s.title}`
       if (left <= 0) void finish(true)
     }
     tick()
@@ -136,9 +145,11 @@ export function FocusTimer() {
     setError('')
     const planned = minutes
     const body =
-      taskId === NEW_TASK
-        ? { new_task: { title: newTitle.trim() }, planned_minutes: planned }
-        : { task_id: taskId, planned_minutes: planned }
+      target === 'cadence'
+        ? { cadence_id: cadenceId, planned_minutes: planned }
+        : taskId === NEW_TASK
+          ? { new_task: { title: newTitle.trim() }, planned_minutes: planned }
+          : { task_id: taskId, planned_minutes: planned }
     try {
       if (!audio.current) {
         const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
@@ -146,7 +157,7 @@ export function FocusTimer() {
       }
       await audio.current.resume()
       const s = await startFocusSession(body)
-      session.current = { id: s.id, planned, taskTitle: s.task_title, startMs: Date.parse(s.started_at) }
+      session.current = { id: s.id, planned, title: s.title, startMs: Date.parse(s.started_at) }
       ended.current = false
       setRemaining(planned * 60)
       setMode('running')
@@ -161,7 +172,12 @@ export function FocusTimer() {
     setMode('setup')
   }
 
-  const canStart = taskId === NEW_TASK ? newTitle.trim().length > 0 : taskId.length > 0
+  const canStart =
+    target === 'cadence'
+      ? cadenceId.length > 0
+      : taskId === NEW_TASK
+        ? newTitle.trim().length > 0
+        : taskId.length > 0
 
   return (
     <div className="app">
@@ -174,26 +190,60 @@ export function FocusTimer() {
 
       {mode === 'setup' && (
         <div className="focus-setup">
-          <label className="focus-block">
-            <span className="daily-label">sidequest</span>
-            <select className="focus-select" value={taskId} onChange={(e) => setTaskId(e.target.value)}>
-              {tasks.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.title}
-                </option>
-              ))}
-              <option value={NEW_TASK}>+ new sidequest…</option>
-            </select>
-          </label>
+          <div className="focus-block">
+            <span className="daily-label">focus on</span>
+            <div className="status-buttons">
+              <button
+                className={`filter ${target === 'task' ? 'active' : ''}`}
+                onClick={() => setTarget('task')}
+              >
+                sidequest
+              </button>
+              <button
+                className={`filter ${target === 'cadence' ? 'active' : ''}`}
+                onClick={() => setTarget('cadence')}
+                disabled={cadences.length === 0}
+              >
+                cadence
+              </button>
+            </div>
+          </div>
 
-          {taskId === NEW_TASK && (
-            <input
-              className="entry-input"
-              value={newTitle}
-              onChange={(e) => setNewTitle(e.target.value)}
-              placeholder="new sidequest title"
-              autoFocus
-            />
+          {target === 'task' ? (
+            <>
+              <label className="focus-block">
+                <span className="daily-label">sidequest</span>
+                <select className="focus-select" value={taskId} onChange={(e) => setTaskId(e.target.value)}>
+                  {tasks.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.title}
+                    </option>
+                  ))}
+                  <option value={NEW_TASK}>+ new sidequest…</option>
+                </select>
+              </label>
+
+              {taskId === NEW_TASK && (
+                <input
+                  className="entry-input"
+                  value={newTitle}
+                  onChange={(e) => setNewTitle(e.target.value)}
+                  placeholder="new sidequest title"
+                  autoFocus
+                />
+              )}
+            </>
+          ) : (
+            <label className="focus-block">
+              <span className="daily-label">cadence</span>
+              <select className="focus-select" value={cadenceId} onChange={(e) => setCadenceId(e.target.value)}>
+                {cadences.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
           )}
 
           <div className="focus-block">
@@ -235,7 +285,7 @@ export function FocusTimer() {
       {mode === 'running' && session.current && (
         <div className="focus-running">
           <div className="focus-clock">{mmss(remaining)}</div>
-          <div className="focus-task">{session.current.taskTitle}</div>
+          <div className="focus-task">{session.current.title}</div>
           <button className="focus-stop" onClick={() => void finish(false)}>
             stop
           </button>
@@ -247,7 +297,7 @@ export function FocusTimer() {
           <div className={`focus-badge ${summary.completed ? 'complete' : 'stopped'}`}>
             {summary.completed ? 'completed' : 'stopped'}
           </div>
-          <div className="focus-task">{summary.taskTitle}</div>
+          <div className="focus-task">{summary.title}</div>
           <div className="focus-summary">
             {summary.actual} of {summary.planned} min
           </div>

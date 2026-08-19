@@ -357,6 +357,7 @@ export async function patchDailyNote(
 export async function startFocusSession(body: {
   task_id?: string
   new_task?: { title: string; category?: string }
+  cadence_id?: string
   planned_minutes: number
 }): Promise<StartedSession> {
   const res = await fetch(`${API}/api/focus-sessions`, {

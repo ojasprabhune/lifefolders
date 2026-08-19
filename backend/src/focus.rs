@@ -9,12 +9,13 @@ use uuid::Uuid;
 use crate::models::{FocusSessionData, TaskRequest};
 use crate::routes::AppError;
 use crate::undo::{set_last, UndoAction};
-use crate::{tasks, AppState};
+use crate::{cadences, tasks, AppState};
 
 #[derive(Debug, Serialize, FromRow)]
 pub struct FocusSession {
     pub id: Uuid,
-    pub task_id: Uuid,
+    pub task_id: Option<Uuid>,
+    pub cadence_id: Option<Uuid>,
     pub planned_minutes: i32,
     pub actual_minutes: Option<i32>,
     pub started_at: DateTime<Utc>,
@@ -23,7 +24,7 @@ pub struct FocusSession {
 }
 
 const SESSION_COLUMNS: &str =
-    "id, task_id, planned_minutes, actual_minutes, started_at, ended_at, completed";
+    "id, task_id, cadence_id, planned_minutes, actual_minutes, started_at, ended_at, completed";
 
 #[derive(Debug, Deserialize)]
 pub struct NewTask {
@@ -37,6 +38,7 @@ pub struct NewTask {
 pub struct CreateFocus {
     pub task_id: Option<Uuid>,
     pub new_task: Option<NewTask>,
+    pub cadence_id: Option<Uuid>,
     pub planned_minutes: i32,
 }
 
@@ -44,7 +46,7 @@ pub struct CreateFocus {
 pub struct StartedSession {
     #[serde(flatten)]
     pub session: FocusSession,
-    pub task_title: String,
+    pub title: String,
 }
 
 pub async fn create_session(
@@ -55,44 +57,54 @@ pub async fn create_session(
         return Err(AppError::BadRequest("planned_minutes out of range".into()));
     }
 
-    let (task_id, task_title) = match (body.task_id, body.new_task) {
-        (Some(id), _) => {
-            let row: Option<(String,)> =
-                sqlx::query_as("SELECT title FROM tasks WHERE id = $1 AND archived_at IS NULL")
-                    .bind(id)
-                    .fetch_optional(&state.pool)
-                    .await?;
-            (id, row.ok_or(AppError::NotFound)?.0)
-        }
-        (None, Some(nt)) => {
-            let req = TaskRequest {
-                title: nt.title,
-                category: nt.category,
-                due_date: nt.due_date,
-                due_time: None,
-                effort_minutes: nt.effort_minutes,
-                status: None,
-                is_exam: None,
-                note: None,
-            };
-            let task = tasks::create_task(&state, &req).await?;
-            (task.id, task.title)
-        }
-        (None, None) => {
-            return Err(AppError::BadRequest("task_id or new_task required".into()))
+    let (task_id, cadence_id, title) = if let Some(cid) = body.cadence_id {
+        let row: Option<(String,)> = sqlx::query_as("SELECT name FROM cadences WHERE id = $1 AND active")
+            .bind(cid)
+            .fetch_optional(&state.pool)
+            .await?;
+        (None, Some(cid), row.ok_or(AppError::NotFound)?.0)
+    } else {
+        match (body.task_id, body.new_task) {
+            (Some(id), _) => {
+                let row: Option<(String,)> = sqlx::query_as(
+                    "SELECT title FROM tasks WHERE id = $1 AND archived_at IS NULL",
+                )
+                .bind(id)
+                .fetch_optional(&state.pool)
+                .await?;
+                (Some(id), None, row.ok_or(AppError::NotFound)?.0)
+            }
+            (None, Some(nt)) => {
+                let req = TaskRequest {
+                    title: nt.title,
+                    category: nt.category,
+                    due_date: nt.due_date,
+                    due_time: None,
+                    effort_minutes: nt.effort_minutes,
+                    status: None,
+                    is_exam: None,
+                    note: None,
+                };
+                let task = tasks::create_task(&state, &req).await?;
+                (Some(task.id), None, task.title)
+            }
+            (None, None) => {
+                return Err(AppError::BadRequest("task_id, cadence_id, or new_task required".into()))
+            }
         }
     };
 
     let session: FocusSession = sqlx::query_as(&format!(
-        "INSERT INTO focus_sessions (task_id, planned_minutes) VALUES ($1, $2) \
+        "INSERT INTO focus_sessions (task_id, cadence_id, planned_minutes) VALUES ($1, $2, $3) \
          RETURNING {SESSION_COLUMNS}"
     ))
     .bind(task_id)
+    .bind(cadence_id)
     .bind(body.planned_minutes)
     .fetch_one(&state.pool)
     .await?;
 
-    Ok(Json(StartedSession { session, task_title }))
+    Ok(Json(StartedSession { session, title }))
 }
 
 #[derive(Debug, Deserialize)]
@@ -155,15 +167,25 @@ pub async fn end_session(
         return existing.map(Json).ok_or(AppError::NotFound);
     };
 
-    let (task_title,): (String,) = sqlx::query_as("SELECT title FROM tasks WHERE id = $1")
-        .bind(session.task_id)
-        .fetch_one(&state.pool)
-        .await?;
+    let title = if let Some(task_id) = session.task_id {
+        let (title,): (String,) = sqlx::query_as("SELECT title FROM tasks WHERE id = $1")
+            .bind(task_id)
+            .fetch_one(&state.pool)
+            .await?;
+        title
+    } else {
+        let (name,): (String,) = sqlx::query_as("SELECT name FROM cadences WHERE id = $1")
+            .bind(session.cadence_id)
+            .fetch_one(&state.pool)
+            .await?;
+        name
+    };
 
     let data = FocusSessionData {
         session_id: session.id,
         task_id: session.task_id,
-        task_title,
+        cadence_id: session.cadence_id,
+        title: title.clone(),
         planned_minutes: session.planned_minutes,
         actual_minutes: session.actual_minutes.unwrap_or(0),
         completed: session.completed,
@@ -172,11 +194,22 @@ pub async fn end_session(
         "INSERT INTO logs (raw_input, parsed_type, data) VALUES ($1, 'focus_session', $2) \
          RETURNING id, created_at, raw_input, parsed_type, data",
     )
-    .bind(format!("focus: {}", data.task_title))
+    .bind(format!("focus: {title}"))
     .bind(serde_json::to_value(&data).unwrap())
     .fetch_one(&state.pool)
     .await?;
-    set_last(&state, UndoAction::LogCreated { log_ids: vec![log.id] });
+    let mut log_ids = vec![log.id];
+
+    // A completed cadence-tied session also counts as today's cadence
+    // completion, same as saying "did sat practice" through the text input.
+    if session.completed {
+        if let Some(cadence_id) = session.cadence_id {
+            let completion = cadences::log_completion(&state, cadence_id, &title, &format!("focus: {title}")).await?;
+            log_ids.push(completion.id);
+        }
+    }
+
+    set_last(&state, UndoAction::LogCreated { log_ids });
 
     Ok(Json(session))
 }

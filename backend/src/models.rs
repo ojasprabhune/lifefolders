@@ -200,8 +200,9 @@ pub struct CadenceCompletionRequest {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FocusSessionData {
     pub session_id: Uuid,
-    pub task_id: Uuid,
-    pub task_title: String,
+    pub task_id: Option<Uuid>,
+    pub cadence_id: Option<Uuid>,
+    pub title: String,
     pub planned_minutes: i32,
     pub actual_minutes: i32,
     pub completed: bool,
