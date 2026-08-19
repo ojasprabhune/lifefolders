@@ -1369,6 +1369,14 @@ header > .brand {
 }
 
 @media (max-width: 480px) {
+  /* A bit more headroom than the desktop clamp gives - the corner clock
+     (pushed below the iOS status bar with safe-area-inset-top) otherwise
+     sits right on top of the header's nav links on narrow screens. */
+  .app,
+  .side-panel {
+    padding-top: max(clamp(24px, 7vh, 72px), calc(env(safe-area-inset-top, 0px) + 70px));
+  }
+
   .app {
     padding-left: 18px;
     padding-right: 18px;
