@@ -12,6 +12,7 @@ import { FocusTimer } from './FocusTimer'
 import { FocusPill } from './FocusPill'
 import { Learning } from './Learning'
 import { Music } from './Music'
+import { usePanelState } from './Panel'
 import { Places } from './Places'
 import { RateModal, rateProps } from './RateModal'
 import { Sleep } from './Sleep'
@@ -71,6 +72,17 @@ const FILTERS: { value: Category; label: string }[] = [
 // so a cold start resolves itself instead of needing a tap.
 const RETRY_DELAYS_MS = [2000, 5000, 10000, 20000]
 
+const PANEL_ROUTE_PREFIXES = [
+  '#/music',
+  '#/soma',
+  '#/places',
+  '#/travel',
+  '#/sleep',
+  '#/cadences',
+  '#/learning',
+  '#/tasks',
+]
+
 function matches(log: Log, category: Category): boolean {
   if (category === 'all') return true
   if (category === 'music') return log.parsed_type === 'album' || log.parsed_type === 'song'
@@ -83,6 +95,15 @@ export default function App() {
   const route = useHashRoute()
   const [authed, setAuthed] = useState(() => getToken() !== null)
   const [showClock, setShowClockState] = useState(() => getShowClock())
+  // A single width-stable slot for whichever domain panel is open, instead
+  // of each panel reserving its own flex column - otherwise switching
+  // straight from one domain to another (soma -> sidequests) briefly mounts
+  // both, and Home visibly jumps left while three columns exist at once.
+  // Tracked with the same 220ms grace as an individual panel's own close, so
+  // the slot doesn't collapse until the last panel inside has finished
+  // animating out.
+  const anyPanelOpen = PANEL_ROUTE_PREFIXES.some((p) => route.startsWith(p))
+  const { mounted: slotMounted } = usePanelState(anyPanelOpen)
 
   useEffect(() => {
     const onUnauthorized = () => setAuthed(false)
@@ -111,14 +132,18 @@ export default function App() {
     content = (
       <div className="shell">
         <Home />
-        <Music open={route.startsWith('#/music')} />
-        <Soma open={route.startsWith('#/soma')} />
-        <Places open={route.startsWith('#/places')} />
-        <Travel open={route.startsWith('#/travel')} />
-        <Sleep open={route.startsWith('#/sleep')} />
-        <Cadences open={route.startsWith('#/cadences')} />
-        <Learning route={route} open={route.startsWith('#/learning')} />
-        <Tasks open={route.startsWith('#/tasks')} />
+        {slotMounted && (
+          <div className="panel-slot">
+            <Music open={route.startsWith('#/music')} />
+            <Soma open={route.startsWith('#/soma')} />
+            <Places open={route.startsWith('#/places')} />
+            <Travel open={route.startsWith('#/travel')} />
+            <Sleep open={route.startsWith('#/sleep')} />
+            <Cadences open={route.startsWith('#/cadences')} />
+            <Learning route={route} open={route.startsWith('#/learning')} />
+            <Tasks open={route.startsWith('#/tasks')} />
+          </div>
+        )}
       </div>
     )
 

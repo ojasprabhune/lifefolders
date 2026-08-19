@@ -88,11 +88,31 @@ button {
   margin: 0;
 }
 
-.side-panel {
+/* Fixed-width slot that holds whichever domain panel is open. Its width
+   never depends on how many panels happen to be mounted (normally one, but
+   two overlap here for one closing animation while switching straight from
+   one domain to another) - that's what keeps Home from jumping sideways
+   when you switch panels instead of closing back to it first. */
+.panel-slot {
+  position: relative;
   width: 420px;
   flex-shrink: 0;
+}
+
+.side-panel {
+  /* top/left/right only, not bottom - .panel-slot has no in-flow content of
+     its own (this is absolutely positioned), so pinning all four sides would
+     collapse its height to 0 and clip this to nothing. Height stays auto and
+     the page scrolls normally, same as it did as a plain flex item. */
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
   padding: clamp(24px, 7vh, 72px) 24px 96px;
   animation: panel-in 220ms ease both;
+  /* The panel animating in should always sit above the one animating out,
+     regardless of which two domains they are. */
+  z-index: 2;
 }
 
 @keyframes panel-in {
@@ -107,6 +127,7 @@ button {
 }
 
 .side-panel.closing {
+  z-index: 1;
   animation: panel-out 220ms ease both;
 }
 
@@ -128,6 +149,12 @@ button {
 @media (max-width: 900px) {
   .shell {
     display: block;
+  }
+
+  /* Panels go position: fixed below, so the slot itself shouldn't reserve
+     any box of its own here - just pass its children through. */
+  .panel-slot {
+    display: contents;
   }
 
   .panel-backdrop {
@@ -156,10 +183,16 @@ button {
     position: fixed;
     inset: 0 0 0 auto;
     width: min(420px, 100vw);
-    z-index: 11;
+    overflow-y: auto;
+    /* Above the backdrop (10) either way; entering above closing (12/11),
+       same relative order as the desktop 2/1, just shifted above 10. */
+    z-index: 12;
     background: var(--bg);
     box-shadow: -2px 0 12px rgba(0, 0, 0, 0.15);
-    overflow-y: auto;
+  }
+
+  .side-panel.closing {
+    z-index: 11;
   }
 }
 
@@ -1175,7 +1208,11 @@ header > .brand {
 
 .pst-clock {
   position: fixed;
-  top: 18px;
+  /* On desktop web env(safe-area-inset-top) is 0, so this is just 18px, same
+     as before. Installed as a standalone PWA on iOS, it's the status bar's
+     height (battery/time icons live in it) - drop below that instead of
+     under it. */
+  top: max(18px, calc(env(safe-area-inset-top, 0px) + 6px));
   right: 20px;
   z-index: 40;
   display: flex;
