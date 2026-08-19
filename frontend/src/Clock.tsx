@@ -4,11 +4,17 @@ const FORMAT = new Intl.DateTimeFormat('en-US', {
   timeZone: 'America/Los_Angeles',
   hour: 'numeric',
   minute: '2-digit',
-  hour12: false,
+  hour12: true,
 })
 
+// hour12 still forces an AM/PM marker onto the formatted string by default -
+// pull the hour/minute parts out directly instead of formatting to a string,
+// so it reads as a plain "2:07" with no AM/PM.
 function pstTime(): string {
-  return FORMAT.format(new Date())
+  const parts = FORMAT.formatToParts(new Date())
+  const hour = parts.find((p) => p.type === 'hour')!.value
+  const minute = parts.find((p) => p.type === 'minute')!.value
+  return `${hour}:${minute}`
 }
 
 // Corner clock, styled after the big focus-page countdown. Each character
