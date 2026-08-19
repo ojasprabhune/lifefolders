@@ -1929,6 +1929,54 @@ header > .brand {
   padding: 8px 24px;
 }
 
+.focus-float {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.focus-float:hover {
+  color: var(--accent);
+}
+
+/* Contents of the floating Picture-in-Picture window - the app's own
+   stylesheets get cloned in alongside these, so this just needs to lay the
+   two lines out; colors/fonts come from the shared CSS custom properties. */
+.focus-pip-root {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  user-select: none;
+}
+
+.focus-pip-time {
+  font-family: 'mencken-std-text', serif;
+  font-weight: 400;
+  font-size: 40px;
+  line-height: 1;
+  color: var(--focus);
+  font-variant-numeric: tabular-nums;
+}
+
+.focus-pip-root.paused .focus-pip-time {
+  opacity: 0.4;
+}
+
+.focus-pip-title {
+  font-size: 12px;
+  color: var(--muted);
+  max-width: 90%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .focus-pause {
   color: var(--muted);
 }

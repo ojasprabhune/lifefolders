@@ -37,6 +37,13 @@ let current: ActiveFocusSession | null = load()
 let audio: AudioContext | null = null
 let tickTimer: number | undefined
 let ended = false
+let pipWindow: Window | null = null
+
+function mmss(totalSeconds: number): string {
+  const s = Math.max(0, Math.round(totalSeconds))
+  const m = Math.floor(s / 60)
+  return `${m}:${String(s % 60).padStart(2, '0')}`
+}
 
 function persist() {
   if (current) localStorage.setItem(STORAGE_KEY, JSON.stringify(current))
@@ -50,6 +57,76 @@ function broadcast(summary: FocusSummary | null = null) {
       { detail: { session: current, summary } },
     ),
   )
+  renderPip()
+}
+
+// The nearest thing the web platform has to "put this in the menu bar": a
+// small always-on-top window that floats above every other app, independent
+// of this tab. No Web API can touch the actual system menu bar - Document
+// Picture-in-Picture is the closest approximation, and Chrome/Edge-only for
+// now (feature-detected, so this is a no-op button elsewhere).
+export function pipSupported(): boolean {
+  return typeof window !== 'undefined' && 'documentPictureInPicture' in window
+}
+
+type DocumentPipWindow = { requestWindow: (opts: { width: number; height: number }) => Promise<Window> }
+
+function copyStyles(target: Document) {
+  for (const sheet of Array.from(document.styleSheets)) {
+    const owner = sheet.ownerNode
+    if (owner instanceof HTMLLinkElement) {
+      const link = target.createElement('link')
+      link.rel = 'stylesheet'
+      link.href = owner.href
+      target.head.appendChild(link)
+    } else if (owner instanceof HTMLStyleElement) {
+      const style = target.createElement('style')
+      style.textContent = owner.textContent
+      target.head.appendChild(style)
+    }
+  }
+}
+
+function renderPip() {
+  if (!pipWindow) return
+  if (!current) {
+    closePip()
+    return
+  }
+  const doc = pipWindow.document
+  const timeEl = doc.getElementById('pip-time')
+  const titleEl = doc.getElementById('pip-title')
+  const root = doc.getElementById('pip-root')
+  if (!timeEl || !titleEl || !root) return
+  timeEl.textContent = mmss(remainingSeconds(current))
+  titleEl.textContent = current.title
+  root.classList.toggle('paused', current.pausedAtMs !== null)
+}
+
+export async function openFocusPip(): Promise<void> {
+  if (!pipSupported() || !current || pipWindow) return
+  const dpip = (window as unknown as { documentPictureInPicture: DocumentPipWindow }).documentPictureInPicture
+  const win = await dpip.requestWindow({ width: 220, height: 110 })
+  pipWindow = win
+  win.document.documentElement.setAttribute(
+    'data-theme',
+    document.documentElement.getAttribute('data-theme') ?? '',
+  )
+  copyStyles(win.document)
+  win.document.body.innerHTML =
+    '<div id="pip-root" class="focus-pip-root">' +
+    '<span id="pip-time" class="focus-pip-time"></span>' +
+    '<span id="pip-title" class="focus-pip-title"></span>' +
+    '</div>'
+  win.addEventListener('pagehide', () => {
+    pipWindow = null
+  })
+  renderPip()
+}
+
+function closePip() {
+  pipWindow?.close()
+  pipWindow = null
 }
 
 export function getFocusSession(): ActiveFocusSession | null {

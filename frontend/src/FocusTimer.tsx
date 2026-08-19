@@ -4,6 +4,8 @@ import type { Cadence, TaskWithCheckpoints } from './types'
 import {
   beginFocusSession,
   getFocusSession,
+  openFocusPip,
+  pipSupported,
   remainingSeconds,
   stopFocusSession,
   toggleFocusPause,
@@ -250,6 +252,11 @@ export function FocusTimer() {
               stop
             </button>
           </div>
+          {pipSupported() && (
+            <button className="focus-float" onClick={() => void openFocusPip()}>
+              float on top ↗
+            </button>
+          )}
         </div>
       )}
 

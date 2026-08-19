@@ -234,7 +234,9 @@ export function Guide() {
           against your minutes worked. The session keeps running even if you navigate elsewhere;
           a little pill in the corner shows the remaining time and jumps back to the timer when
           tapped. Closing the tab mid-session ends it as a stop, keeping whatever time elapsed.
-          The ▷ on a sidequest row jumps straight here with it selected.
+          The ▷ on a sidequest row jumps straight here with it selected. On Chrome or Edge, "float
+          on top" while running pops the countdown into its own tiny window that stays above every
+          other app on your desktop — the closest the web gets to a menu bar timer.
         </p>
       </section>
 
