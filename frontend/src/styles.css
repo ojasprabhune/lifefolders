@@ -1181,8 +1181,9 @@ header > .brand {
   display: flex;
   font-family: 'mencken-std-text', serif;
   font-weight: 400;
-  font-size: 16px;
-  color: var(--muted);
+  font-size: 40px;
+  line-height: 1;
+  color: var(--ink);
   font-variant-numeric: tabular-nums;
   pointer-events: none;
   user-select: none;
