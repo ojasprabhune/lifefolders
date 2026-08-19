@@ -296,6 +296,8 @@ export interface FocusSession {
   started_at: string
   ended_at: string | null
   completed: boolean
+  paused_at: string | null
+  paused_seconds: number
 }
 
 export interface StartedSession extends FocusSession {

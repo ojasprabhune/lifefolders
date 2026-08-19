@@ -1,6 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { beaconEndFocusSession, endFocusSession, listCadences, listTasks, startFocusSession } from './api'
+import { useEffect, useState } from 'react'
+import { listCadences, listTasks } from './api'
 import type { Cadence, TaskWithCheckpoints } from './types'
+import {
+  beginFocusSession,
+  getFocusSession,
+  remainingSeconds,
+  stopFocusSession,
+  toggleFocusPause,
+  type ActiveFocusSession,
+  type FocusSummary,
+} from './focusEngine'
 
 const PRESETS = [25, 30, 45, 60]
 const NEW_TASK = '__new__'
@@ -10,30 +19,6 @@ function mmss(totalSeconds: number): string {
   const m = Math.floor(s / 60)
   return `${m}:${String(s % 60).padStart(2, '0')}`
 }
-
-// Short two-tone chime via the Web Audio API — no external asset. The context
-// is created on Start (a user gesture) so it's allowed to make sound later when
-// the timer completes on its own.
-function playChime(ctx: AudioContext) {
-  const now = ctx.currentTime
-  ;[880, 1320].forEach((freq, i) => {
-    const o = ctx.createOscillator()
-    const g = ctx.createGain()
-    o.connect(g)
-    g.connect(ctx.destination)
-    o.type = 'sine'
-    o.frequency.value = freq
-    const t = now + i * 0.18
-    g.gain.setValueAtTime(0.0001, t)
-    g.gain.exponentialRampToValueAtTime(0.22, t + 0.02)
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5)
-    o.start(t)
-    o.stop(t + 0.5)
-  })
-}
-
-type Session = { id: string; planned: number; title: string; startMs: number }
-type Summary = { title: string; planned: number; actual: number; completed: boolean }
 
 function preselectedTask(): string {
   const q = window.location.hash.split('?')[1] ?? ''
@@ -50,14 +35,10 @@ export function FocusTimer() {
   const [newTitle, setNewTitle] = useState('')
   const [minutes, setMinutes] = useState(25)
   const [custom, setCustom] = useState('')
+  const [active, setActive] = useState<ActiveFocusSession | null>(null)
   const [remaining, setRemaining] = useState(0)
-  const [summary, setSummary] = useState<Summary | null>(null)
+  const [summary, setSummary] = useState<FocusSummary | null>(null)
   const [error, setError] = useState('')
-
-  const session = useRef<Session | null>(null)
-  const audio = useRef<AudioContext | null>(null)
-  const ended = useRef(false)
-  const origTitle = useRef(document.title)
 
   useEffect(() => {
     listTasks()
@@ -77,68 +58,47 @@ export function FocusTimer() {
       .catch(() => {})
   }, [])
 
-  const finish = useCallback(async (completed: boolean) => {
-    const s = session.current
-    if (!s || ended.current) return
-    ended.current = true
-    const actual = Math.round((Date.now() - s.startMs) / 60000)
-    // A long-backgrounded tab can suspend the AudioContext; resume is a
-    // no-op if it's already running, so this is safe to always call.
-    if (completed && audio.current) void audio.current.resume().then(() => playChime(audio.current!))
-    document.title = origTitle.current
-    setSummary({ title: s.title, planned: s.planned, actual, completed })
-    setMode('done')
-    try {
-      await endFocusSession(s.id, completed)
-      window.dispatchEvent(new Event('life-log-created'))
-    } catch {
-      // the session is already ended locally; a failed report is non-fatal
-    }
-  }, [])
-
-  // Countdown loop + tab-title mirror. Derives remaining from the start time
-  // (not a decrementing counter) so background-tab throttling can't drift it.
+  // A session already running (started here, or from the pill after
+  // navigating away and back) should land on the running view, not setup.
   useEffect(() => {
-    if (mode !== 'running') return
-    const tick = () => {
-      const s = session.current
-      if (!s) return
-      const left = s.planned * 60 - (Date.now() - s.startMs) / 1000
-      setRemaining(left)
-      document.title = `${mmss(left)} · ${s.title}`
-      if (left <= 0) void finish(true)
+    const s = getFocusSession()
+    if (s) {
+      setActive(s)
+      setRemaining(remainingSeconds(s))
+      setMode('running')
     }
-    tick()
-    const iv = setInterval(tick, 1000)
-    return () => clearInterval(iv)
-  }, [mode, finish])
 
-  // If the tab is actually closed mid-session, best-effort end it as a manual
-  // stop so no session is left dangling open in the database. Backgrounding
-  // the tab (switching away, not closing it) is normal mid-focus-session
-  // behavior and must NOT bail - it used to, via visibilitychange, which
-  // marked the session ended without updating the UI, so the countdown would
-  // reach 0:00 and silently no-op (finish() saw ended.current already true)
-  // instead of ever showing "done" or playing the chime.
-  useEffect(() => {
-    if (mode !== 'running') return
-    const bail = () => {
-      const s = session.current
-      if (s && !ended.current) {
-        ended.current = true
-        beaconEndFocusSession(s.id, false)
+    const onChange = (e: Event) => {
+      const { session, summary: done } = (
+        e as CustomEvent<{ session: ActiveFocusSession | null; summary: FocusSummary | null }>
+      ).detail
+      if (done) {
+        setSummary(done)
+        setMode('done')
+        return
+      }
+      if (session) {
+        setActive(session)
+        setRemaining(remainingSeconds(session))
+        setMode('running')
       }
     }
-    window.addEventListener('beforeunload', bail)
-    window.addEventListener('pagehide', bail)
-    return () => {
-      window.removeEventListener('beforeunload', bail)
-      window.removeEventListener('pagehide', bail)
-    }
-  }, [mode])
+    window.addEventListener('life-focus-changed', onChange)
+    return () => window.removeEventListener('life-focus-changed', onChange)
+  }, [])
+
+  // Mirrors the countdown into the browser tab title while this page is open.
+  useEffect(() => {
+    document.title =
+      mode === 'running' && active
+        ? active.pausedAtMs !== null
+          ? `⏸ ${active.title}`
+          : `${mmss(remaining)} · ${active.title}`
+        : 'life'
+  }, [mode, active, remaining])
 
   useEffect(() => () => {
-    document.title = origTitle.current
+    document.title = 'life'
   }, [])
 
   const start = async () => {
@@ -151,15 +111,9 @@ export function FocusTimer() {
           ? { new_task: { title: newTitle.trim() }, planned_minutes: planned }
           : { task_id: taskId, planned_minutes: planned }
     try {
-      if (!audio.current) {
-        const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
-        audio.current = new Ctx()
-      }
-      await audio.current.resume()
-      const s = await startFocusSession(body)
-      session.current = { id: s.id, planned, title: s.title, startMs: Date.parse(s.started_at) }
-      ended.current = false
-      setRemaining(planned * 60)
+      const s = await beginFocusSession(body)
+      setActive(s)
+      setRemaining(remainingSeconds(s))
       setMode('running')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'could not start')
@@ -167,8 +121,8 @@ export function FocusTimer() {
   }
 
   const reset = () => {
-    session.current = null
     setSummary(null)
+    setActive(null)
     setMode('setup')
   }
 
@@ -178,6 +132,8 @@ export function FocusTimer() {
       : taskId === NEW_TASK
         ? newTitle.trim().length > 0
         : taskId.length > 0
+
+  const paused = active !== null && active.pausedAtMs !== null
 
   return (
     <div className="app">
@@ -282,13 +238,18 @@ export function FocusTimer() {
         </div>
       )}
 
-      {mode === 'running' && session.current && (
+      {mode === 'running' && active && (
         <div className="focus-running">
-          <div className="focus-clock">{mmss(remaining)}</div>
-          <div className="focus-task">{session.current.title}</div>
-          <button className="focus-stop" onClick={() => void finish(false)}>
-            stop
-          </button>
+          <div className={`focus-clock ${paused ? 'paused' : ''}`}>{mmss(remaining)}</div>
+          <div className="focus-task">{active.title}</div>
+          <div className="focus-running-actions">
+            <button className="focus-pause" onClick={() => void toggleFocusPause()}>
+              {paused ? 'resume' : 'pause'}
+            </button>
+            <button className="focus-stop" onClick={() => void stopFocusSession(false)}>
+              stop
+            </button>
+          </div>
         </div>
       )}
 

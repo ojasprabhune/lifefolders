@@ -211,8 +211,11 @@ export function Guide() {
           time is up, or hit stop to end early. Either way a session is logged to the timeline
           and shows in the sidequest's history (expand one in the sidequests panel); a completed
           cadence session also marks that cadence done for the day, same as logging it by text.
-          Closing the tab mid-session ends it as a stop, keeping whatever time elapsed. The ▷ on
-          a sidequest row jumps straight here with it selected.
+          Hit pause to freeze the clock without ending the session — paused time doesn't count
+          against your minutes worked. The session keeps running even if you navigate elsewhere;
+          a little pill in the corner shows the remaining time and jumps back to the timer when
+          tapped. Closing the tab mid-session ends it as a stop, keeping whatever time elapsed.
+          The ▷ on a sidequest row jumps straight here with it selected.
         </p>
       </section>
 

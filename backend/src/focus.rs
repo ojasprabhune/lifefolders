@@ -21,10 +21,12 @@ pub struct FocusSession {
     pub started_at: DateTime<Utc>,
     pub ended_at: Option<DateTime<Utc>>,
     pub completed: bool,
+    pub paused_at: Option<DateTime<Utc>>,
+    pub paused_seconds: i32,
 }
 
-const SESSION_COLUMNS: &str =
-    "id, task_id, cadence_id, planned_minutes, actual_minutes, started_at, ended_at, completed";
+const SESSION_COLUMNS: &str = "id, task_id, cadence_id, planned_minutes, actual_minutes, \
+    started_at, ended_at, completed, paused_at, paused_seconds";
 
 #[derive(Debug, Deserialize)]
 pub struct NewTask {
@@ -143,10 +145,16 @@ pub async fn end_session(
         return Err(AppError::Unauthorized);
     }
 
+    // Subtract accumulated paused_seconds, plus whatever's elapsed in an
+    // still-open pause (ending mid-pause is allowed), from the wall-clock
+    // span so actual_minutes reflects time actually worked.
     let updated: Option<FocusSession> = sqlx::query_as(&format!(
         "UPDATE focus_sessions SET \
             ended_at = now(), \
-            actual_minutes = GREATEST(0, ROUND(EXTRACT(EPOCH FROM (now() - started_at)) / 60.0))::int, \
+            actual_minutes = GREATEST(0, ROUND(( \
+                EXTRACT(EPOCH FROM (now() - started_at)) - paused_seconds \
+                - COALESCE(EXTRACT(EPOCH FROM (now() - paused_at)), 0) \
+            ) / 60.0))::int, \
             completed = $2 \
          WHERE id = $1 AND ended_at IS NULL \
          RETURNING {SESSION_COLUMNS}"
@@ -212,6 +220,38 @@ pub async fn end_session(
     set_last(&state, UndoAction::LogCreated { log_ids });
 
     Ok(Json(session))
+}
+
+pub async fn pause_session(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<FocusSession>, AppError> {
+    let session: Option<FocusSession> = sqlx::query_as(&format!(
+        "UPDATE focus_sessions SET paused_at = now() \
+         WHERE id = $1 AND ended_at IS NULL AND paused_at IS NULL \
+         RETURNING {SESSION_COLUMNS}"
+    ))
+    .bind(id)
+    .fetch_optional(&state.pool)
+    .await?;
+    session.map(Json).ok_or(AppError::NotFound)
+}
+
+pub async fn resume_session(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<FocusSession>, AppError> {
+    let session: Option<FocusSession> = sqlx::query_as(&format!(
+        "UPDATE focus_sessions SET \
+            paused_seconds = paused_seconds + GREATEST(0, EXTRACT(EPOCH FROM (now() - paused_at)))::int, \
+            paused_at = NULL \
+         WHERE id = $1 AND ended_at IS NULL AND paused_at IS NOT NULL \
+         RETURNING {SESSION_COLUMNS}"
+    ))
+    .bind(id)
+    .fetch_optional(&state.pool)
+    .await?;
+    session.map(Json).ok_or(AppError::NotFound)
 }
 
 pub async fn list_for_task(

@@ -1110,6 +1110,42 @@ header > .brand {
   opacity: 1;
 }
 
+.focus-pill {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: var(--focus);
+  color: var(--bg);
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.25);
+  animation: row-in 200ms ease both;
+  max-width: calc(100% - 32px);
+  cursor: pointer;
+}
+
+.focus-pill.paused {
+  background: var(--muted);
+}
+
+.focus-pill-time {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.focus-pill-title {
+  opacity: 0.85;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 160px;
+}
+
 .guide section {
   margin-bottom: 32px;
 }
@@ -1705,18 +1741,32 @@ header > .brand {
   font-variant-numeric: tabular-nums;
 }
 
+.focus-clock.paused {
+  opacity: 0.4;
+}
+
 .focus-task {
   font-size: 17px;
   color: var(--muted);
   text-align: center;
 }
 
-.focus-stop {
+.focus-running-actions {
+  display: flex;
+  gap: 10px;
   margin-top: 8px;
+}
+
+.focus-pause,
+.focus-stop {
   font-size: 15px;
   color: var(--accent);
   border: 1px solid var(--line);
   padding: 8px 24px;
+}
+
+.focus-pause {
+  color: var(--muted);
 }
 
 .focus-badge {

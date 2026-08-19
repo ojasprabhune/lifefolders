@@ -8,6 +8,7 @@ import { Guide } from './Guide'
 import { Soma } from './Soma'
 import { Cadences } from './Cadences'
 import { FocusTimer } from './FocusTimer'
+import { FocusPill } from './FocusPill'
 import { Learning } from './Learning'
 import { Music } from './Music'
 import { Places } from './Places'
@@ -105,6 +106,7 @@ export default function App() {
     <>
       {content}
       <SleepReminder />
+      <FocusPill route={route} />
     </>
   )
 }

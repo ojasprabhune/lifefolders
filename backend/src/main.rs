@@ -192,6 +192,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/daily-notes", get(daily::list))
         .route("/api/daily-notes/{date}", axum::routing::patch(daily::patch))
         .route("/api/focus-sessions", post(focus::create_session))
+        .route("/api/focus-sessions/{id}/pause", post(focus::pause_session))
+        .route("/api/focus-sessions/{id}/resume", post(focus::resume_session))
         .route("/api/tasks/{id}/focus-sessions", get(focus::list_for_task))
         .route("/api/recap/send", post(recap::send))
         .route_layer(middleware::from_fn_with_state(state.clone(), require_auth))

@@ -368,6 +368,22 @@ export async function startFocusSession(body: {
   return (await check(res)).json()
 }
 
+export async function pauseFocusSession(id: string): Promise<FocusSession> {
+  const res = await fetch(`${API}/api/focus-sessions/${id}/pause`, {
+    method: 'POST',
+    headers: authHeaders(),
+  })
+  return (await check(res)).json()
+}
+
+export async function resumeFocusSession(id: string): Promise<FocusSession> {
+  const res = await fetch(`${API}/api/focus-sessions/${id}/resume`, {
+    method: 'POST',
+    headers: authHeaders(),
+  })
+  return (await check(res)).json()
+}
+
 export async function endFocusSession(id: string, completed: boolean): Promise<void> {
   const res = await fetch(`${API}/api/focus-sessions/${id}/end`, {
     method: 'POST',
