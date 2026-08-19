@@ -64,6 +64,12 @@ const FILTERS: { value: Category; label: string }[] = [
   { value: 'cadence_completion', label: 'cadence' },
 ]
 
+// The backend is a free Render service that sleeps after 15 min idle, so the
+// first request after a gap often fails while it cold-starts (30-60s+).
+// Retry a few times with backoff before surfacing the manual retry button,
+// so a cold start resolves itself instead of needing a tap.
+const RETRY_DELAYS_MS = [2000, 5000, 10000, 20000]
+
 function matches(log: Log, category: Category): boolean {
   if (category === 'all') return true
   if (category === 'music') return log.parsed_type === 'album' || log.parsed_type === 'song'
@@ -212,38 +218,48 @@ function Home() {
   const submit = async (rawText: string, tempId?: string) => {
     const id = tempId ?? `tmp-${Math.random().toString(36).slice(2)}`
     setPendings((p) => [
-      { tempId: id, raw_input: rawText, failed: false },
+      { tempId: id, raw_input: rawText, failed: false, retrying: false },
       ...p.filter((x) => x.tempId !== id),
     ])
     if (!isToday) setDate(today)
-    try {
-      const { logs: created, notice: message } = await createLog(rawText)
-      const createdIds = new Set(created.map((x) => x.id))
-      const sleeps = created.filter((x) => x.parsed_type === 'sleep')
-      const rest = created.filter((x) => x.parsed_type !== 'sleep')
-      setPendings((p) => p.filter((x) => x.tempId !== id))
-      setLogs((l) => [...rest, ...l.filter((x) => !createdIds.has(x.id)), ...sleeps])
-      window.dispatchEvent(new Event('life-log-created'))
-      if (message) {
-        setNotice(message)
-        setTimeout(() => setNotice(null), 6000)
-      }
-      setJustParsed((s) => {
-        const next = new Set(s)
-        created.forEach((x) => next.add(x.id))
-        return next
-      })
-      setTimeout(() => {
+
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const { logs: created, notice: message } = await createLog(rawText)
+        const createdIds = new Set(created.map((x) => x.id))
+        const sleeps = created.filter((x) => x.parsed_type === 'sleep')
+        const rest = created.filter((x) => x.parsed_type !== 'sleep')
+        setPendings((p) => p.filter((x) => x.tempId !== id))
+        setLogs((l) => [...rest, ...l.filter((x) => !createdIds.has(x.id)), ...sleeps])
+        window.dispatchEvent(new Event('life-log-created'))
+        if (message) {
+          setNotice(message)
+          setTimeout(() => setNotice(null), 6000)
+        }
         setJustParsed((s) => {
           const next = new Set(s)
-          createdIds.forEach((x) => next.delete(x))
+          created.forEach((x) => next.add(x.id))
           return next
         })
-      }, 500)
-    } catch {
-      setPendings((p) =>
-        p.map((x) => (x.tempId === id ? { ...x, failed: true } : x)),
-      )
+        setTimeout(() => {
+          setJustParsed((s) => {
+            const next = new Set(s)
+            createdIds.forEach((x) => next.delete(x))
+            return next
+          })
+        }, 500)
+        return
+      } catch {
+        const delay = RETRY_DELAYS_MS[attempt]
+        if (delay === undefined) {
+          setPendings((p) =>
+            p.map((x) => (x.tempId === id ? { ...x, failed: true, retrying: false } : x)),
+          )
+          return
+        }
+        setPendings((p) => p.map((x) => (x.tempId === id ? { ...x, retrying: true } : x)))
+        await new Promise((r) => setTimeout(r, delay))
+      }
     }
   }
 
@@ -435,6 +451,8 @@ function Home() {
                       &times;
                     </button>
                   </>
+                ) : p.retrying ? (
+                  'retrying…'
                 ) : (
                   '...'
                 )}

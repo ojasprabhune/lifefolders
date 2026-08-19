@@ -331,6 +331,7 @@ export interface PendingLog {
   tempId: string
   raw_input: string
   failed: boolean
+  retrying: boolean
 }
 
 export type Entry =
