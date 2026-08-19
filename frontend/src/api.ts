@@ -52,6 +52,24 @@ export function saveHiddenDomains(ids: string[]) {
   localStorage.setItem(HIDDEN_DOMAINS_KEY, JSON.stringify(ids))
 }
 
+export type Theme = 'light' | 'dark'
+const THEME_KEY = 'life_theme'
+
+// null means "no explicit choice yet" - CSS falls back to the OS preference
+// via prefers-color-scheme until the switch in the guide is used once.
+export function getTheme(): Theme | null {
+  const t = localStorage.getItem(THEME_KEY)
+  return t === 'light' || t === 'dark' ? t : null
+}
+
+export function setTheme(theme: Theme) {
+  localStorage.setItem(THEME_KEY, theme)
+  document.documentElement.setAttribute('data-theme', theme)
+  document
+    .getElementById('theme-color-meta')
+    ?.setAttribute('content', theme === 'dark' ? '#1c1713' : '#fbf3ea')
+}
+
 function authHeaders(): Record<string, string> {
   const token = getToken()
   return token ? { authorization: `Bearer ${token}` } : {}

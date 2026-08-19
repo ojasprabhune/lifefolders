@@ -5,6 +5,10 @@
   --line: #eae0d3;
   --accent: #e4402a;
   --bg: #fbf3ea;
+  /* Text-on-filled-color (badges, pills, buttons with a solid --accent/domain
+     background) - stays this light cream in both themes, decoupled from
+     --bg so those stay readable once --bg flips dark. */
+  --paper: #fbf3ea;
   --food: #1f9d4d;
   --people: #2563c4;
   --music: #7c3aed;
@@ -16,6 +20,29 @@
   --task: #4338ca;
   --cadence: #65a30d;
   --focus: #e11d48;
+}
+
+/* Dark mode: applied automatically from the OS preference, unless an
+   explicit choice (the switch in the guide) is stored, in which case
+   :root[data-theme] below wins in either direction. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --ink: #f2ece3;
+    --muted: #a89a8d;
+    --faint: #5c5148;
+    --line: #362f28;
+    --accent: #ef4a34;
+    --bg: #1c1713;
+  }
+}
+
+:root[data-theme='dark'] {
+  --ink: #f2ece3;
+  --muted: #a89a8d;
+  --faint: #5c5148;
+  --line: #362f28;
+  --accent: #ef4a34;
+  --bg: #1c1713;
 }
 
 * {
@@ -297,7 +324,7 @@ header {
   font-weight: 400;
   font-size: 10px;
   line-height: 1;
-  color: var(--bg);
+  color: var(--paper);
   padding: 3px 6px 2px;
   align-self: center;
   text-transform: lowercase;
@@ -592,7 +619,7 @@ header {
 .topic-status.done {
   background: var(--accent);
   border-color: var(--accent);
-  color: var(--bg);
+  color: var(--paper);
 }
 
 .confidence {
@@ -1085,7 +1112,7 @@ header > .brand {
   align-items: center;
   gap: 14px;
   background: var(--sleep);
-  color: var(--bg);
+  color: var(--paper);
   padding: 12px 16px;
   border-radius: 10px;
   font-size: 14px;
@@ -1097,7 +1124,7 @@ header > .brand {
 .sleep-nag button {
   background: none;
   border: none;
-  color: var(--bg);
+  color: var(--paper);
   opacity: 0.7;
   cursor: pointer;
   font-size: 15px;
@@ -1119,7 +1146,7 @@ header > .brand {
   align-items: center;
   gap: 9px;
   background: var(--focus);
-  color: var(--bg);
+  color: var(--paper);
   padding: 10px 16px;
   border-radius: 10px;
   font-size: 14px;
@@ -1217,6 +1244,54 @@ header > .brand {
   height: 15px;
   accent-color: var(--accent);
   cursor: pointer;
+}
+
+.theme-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+  font-size: 14px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.theme-switch input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.theme-switch-track {
+  position: relative;
+  width: 38px;
+  height: 21px;
+  flex-shrink: 0;
+  background: var(--line);
+  border-radius: 11px;
+  transition: background 150ms ease;
+}
+
+.theme-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: var(--paper);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 150ms ease;
+}
+
+.theme-switch input:checked + .theme-switch-track {
+  background: var(--accent);
+}
+
+.theme-switch input:checked + .theme-switch-track .theme-switch-thumb {
+  transform: translateX(17px);
 }
 
 @media (max-width: 480px) {
@@ -1345,7 +1420,7 @@ header > .brand {
 .task-status.done {
   background: var(--accent);
   border-color: var(--accent);
-  color: var(--bg);
+  color: var(--paper);
 }
 
 .task-main {
@@ -1436,7 +1511,7 @@ header > .brand {
 .checkpoint-pill.done {
   background: var(--faint);
   border-color: var(--faint);
-  color: var(--bg);
+  color: var(--paper);
 }
 
 .checkpoint-pill.due {
@@ -1715,7 +1790,7 @@ header > .brand {
 .focus-start {
   align-self: flex-start;
   font-size: 16px;
-  color: var(--bg);
+  color: var(--paper);
   background: var(--focus);
   padding: 10px 22px;
 }
@@ -1779,7 +1854,7 @@ header > .brand {
 .focus-badge {
   font-family: 'calling-code', monospace;
   font-size: 12px;
-  color: var(--bg);
+  color: var(--paper);
   padding: 4px 10px 3px;
   text-transform: lowercase;
 }

@@ -1,14 +1,25 @@
 import { useState } from 'react'
-import { getHiddenDomains, saveHiddenDomains } from './api'
+import { getHiddenDomains, getTheme, saveHiddenDomains, setTheme } from './api'
 import { DOMAINS } from './domains'
+
+function resolvedTheme(stored: 'light' | 'dark' | null): 'light' | 'dark' {
+  return stored ?? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+}
 
 export function Guide() {
   const [hidden, setHidden] = useState<string[]>(() => getHiddenDomains())
+  const [theme, setThemeState] = useState(() => resolvedTheme(getTheme()))
 
   const toggle = (id: string) => {
     const next = hidden.includes(id) ? hidden.filter((h) => h !== id) : [...hidden, id]
     setHidden(next)
     saveHiddenDomains(next)
+  }
+
+  const toggleTheme = (dark: boolean) => {
+    const next = dark ? 'dark' : 'light'
+    setTheme(next)
+    setThemeState(next)
   }
 
   return (
@@ -249,6 +260,21 @@ export function Guide() {
           <li>Use the arrows next to the date to browse past days.</li>
           <li>Numbers are editable. Click a row and correct anything the parser got wrong.</li>
         </ul>
+      </section>
+
+      <section>
+        <h2>appearance</h2>
+        <p>
+          Follows your system's light/dark setting until you flip this, which pins it. Stored on
+          this device only.
+        </p>
+        <label className="theme-switch">
+          <input type="checkbox" checked={theme === 'dark'} onChange={(e) => toggleTheme(e.target.checked)} />
+          <span className="theme-switch-track">
+            <span className="theme-switch-thumb" />
+          </span>
+          dark mode
+        </label>
       </section>
 
       <section>

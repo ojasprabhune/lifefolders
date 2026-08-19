@@ -3,7 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#fbf3ea" />
+    <meta name="color-scheme" content="light dark" />
+    <meta id="theme-color-meta" name="theme-color" content="#fbf3ea" />
+    <script>
+      // Applied before the stylesheet paints, so an explicit choice (made via
+      // the switch in the guide) doesn't flash the wrong theme on load, and
+      // the browser chrome/status bar tint matches whichever theme resolves
+      // (explicit choice, else the OS preference).
+      try {
+        var stored = localStorage.getItem('life_theme')
+        var dark = stored ? stored === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches
+        if (stored === 'light' || stored === 'dark') document.documentElement.setAttribute('data-theme', stored)
+        document.getElementById('theme-color-meta').setAttribute('content', dark ? '#1c1713' : '#fbf3ea')
+      } catch (e) {}
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
