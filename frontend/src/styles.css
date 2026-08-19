@@ -88,7 +88,7 @@ button {
   margin: 0;
 }
 
-.tasks-panel {
+.side-panel {
   width: 420px;
   flex-shrink: 0;
   padding: clamp(24px, 7vh, 72px) 24px 96px;
@@ -106,7 +106,7 @@ button {
   }
 }
 
-.tasks-panel.closing {
+.side-panel.closing {
   animation: panel-out 220ms ease both;
 }
 
@@ -152,7 +152,7 @@ button {
     }
   }
 
-  .tasks-panel {
+  .side-panel {
     position: fixed;
     inset: 0 0 0 auto;
     width: min(420px, 100vw);
@@ -2035,10 +2035,16 @@ header > .brand {
   color: var(--faint);
 }
 
-.weight-delta.down {
+/* Gaining right now, so an upward delta reads as good (green) and a
+   downward one as off-track (red) - flip this back if the goal flips. */
+.weight-delta.up {
   color: var(--food);
 }
 
-.weight-delta.up {
+.weight-delta.down {
   color: var(--accent);
+}
+
+.weight-point-hit {
+  cursor: pointer;
 }

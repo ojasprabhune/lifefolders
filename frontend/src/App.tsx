@@ -100,20 +100,24 @@ export default function App() {
 
   if (!authed) return <Gate onUnlock={() => setAuthed(true)} />
 
+  // Guide and focus stay full-page swaps - guide isn't a domain, and focus is
+  // a full-screen timer you're meant to leave (the pill covers "away and
+  // back"). Every other dashboard opens as a panel beside Home instead, so
+  // switching to sidequests/music/etc. never loses today's timeline.
   let content: React.ReactNode
   if (route.startsWith('#/guide')) content = <Guide />
-  else if (route.startsWith('#/music')) content = <Music />
-  else if (route.startsWith('#/soma')) content = <Soma />
-  else if (route.startsWith('#/places')) content = <Places />
-  else if (route.startsWith('#/travel')) content = <Travel />
-  else if (route.startsWith('#/sleep')) content = <Sleep />
-  else if (route.startsWith('#/cadences')) content = <Cadences />
   else if (route.startsWith('#/focus')) content = <FocusTimer />
-  else if (route.startsWith('#/learning')) content = <Learning route={route} />
   else
     content = (
       <div className="shell">
         <Home />
+        <Music open={route.startsWith('#/music')} />
+        <Soma open={route.startsWith('#/soma')} />
+        <Places open={route.startsWith('#/places')} />
+        <Travel open={route.startsWith('#/travel')} />
+        <Sleep open={route.startsWith('#/sleep')} />
+        <Cadences open={route.startsWith('#/cadences')} />
+        <Learning route={route} open={route.startsWith('#/learning')} />
         <Tasks open={route.startsWith('#/tasks')} />
       </div>
     )

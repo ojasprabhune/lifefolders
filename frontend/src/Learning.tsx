@@ -9,13 +9,18 @@ import {
   patchTopic,
   savePlan,
 } from './api'
+import { Panel, usePanelState } from './Panel'
 import type { FieldDetail, FieldSummary, ProposedTopic, Resource, Topic } from './types'
 
-export function Learning({ route }: { route: string }) {
+export function Learning({ route, open }: { route: string; open: boolean }) {
+  const { mounted, closing } = usePanelState(open)
+  if (!mounted) return null
   const sub = route.replace(/^#\/learning\/?/, '')
-  if (sub === 'new') return <NewField />
-  if (sub) return <FieldPage id={sub} />
-  return <FieldList />
+  return (
+    <Panel closing={closing}>
+      {sub === 'new' ? <NewField /> : sub ? <FieldPage id={sub} /> : <FieldList />}
+    </Panel>
+  )
 }
 
 function FieldList() {
@@ -28,7 +33,7 @@ function FieldList() {
   }, [])
 
   return (
-    <div className="app">
+    <>
       <header>
         <h1 className="brand">learning</h1>
         <a className="guide-link" href="#/">
@@ -55,7 +60,7 @@ function FieldList() {
       <a className="action save new-field" href="#/learning/new">
         new field
       </a>
-    </div>
+    </>
   )
 }
 
@@ -84,7 +89,7 @@ function NewField() {
   }
 
   return (
-    <div className="app">
+    <>
       <header>
         <h1 className="brand">new field</h1>
         <a className="guide-link" href="#/learning">
@@ -117,7 +122,7 @@ function NewField() {
           </button>
         </div>
       </div>
-    </div>
+    </>
   )
 }
 
@@ -255,10 +260,10 @@ function FieldPage({ id }: { id: string }) {
     await refresh()
   }
 
-  if (!detail) return <div className="app" />
+  if (!detail) return null
 
   return (
-    <div className="app">
+    <>
       <header>
         <h1 className="brand">{detail.name}</h1>
         <a className="guide-link" href="#/learning">
@@ -428,6 +433,6 @@ function FieldPage({ id }: { id: string }) {
           {detail.streak > 0 && ` · ${detail.streak} day streak`}
         </p>
       </section>
-    </div>
+    </>
   )
 }

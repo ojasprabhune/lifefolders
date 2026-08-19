@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
 import { rankList } from './api'
+import { Panel, usePanelState } from './Panel'
 import { RateModal, rateProps } from './RateModal'
 import type { AlbumGroups, Log, PlaceCategory, PlaceData, Tier } from './types'
 
 const CATEGORIES: PlaceCategory[] = ['coffee', 'restaurant', 'bar', 'dessert', 'other']
 const TIER_ORDER: Tier[] = ['loved', 'fine', 'disliked']
 
-export function Places() {
+export function Places({ open }: { open: boolean }) {
   const [groups, setGroups] = useState<Record<string, AlbumGroups>>({})
   const [rateLog, setRateLog] = useState<Log | null>(null)
+  const { mounted, closing } = usePanelState(open)
 
   const refresh = useCallback(async () => {
     const out: Record<string, AlbumGroups> = {}
@@ -25,15 +27,18 @@ export function Places() {
   }, [])
 
   useEffect(() => {
+    if (!mounted) return
     void refresh()
-  }, [refresh])
+  }, [mounted, refresh])
 
   const hasAny = Object.values(groups).some((g) =>
     [...TIER_ORDER.map((t) => g[t]), g.unrated].some((list) => list.length > 0),
   )
 
+  if (!mounted) return null
+
   return (
-    <div className="app">
+    <Panel closing={closing}>
       <header>
         <h1 className="brand">places</h1>
         <a className="guide-link" href="#/">
@@ -78,6 +83,6 @@ export function Places() {
           }}
         />
       )}
-    </div>
+    </Panel>
   )
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { archiveCadence, createCadence, getCadenceCompletions, listCadences, patchCadence } from './api'
+import { Panel, usePanelState } from './Panel'
 import type { Cadence, CadenceCompletions } from './types'
 
 const WEEKS = 14
@@ -36,11 +37,12 @@ function buildWeeks(): Date[][] {
   return cols
 }
 
-export function Cadences() {
+export function Cadences({ open }: { open: boolean }) {
   const [cadences, setCadences] = useState<Cadence[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [completions, setCompletions] = useState<CadenceCompletions | null>(null)
   const [managing, setManaging] = useState(false)
+  const { mounted, closing } = usePanelState(open)
 
   const loadCadences = useCallback(async () => {
     const list = await listCadences().catch(() => [] as Cadence[])
@@ -49,10 +51,11 @@ export function Cadences() {
   }, [])
 
   useEffect(() => {
+    if (!mounted) return
     void loadCadences()
     window.addEventListener('life-log-created', loadCadences)
     return () => window.removeEventListener('life-log-created', loadCadences)
-  }, [loadCadences])
+  }, [mounted, loadCadences])
 
   const refreshCompletions = useCallback(() => {
     if (!selectedId) {
@@ -65,18 +68,21 @@ export function Cadences() {
   }, [selectedId])
 
   useEffect(() => {
+    if (!mounted) return
     refreshCompletions()
     window.addEventListener('life-log-created', refreshCompletions)
     return () => window.removeEventListener('life-log-created', refreshCompletions)
-  }, [refreshCompletions])
+  }, [mounted, refreshCompletions])
 
   const done = useMemo(() => new Set(completions?.dates ?? []), [completions])
   const weeks = useMemo(buildWeeks, [])
   const today = dateToStr(new Date())
   const selected = cadences.find((h) => h.id === selectedId) ?? null
 
+  if (!mounted) return null
+
   return (
-    <div className="app">
+    <Panel closing={closing}>
       <header>
         <h1 className="brand">cadence</h1>
         <div className="header-nav">
@@ -163,7 +169,7 @@ export function Cadences() {
           )}
         </>
       )}
-    </div>
+    </Panel>
   )
 }
 

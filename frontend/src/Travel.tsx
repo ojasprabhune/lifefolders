@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
 import { rankList } from './api'
+import { Panel, usePanelState } from './Panel'
 import { RateModal, rateProps } from './RateModal'
 import type { AlbumGroups, Log, Tier, TripData } from './types'
 
 const TIER_ORDER: Tier[] = ['loved', 'fine', 'disliked']
 
-export function Travel() {
+export function Travel({ open }: { open: boolean }) {
   const [groups, setGroups] = useState<AlbumGroups | null>(null)
   const [rateLog, setRateLog] = useState<Log | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const { mounted, closing } = usePanelState(open)
 
   const refresh = useCallback(async () => {
     try {
@@ -19,13 +21,16 @@ export function Travel() {
   }, [])
 
   useEffect(() => {
+    if (!mounted) return
     void refresh()
-  }, [refresh])
+  }, [mounted, refresh])
 
   const trips = groups ? [...TIER_ORDER.flatMap((t) => groups[t]), ...groups.unrated] : []
 
+  if (!mounted) return null
+
   return (
-    <div className="app">
+    <Panel closing={closing}>
       <header>
         <h1 className="brand">travel</h1>
         <a className="guide-link" href="#/">
@@ -105,6 +110,6 @@ export function Travel() {
           }}
         />
       )}
-    </div>
+    </Panel>
   )
 }

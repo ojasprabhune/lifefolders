@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { listSleep } from './api'
+import { Panel, usePanelState } from './Panel'
 import { formatDuration } from './Row'
 import type { Log, SleepData } from './types'
 
@@ -9,17 +10,21 @@ function dayName(dateStr: string): string {
   return DAY_NAMES[new Date(dateStr + 'T00:00').getDay()]
 }
 
-export function Sleep() {
+export function Sleep({ open }: { open: boolean }) {
   const [nights, setNights] = useState<Log[]>([])
+  const { mounted, closing } = usePanelState(open)
 
   useEffect(() => {
+    if (!mounted) return
     listSleep()
       .then(setNights)
       .catch(() => {})
-  }, [])
+  }, [mounted])
+
+  if (!mounted) return null
 
   return (
-    <div className="app">
+    <Panel closing={closing}>
       <header>
         <h1 className="brand">sleep</h1>
         <a className="guide-link" href="#/">
@@ -46,6 +51,6 @@ export function Sleep() {
         })}
         {nights.length === 0 && <div className="empty">no nights logged</div>}
       </main>
-    </div>
+    </Panel>
   )
 }

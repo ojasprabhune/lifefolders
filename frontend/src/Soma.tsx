@@ -1,20 +1,25 @@
 import { useEffect, useMemo, useState } from 'react'
 import { listWeights, listWorkouts } from './api'
+import { Panel, usePanelState } from './Panel'
 import { WorkoutBreakdown, workoutSummary, workoutVolume } from './Row'
 import type { Log, WeightData, WorkoutData } from './types'
 
-export function Soma() {
+export function Soma({ open }: { open: boolean }) {
   const [workouts, setWorkouts] = useState<Log[]>([])
   const [weights, setWeights] = useState<Log[]>([])
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const { mounted, closing } = usePanelState(open)
 
   useEffect(() => {
+    if (!mounted) return
     listWorkouts().then(setWorkouts).catch(() => {})
     listWeights().then(setWeights).catch(() => {})
-  }, [])
+  }, [mounted])
+
+  if (!mounted) return null
 
   return (
-    <div className="app">
+    <Panel closing={closing}>
       <header>
         <h1 className="brand">soma</h1>
         <a className="guide-link" href="#/">
@@ -50,7 +55,7 @@ export function Soma() {
         })}
         {workouts.length === 0 && <div className="empty">no workouts logged</div>}
       </main>
-    </div>
+    </Panel>
   )
 }
 
@@ -116,6 +121,15 @@ function WeightTrend({ weights }: { weights: Log[] }) {
         {series.length > 1 && <path d={path} fill="none" stroke="var(--gym)" strokeWidth="1.5" />}
         {series.map((s, i) => (
           <circle key={i} cx={x(s.t)} cy={y(s.value)} r={i === series.length - 1 ? 2.6 : 1.6} fill="var(--gym)" />
+        ))}
+        {/* Wider invisible hit targets layered on top - the visible dots are
+            too small to hover reliably, but should stay that size visually. */}
+        {series.map((s, i) => (
+          <circle key={i} cx={x(s.t)} cy={y(s.value)} r={7} fill="transparent" className="weight-point-hit">
+            <title>
+              {shortDate(new Date(s.t).toISOString())} · {s.value} {s.unit}
+            </title>
+          </circle>
         ))}
       </svg>
       {series.length > 1 && (

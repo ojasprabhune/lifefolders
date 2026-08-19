@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { deleteTask, listTaskFocusSessions, listTasks, patchCheckpoint, patchTask } from './api'
+import { Panel, usePanelState } from './Panel'
 import type { FocusSession, TaskWithCheckpoints } from './types'
 
 const DUE_STRIP_DAYS_BEFORE = 5
@@ -7,23 +8,11 @@ const DUE_STRIP_DAYS_AFTER = 16
 
 export function Tasks({ open }: { open: boolean }) {
   const [tasks, setTasks] = useState<TaskWithCheckpoints[]>([])
-  const [mounted, setMounted] = useState(open)
-  const [closing, setClosing] = useState(false)
+  const { mounted, closing } = usePanelState(open)
 
   const refresh = useCallback(() => {
     listTasks().then(setTasks).catch(() => {})
   }, [])
-
-  useEffect(() => {
-    if (open) {
-      setMounted(true)
-      setClosing(false)
-    } else if (mounted) {
-      setClosing(true)
-      const t = setTimeout(() => setMounted(false), 220)
-      return () => clearTimeout(t)
-    }
-  }, [open, mounted])
 
   useEffect(() => {
     if (!mounted) return
@@ -73,70 +62,64 @@ export function Tasks({ open }: { open: boolean }) {
   if (!mounted) return null
 
   return (
-    <>
-      <div
-        className={`panel-backdrop ${closing ? 'closing' : ''}`}
-        onClick={() => { window.location.hash = '#/' }}
-      />
-      <div className={`tasks-panel ${closing ? 'closing' : ''}`}>
-        <header>
-          <h1 className="brand">sidequests</h1>
-          <div className="header-nav">
-            <button className="guide-link refresh-btn" onClick={refresh}>
-              ↻
-            </button>
-            <a className="guide-link" href="#/">
-              back
-            </a>
-          </div>
-        </header>
+    <Panel closing={closing}>
+      <header>
+        <h1 className="brand">sidequests</h1>
+        <div className="header-nav">
+          <button className="guide-link refresh-btn" onClick={refresh}>
+            ↻
+          </button>
+          <a className="guide-link" href="#/">
+            back
+          </a>
+        </div>
+      </header>
 
-        <DueStrip days={dayCounts} todayIndex={DUE_STRIP_DAYS_BEFORE} />
+      <DueStrip days={dayCounts} todayIndex={DUE_STRIP_DAYS_BEFORE} />
 
-        <main className="list">
-          {Object.entries(grouped).map(([category, items]) => (
-            <section
-              key={category}
-              className={`music-section task-section ${dragOver === category ? 'drag-over' : ''}`}
-              onDragOver={(e) => {
-                e.preventDefault()
-                if (dragOver !== category) setDragOver(category)
-              }}
-              onDragLeave={() => setDragOver((c) => (c === category ? null : c))}
-              onDrop={(e) => {
-                e.preventDefault()
-                setDragOver(null)
-                const id = e.dataTransfer.getData('text/plain')
-                if (id) void moveToCategory(id, category)
-              }}
-            >
-              <h2 className="section-title">{category}</h2>
-              {items.map((t) => (
-                <TaskRow
-                  key={t.id}
-                  task={t}
-                  onCycle={() => void cycleStatus(t)}
-                  onCheckpoint={toggleCheckpoint}
-                  onDelete={() => void remove(t.id)}
-                />
+      <main className="list">
+        {Object.entries(grouped).map(([category, items]) => (
+          <section
+            key={category}
+            className={`music-section task-section ${dragOver === category ? 'drag-over' : ''}`}
+            onDragOver={(e) => {
+              e.preventDefault()
+              if (dragOver !== category) setDragOver(category)
+            }}
+            onDragLeave={() => setDragOver((c) => (c === category ? null : c))}
+            onDrop={(e) => {
+              e.preventDefault()
+              setDragOver(null)
+              const id = e.dataTransfer.getData('text/plain')
+              if (id) void moveToCategory(id, category)
+            }}
+          >
+            <h2 className="section-title">{category}</h2>
+            {items.map((t) => (
+              <TaskRow
+                key={t.id}
+                task={t}
+                onCycle={() => void cycleStatus(t)}
+                onCheckpoint={toggleCheckpoint}
+                onDelete={() => void remove(t.id)}
+              />
+            ))}
+          </section>
+        ))}
+        {openTasks.length === 0 && <div className="empty">nothing due</div>}
+
+        {resolvedTasks.length > 0 && (
+          <details className="resolved-section">
+            <summary className="section-title">resolved ({resolvedTasks.length})</summary>
+            <div className="resolved-list">
+              {resolvedTasks.map((t) => (
+                <ResolvedRow key={t.id} task={t} onCycle={() => void cycleStatus(t)} onDelete={() => void remove(t.id)} />
               ))}
-            </section>
-          ))}
-          {openTasks.length === 0 && <div className="empty">nothing due</div>}
-
-          {resolvedTasks.length > 0 && (
-            <details className="resolved-section">
-              <summary className="section-title">resolved ({resolvedTasks.length})</summary>
-              <div className="resolved-list">
-                {resolvedTasks.map((t) => (
-                  <ResolvedRow key={t.id} task={t} onCycle={() => void cycleStatus(t)} onDelete={() => void remove(t.id)} />
-                ))}
-              </div>
-            </details>
-          )}
-        </main>
-      </div>
-    </>
+            </div>
+          </details>
+        )}
+      </main>
+    </Panel>
   )
 }
 

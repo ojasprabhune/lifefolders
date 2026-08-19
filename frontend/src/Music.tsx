@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
 import { listAlbums, listSongs, updateLog } from './api'
+import { Panel, usePanelState } from './Panel'
 import { RateModal, rateProps } from './RateModal'
 import type { AlbumData, AlbumGroups, Log, SongData, Tier } from './types'
 
 const TIER_ORDER: Tier[] = ['loved', 'fine', 'disliked']
 
-export function Music() {
+export function Music({ open }: { open: boolean }) {
   const [groups, setGroups] = useState<AlbumGroups | null>(null)
   const [queue, setQueue] = useState<Log[]>([])
   const [rateAlbum, setRateAlbum] = useState<Log | null>(null)
+  const { mounted, closing } = usePanelState(open)
 
   const refresh = useCallback(async () => {
     try {
@@ -21,8 +23,9 @@ export function Music() {
   }, [])
 
   useEffect(() => {
+    if (!mounted) return
     void refresh()
-  }, [refresh])
+  }, [mounted, refresh])
 
   const markRevisited = async (song: Log) => {
     setQueue((q) => q.filter((s) => s.id !== song.id))
@@ -33,8 +36,10 @@ export function Music() {
     }
   }
 
+  if (!mounted) return null
+
   return (
-    <div className="app">
+    <Panel closing={closing}>
       <header>
         <h1 className="brand">music</h1>
         <a className="guide-link" href="#/">
@@ -101,7 +106,7 @@ export function Music() {
           }}
         />
       )}
-    </div>
+    </Panel>
   )
 }
 
