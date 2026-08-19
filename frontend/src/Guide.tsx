@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { getHiddenDomains, getTheme, saveHiddenDomains, setTheme } from './api'
+import { getHiddenDomains, getShowClock, getTheme, saveHiddenDomains, setShowClock, setTheme } from './api'
 import { DOMAINS } from './domains'
 
 function resolvedTheme(stored: 'light' | 'dark' | null): 'light' | 'dark' {
@@ -9,6 +9,7 @@ function resolvedTheme(stored: 'light' | 'dark' | null): 'light' | 'dark' {
 export function Guide() {
   const [hidden, setHidden] = useState<string[]>(() => getHiddenDomains())
   const [theme, setThemeState] = useState(() => resolvedTheme(getTheme()))
+  const [showClock, setShowClockState] = useState(() => getShowClock())
 
   const toggle = (id: string) => {
     const next = hidden.includes(id) ? hidden.filter((h) => h !== id) : [...hidden, id]
@@ -20,6 +21,11 @@ export function Guide() {
     const next = dark ? 'dark' : 'light'
     setTheme(next)
     setThemeState(next)
+  }
+
+  const toggleClock = (show: boolean) => {
+    setShowClock(show)
+    setShowClockState(show)
   }
 
   return (
@@ -265,16 +271,26 @@ export function Guide() {
       <section>
         <h2>appearance</h2>
         <p>
-          Follows your system's light/dark setting until you flip this, which pins it. Stored on
-          this device only.
+          Dark mode follows your system's light/dark setting until you flip this, which pins it.
+          The clock is a small Pacific-time readout pinned to the top right, digits fading in as
+          they change. Both are stored on this device only.
         </p>
-        <label className="theme-switch">
-          <input type="checkbox" checked={theme === 'dark'} onChange={(e) => toggleTheme(e.target.checked)} />
-          <span className="theme-switch-track">
-            <span className="theme-switch-thumb" />
-          </span>
-          dark mode
-        </label>
+        <div className="theme-switches">
+          <label className="theme-switch">
+            <input type="checkbox" checked={theme === 'dark'} onChange={(e) => toggleTheme(e.target.checked)} />
+            <span className="theme-switch-track">
+              <span className="theme-switch-thumb" />
+            </span>
+            dark mode
+          </label>
+          <label className="theme-switch">
+            <input type="checkbox" checked={showClock} onChange={(e) => toggleClock(e.target.checked)} />
+            <span className="theme-switch-track">
+              <span className="theme-switch-thumb" />
+            </span>
+            pst clock
+          </label>
+        </div>
       </section>
 
       <section>

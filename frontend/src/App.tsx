@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { createLog, getHiddenDomains, getToken, listLogs, setToken, transcribe, undoLast } from './api'
+import { createLog, getHiddenDomains, getShowClock, getToken, listLogs, setToken, transcribe, undoLast } from './api'
 import type { Category, Log, PendingLog } from './types'
 import { DOMAINS } from './domains'
 import { Row } from './Row'
+import { Clock } from './Clock'
 import { DailyPlan } from './DailyPlan'
 import { Guide } from './Guide'
 import { Soma } from './Soma'
@@ -81,11 +82,20 @@ function matches(log: Log, category: Category): boolean {
 export default function App() {
   const route = useHashRoute()
   const [authed, setAuthed] = useState(() => getToken() !== null)
+  const [showClock, setShowClockState] = useState(() => getShowClock())
 
   useEffect(() => {
     const onUnauthorized = () => setAuthed(false)
     window.addEventListener('life-unauthorized', onUnauthorized)
     return () => window.removeEventListener('life-unauthorized', onUnauthorized)
+  }, [])
+
+  // The toggle lives in the guide, a separately mounted page, so it can't
+  // just set local state here - it broadcasts instead.
+  useEffect(() => {
+    const onChange = () => setShowClockState(getShowClock())
+    window.addEventListener('life-clock-pref-changed', onChange)
+    return () => window.removeEventListener('life-clock-pref-changed', onChange)
   }, [])
 
   if (!authed) return <Gate onUnlock={() => setAuthed(true)} />
@@ -113,6 +123,7 @@ export default function App() {
       {content}
       <SleepReminder />
       <FocusPill route={route} />
+      {showClock && <Clock />}
     </>
   )
 }

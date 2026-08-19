@@ -70,6 +70,19 @@ export function setTheme(theme: Theme) {
     ?.setAttribute('content', theme === 'dark' ? '#1c1713' : '#fbf3ea')
 }
 
+const SHOW_CLOCK_KEY = 'life_show_clock'
+
+export function getShowClock(): boolean {
+  return localStorage.getItem(SHOW_CLOCK_KEY) === '1'
+}
+
+// Read from the guide's toggle and the always-mounted App shell separately,
+// so the corner clock can appear/disappear immediately without a reload.
+export function setShowClock(show: boolean) {
+  localStorage.setItem(SHOW_CLOCK_KEY, show ? '1' : '0')
+  window.dispatchEvent(new Event('life-clock-pref-changed'))
+}
+
 function authHeaders(): Record<string, string> {
   const token = getToken()
   return token ? { authorization: `Bearer ${token}` } : {}
