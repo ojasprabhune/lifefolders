@@ -68,8 +68,35 @@ pub async fn context_block(state: &AppState) -> String {
     out
 }
 
-/// Write a cadence_completion log row for an already-resolved cadence.
-pub async fn log_completion(state: &AppState, cadence_id: Uuid, cadence_name: &str, raw: &str) -> Result<Log, AppError> {
+/// Write a cadence_completion log row for an already-resolved cadence, unless
+/// it's already been marked done today — a cadence is a daily yes/no, so a
+/// second "did sat" (or a second completed focus session on it) shouldn't
+/// pile up more rows in the timeline. Returns None when skipped for that
+/// reason.
+pub async fn log_completion(
+    state: &AppState,
+    cadence_id: Uuid,
+    cadence_name: &str,
+    raw: &str,
+    tz_offset_min: i32,
+) -> Result<Option<Log>, AppError> {
+    let today = (Utc::now() - Duration::minutes(tz_offset_min as i64)).date_naive();
+    let recent: Vec<(DateTime<Utc>,)> = sqlx::query_as(
+        "SELECT created_at FROM logs \
+         WHERE parsed_type = 'cadence_completion' AND deleted_at IS NULL \
+         AND data->>'cadence_id' = $1 AND created_at >= $2",
+    )
+    .bind(cadence_id.to_string())
+    .bind(Utc::now() - Duration::days(2))
+    .fetch_all(&state.pool)
+    .await?;
+    let already_today = recent
+        .iter()
+        .any(|(ts,)| (*ts - Duration::minutes(tz_offset_min as i64)).date_naive() == today);
+    if already_today {
+        return Ok(None);
+    }
+
     let data = CadenceData {
         cadence_id,
         cadence_name: cadence_name.to_string(),
@@ -82,22 +109,31 @@ pub async fn log_completion(state: &AppState, cadence_id: Uuid, cadence_name: &s
     .bind(serde_json::to_value(&data).unwrap())
     .fetch_one(&state.pool)
     .await?;
-    Ok(log)
+    Ok(Some(log))
 }
 
-/// Resolve the free-text cadence name against the active cadences and, on a match,
-/// write a completion log row. Returns None when nothing matches so the caller
-/// can surface a notice rather than inventing a cadence.
+pub enum CadenceOutcome {
+    Logged(Log),
+    AlreadyDone,
+    NoMatch,
+}
+
+/// Resolve the free-text cadence name against the active cadences and, on a
+/// match, write a completion log row (once per day - see log_completion).
 pub async fn apply(
     state: &AppState,
     raw: &str,
     req: &CadenceCompletionRequest,
-) -> Result<Option<Log>, AppError> {
+    tz_offset_min: i32,
+) -> Result<CadenceOutcome, AppError> {
     let cadences = active_cadences(state).await?;
     let Some(cadence) = best_match(&cadences, &req.cadence_name) else {
-        return Ok(None);
+        return Ok(CadenceOutcome::NoMatch);
     };
-    Ok(Some(log_completion(state, cadence.id, &cadence.name, raw).await?))
+    Ok(match log_completion(state, cadence.id, &cadence.name, raw, tz_offset_min).await? {
+        Some(log) => CadenceOutcome::Logged(log),
+        None => CadenceOutcome::AlreadyDone,
+    })
 }
 
 pub async fn list_cadences(State(state): State<AppState>) -> Result<Json<Vec<Cadence>>, AppError> {

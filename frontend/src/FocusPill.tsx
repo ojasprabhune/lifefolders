@@ -12,11 +12,16 @@ function mmss(totalSeconds: number): string {
 // #/focus. Tap it to jump back.
 export function FocusPill({ route }: { route: string }) {
   const [active, setActive] = useState<ActiveFocusSession | null>(getFocusSession())
+  // The engine ticks with the *same* session object each second, so a plain
+  // `remaining` number (not derived from `active` at render time) is what
+  // actually forces a re-render every tick.
+  const [remaining, setRemaining] = useState(() => (active ? remainingSeconds(active) : 0))
 
   useEffect(() => {
     const onChange = (e: Event) => {
       const { session } = (e as CustomEvent<{ session: ActiveFocusSession | null }>).detail
       setActive(session)
+      setRemaining(session ? remainingSeconds(session) : 0)
     }
     window.addEventListener('life-focus-changed', onChange)
     return () => window.removeEventListener('life-focus-changed', onChange)
@@ -29,7 +34,7 @@ export function FocusPill({ route }: { route: string }) {
   return (
     <button className={`focus-pill ${paused ? 'paused' : ''}`} onClick={() => (window.location.hash = '#/focus')}>
       <span className="focus-pill-icon">{paused ? '⏸' : '⏵'}</span>
-      <span className="focus-pill-time">{mmss(remainingSeconds(active))}</span>
+      <span className="focus-pill-time">{mmss(remaining)}</span>
       <span className="focus-pill-title">{active.title}</span>
     </button>
   )

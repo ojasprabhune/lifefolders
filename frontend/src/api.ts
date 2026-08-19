@@ -388,7 +388,7 @@ export async function endFocusSession(id: string, completed: boolean): Promise<v
   const res = await fetch(`${API}/api/focus-sessions/${id}/end`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...authHeaders() },
-    body: JSON.stringify({ completed }),
+    body: JSON.stringify({ completed, tz_offset_min: new Date().getTimezoneOffset() }),
   })
   await check(res)
 }
@@ -398,8 +398,8 @@ export async function endFocusSession(id: string, completed: boolean): Promise<v
 // preflight) so it actually goes out during unload.
 export function beaconEndFocusSession(id: string, completed: boolean): void {
   const token = getToken()
-  const blob = new Blob([JSON.stringify({ completed, token })], { type: 'text/plain' })
-  navigator.sendBeacon(`${API}/api/focus-sessions/${id}/end`, blob)
+  const body = { completed, token, tz_offset_min: new Date().getTimezoneOffset() }
+  navigator.sendBeacon(`${API}/api/focus-sessions/${id}/end`, new Blob([JSON.stringify(body)], { type: 'text/plain' }))
 }
 
 export async function listTaskFocusSessions(taskId: string): Promise<FocusSession[]> {

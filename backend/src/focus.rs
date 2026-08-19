@@ -113,6 +113,7 @@ pub async fn create_session(
 struct EndBody {
     completed: bool,
     token: Option<String>,
+    tz_offset_min: Option<i32>,
 }
 
 fn authorized(state: &AppState, headers: &HeaderMap, body_token: Option<&str>) -> bool {
@@ -212,8 +213,17 @@ pub async fn end_session(
     // completion, same as saying "did sat practice" through the text input.
     if session.completed {
         if let Some(cadence_id) = session.cadence_id {
-            let completion = cadences::log_completion(&state, cadence_id, &title, &format!("focus: {title}")).await?;
-            log_ids.push(completion.id);
+            let completion = cadences::log_completion(
+                &state,
+                cadence_id,
+                &title,
+                &format!("focus: {title}"),
+                end.tz_offset_min.unwrap_or(0),
+            )
+            .await?;
+            if let Some(completion) = completion {
+                log_ids.push(completion.id);
+            }
         }
     }
 

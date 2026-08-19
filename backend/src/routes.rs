@@ -332,12 +332,15 @@ pub async fn create_log(
                 // and checkpoint aware) before returning.
                 logs.push(tasks::apply(&state, raw, req).await?);
             }
-            Action::Cadence(req) => match cadences::apply(&state, raw, &req).await? {
-                Some(log) => {
+            Action::Cadence(req) => match cadences::apply(&state, raw, &req, tz_offset).await? {
+                cadences::CadenceOutcome::Logged(log) => {
                     set_last(&state, UndoAction::LogCreated { log_ids: vec![log.id] });
                     logs.push(log);
                 }
-                None => notices.push(format!("No cadence matches \"{}\".", req.cadence_name)),
+                cadences::CadenceOutcome::AlreadyDone => {}
+                cadences::CadenceOutcome::NoMatch => {
+                    notices.push(format!("No cadence matches \"{}\".", req.cadence_name))
+                }
             },
         }
     }
