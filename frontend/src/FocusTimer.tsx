@@ -246,6 +246,9 @@ export function FocusTimer() {
             <button className="focus-pause" onClick={() => void toggleFocusPause()}>
               {paused ? 'resume' : 'pause'}
             </button>
+            <button className="focus-finish" onClick={() => void stopFocusSession(true)}>
+              finished early
+            </button>
             <button className="focus-stop" onClick={() => void stopFocusSession(false)}>
               stop
             </button>

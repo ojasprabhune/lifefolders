@@ -230,9 +230,11 @@ export function Guide() {
           for an open one (or type a new one) or "cadence" to work against a habit you're
           tracking, choose a length (25/30/45/60 or custom), and start — the countdown mirrors
           into the browser tab title so it's glanceable from another tab. It chimes when the
-          time is up, or hit stop to end early. Either way a session is logged to the timeline
-          and shows in the sidequest's history (expand one in the sidequests panel); a completed
-          cadence session also marks that cadence done for the day, same as logging it by text.
+          time is up. Wrapped up before the timer did? Hit "finished early" — it ends the
+          session the same as running out the clock (chimes, marks a tied cadence done for the
+          day). Hit stop instead if you're abandoning the session rather than finishing it; that
+          one doesn't count as done. Either way a session is logged to the timeline and shows in
+          the sidequest's history (expand one in the sidequests panel).
           Hit pause to freeze the clock without ending the session — paused time doesn't count
           against your minutes worked. The session keeps running even if you navigate elsewhere;
           a little pill in the corner shows the remaining time and jumps back to the timer when

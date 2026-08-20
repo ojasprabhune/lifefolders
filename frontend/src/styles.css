@@ -1935,6 +1935,8 @@ header > .brand {
 
 .focus-running-actions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 10px;
   margin-top: 8px;
 }
@@ -1949,6 +1951,14 @@ header > .brand {
 
 .focus-pause {
   color: var(--muted);
+}
+
+.focus-finish {
+  font-size: 15px;
+  color: var(--paper);
+  background: var(--focus);
+  border: 1px solid var(--focus);
+  padding: 8px 24px;
 }
 
 .focus-badge {
