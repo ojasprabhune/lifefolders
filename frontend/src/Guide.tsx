@@ -145,11 +145,13 @@ export function Guide() {
       </section>
 
       <section>
-        <h2>sleep</h2>
+        <h2>solace</h2>
         <p>
           Two phrases open and close a night: the entry shows a quiet sleeping state until
           you wake, then morphs into the duration. State a time and it is used instead of
-          the clock.
+          the clock. The solace tab tracks rolling averages, bedtime consistency, a streak
+          against an 8 hour goal, and a short daily note reacting to your actual recent
+          pattern instead of generic advice.
         </p>
         <ul>
           <li>sleeping now</li>

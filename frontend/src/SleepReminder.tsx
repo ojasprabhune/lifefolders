@@ -55,7 +55,7 @@ export function SleepReminder() {
 
   return (
     <div className="sleep-nag">
-      <span>🌙 past midnight — log tonight's sleep?</span>
+      <span>🌙 past midnight — log tonight's solace?</span>
       <button onClick={() => setVisible(false)} aria-label="dismiss">
         ✕
       </button>

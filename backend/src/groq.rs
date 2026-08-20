@@ -549,6 +549,45 @@ fn usable_polish(raw: &str, cleaned: &str) -> bool {
     cleaned_words >= raw_words.div_ceil(3) && cleaned_words <= raw_words + raw_words / 2 + 3
 }
 
+const SLEEP_INSIGHT_MODEL: &str = "llama-3.1-8b-instant";
+
+const SLEEP_INSIGHT_PROMPT: &str = "You are a terse sleep coach. You get a list of someone's recent \
+nights (date, weekday, duration, bedtime, wake time). Reply with exactly one short sentence, under 160 \
+characters, that reacts to a SPECIFIC pattern in this actual data - a number, a trend, a comparison \
+between nights - never a generic 'get more sleep' or 'great job'. Encouraging when the pattern is good, \
+direct but not scolding when it isn't. Output only the sentence: no quotes, no preamble, no markdown.";
+
+/// One-line reaction to a recent-nights summary, generated fresh once a day
+/// and cached by the caller. Returns None on any failure so the caller can
+/// fall back without caching a broken response.
+pub async fn sleep_insight(http: &reqwest::Client, api_key: &str, nights_summary: &str) -> Option<String> {
+    let body = json!({
+        "model": SLEEP_INSIGHT_MODEL,
+        "temperature": 0.4,
+        "max_tokens": 100,
+        "messages": [
+            {"role": "system", "content": SLEEP_INSIGHT_PROMPT},
+            {"role": "user", "content": nights_summary},
+        ],
+    });
+    let resp = http
+        .post(CHAT_URL)
+        .bearer_auth(api_key)
+        .json(&body)
+        .send()
+        .await
+        .ok()?
+        .error_for_status()
+        .ok()?;
+    let value: Value = resp.json().await.ok()?;
+    let text = value["choices"][0]["message"]["content"].as_str()?.trim();
+    let text = text.trim_matches('"').trim();
+    if text.is_empty() || text.len() > 400 {
+        return None;
+    }
+    Some(text.to_owned())
+}
+
 #[cfg(test)]
 mod tests {
     use super::usable_polish;

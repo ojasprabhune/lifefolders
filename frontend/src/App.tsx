@@ -62,7 +62,7 @@ const FILTERS: { value: Category; label: string }[] = [
   { value: 'place', label: 'places' },
   { value: 'trip', label: 'travel' },
   { value: 'learning', label: 'learning' },
-  { value: 'sleep', label: 'sleep' },
+  { value: 'sleep', label: 'solace' },
   { value: 'task', label: 'sidequests' },
   { value: 'cadence_completion', label: 'cadence' },
 ]

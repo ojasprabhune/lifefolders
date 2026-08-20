@@ -163,7 +163,7 @@ function badge(log: Log): { label: string; kind: string } {
     case 'trip':
       return { label: 'travel', kind: 'trip' }
     case 'sleep':
-      return { label: 'sleep', kind: 'sleep' }
+      return { label: 'solace', kind: 'sleep' }
     case 'learning':
       return { label: 'learning', kind: 'learning' }
     case 'task':

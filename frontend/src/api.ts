@@ -188,6 +188,13 @@ export async function listSleep(): Promise<Log[]> {
   return (await check(res)).json()
 }
 
+export async function getSleepInsight(): Promise<{ blurb: string; generated_for: string }> {
+  const res = await fetch(`${API}/api/sleep/insight?tz_offset_min=${new Date().getTimezoneOffset()}`, {
+    headers: authHeaders(),
+  })
+  return (await check(res)).json()
+}
+
 export async function transcribe(blob: Blob): Promise<string> {
   const form = new FormData()
   const ext = blob.type.includes('mp4') ? 'm4a' : 'webm'

@@ -24,6 +24,7 @@ mod models;
 mod music;
 mod rank;
 mod routes;
+mod sleep;
 mod tasks;
 mod undo;
 mod usda;
@@ -169,6 +170,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/rank", post(rank::rank))
         .route("/api/rank/list", get(rank::list))
         .route("/api/sleep", get(routes::list_sleep))
+        .route("/api/sleep/insight", get(sleep::insight))
         .route("/api/transcribe", post(routes::transcribe))
         .route("/api/fields", get(learning::list_fields).post(learning::create_field))
         .route("/api/fields/{id}", get(learning::get_field))

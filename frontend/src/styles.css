@@ -2161,3 +2161,79 @@ header > .brand {
 .weight-point-hit {
   cursor: pointer;
 }
+
+/* solace / sleep metrics */
+
+.solace-metrics {
+  margin: 4px 0 20px;
+  border: 1px solid var(--line);
+  padding: 14px 16px;
+}
+
+.solace-insight {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--ink);
+  line-height: 1.4;
+}
+
+.solace-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+  gap: 12px;
+}
+
+.solace-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.solace-stat-value {
+  font-family: 'mencken-std-text', serif;
+  font-weight: 400;
+  font-size: 20px;
+  line-height: 1.1;
+  color: var(--sleep);
+}
+
+.solace-stat-value.behind {
+  color: var(--accent);
+}
+
+.solace-stat-value.ahead {
+  color: var(--food);
+}
+
+.solace-stat-label {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.solace-split {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.solace-trend {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 40px;
+  margin-top: 14px;
+}
+
+.solace-bar {
+  flex: 1;
+  min-width: 2px;
+  background: var(--sleep);
+  opacity: 0.45;
+  border-radius: 1px;
+}
+
+.solace-bar.hit {
+  opacity: 0.9;
+}

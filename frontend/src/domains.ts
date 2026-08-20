@@ -19,7 +19,7 @@ export const DOMAINS: {
   { id: 'music', label: 'music', navHref: '#/music', filterValue: 'music', parsedTypes: ['album', 'song'] },
   { id: 'places', label: 'places', navHref: '#/places', filterValue: 'place', parsedTypes: ['place'] },
   { id: 'travel', label: 'travel', navHref: '#/travel', filterValue: 'trip', parsedTypes: ['trip'] },
-  { id: 'sleep', label: 'sleep', navHref: '#/sleep', filterValue: 'sleep', parsedTypes: ['sleep'] },
+  { id: 'solace', label: 'solace', navHref: '#/sleep', filterValue: 'sleep', parsedTypes: ['sleep'] },
   {
     id: 'cadence',
     label: 'cadence',
