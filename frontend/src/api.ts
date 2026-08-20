@@ -83,6 +83,18 @@ export function setShowClock(show: boolean) {
   window.dispatchEvent(new Event('life-clock-pref-changed'))
 }
 
+// Unauthenticated and DB-free on the backend, so this succeeds the instant
+// the process is up even if the Postgres connection or a real query would
+// still be slow - the cheapest possible "is it alive" probe.
+export async function checkHealth(): Promise<boolean> {
+  try {
+    const res = await fetch(`${API}/health`, { cache: 'no-store' })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
 function authHeaders(): Record<string, string> {
   const token = getToken()
   return token ? { authorization: `Bearer ${token}` } : {}

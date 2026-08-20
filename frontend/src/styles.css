@@ -412,6 +412,34 @@ header {
   background: var(--focus);
 }
 
+.backend-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: var(--muted);
+  animation: row-in 200ms ease both;
+}
+
+.backend-notice-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: backend-notice-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes backend-notice-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 .input-wrap {
   position: relative;
 }

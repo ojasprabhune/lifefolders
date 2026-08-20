@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createLog, getHiddenDomains, getShowClock, getToken, listLogs, setToken, transcribe, undoLast } from './api'
+import { getBackendState, markBackendOffline, markBackendOnline, type BackendState } from './backendStatus'
 import type { Category, Log, PendingLog } from './types'
 import { DOMAINS } from './domains'
 import { Row } from './Row'
@@ -157,6 +158,28 @@ export default function App() {
   )
 }
 
+// The Render backend sleeps after 15 min idle, so a cold start can take
+// well past a normal request timeout - this surfaces that state instead of
+// letting an entry just silently fail to parse.
+function BackendNotice() {
+  const [state, setState] = useState<BackendState>(() => getBackendState())
+
+  useEffect(() => {
+    const onChange = (e: Event) => setState((e as CustomEvent<BackendState>).detail)
+    window.addEventListener('life-backend-status-changed', onChange)
+    return () => window.removeEventListener('life-backend-status-changed', onChange)
+  }, [])
+
+  if (state.status === 'online') return null
+
+  return (
+    <div className="backend-notice">
+      <span className="backend-notice-dot" />
+      waking up the server… {state.secondsLeft}s
+    </div>
+  )
+}
+
 function Gate({ onUnlock }: { onUnlock: () => void }) {
   const [value, setValue] = useState('')
 
@@ -266,6 +289,7 @@ function Home() {
     for (let attempt = 0; ; attempt++) {
       try {
         const { logs: created, notice: message } = await createLog(rawText)
+        markBackendOnline()
         const createdIds = new Set(created.map((x) => x.id))
         const sleeps = created.filter((x) => x.parsed_type === 'sleep')
         const rest = created.filter((x) => x.parsed_type !== 'sleep')
@@ -290,6 +314,7 @@ function Home() {
         }, 500)
         return
       } catch {
+        if (attempt === 0) markBackendOffline()
         const delay = RETRY_DELAYS_MS[attempt]
         if (delay === undefined) {
           setPendings((p) =>
@@ -381,6 +406,8 @@ function Home() {
           </a>
         </nav>
       </header>
+
+      <BackendNotice />
 
       <div className="input-wrap">
         <input
