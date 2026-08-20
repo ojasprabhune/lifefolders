@@ -3,6 +3,7 @@ import { listCadences, listTasks } from './api'
 import type { Cadence, TaskWithCheckpoints } from './types'
 import {
   beginFocusSession,
+  extendFocus,
   getFocusSession,
   remainingSeconds,
   stopFocusSession,
@@ -245,6 +246,9 @@ export function FocusTimer() {
           <div className="focus-running-actions">
             <button className="focus-pause" onClick={() => void toggleFocusPause()}>
               {paused ? 'resume' : 'pause'}
+            </button>
+            <button className="focus-extend" onClick={() => void extendFocus(5)}>
+              +5 min
             </button>
             <button className="focus-finish" onClick={() => void stopFocusSession(true)}>
               finished early

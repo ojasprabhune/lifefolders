@@ -6,6 +6,7 @@
 import {
   beaconEndFocusSession,
   endFocusSession,
+  extendFocusSession,
   pauseFocusSession,
   resumeFocusSession,
   startFocusSession,
@@ -149,6 +150,18 @@ export async function toggleFocusPause(): Promise<void> {
   } catch {
     return // leave local state as-is; the buttons just don't toggle this time
   }
+  persist()
+  broadcast()
+}
+
+export async function extendFocus(minutes: number): Promise<void> {
+  if (!current) return
+  try {
+    await extendFocusSession(current.id, minutes)
+  } catch {
+    return // leave the clock as-is if the request failed
+  }
+  current = { ...current, planned: current.planned + minutes }
   persist()
   broadcast()
 }

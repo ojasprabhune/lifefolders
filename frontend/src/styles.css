@@ -1961,6 +1961,13 @@ header > .brand {
   padding: 8px 24px;
 }
 
+.focus-extend {
+  font-size: 15px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  padding: 8px 24px;
+}
+
 .focus-badge {
   font-family: 'calling-code', monospace;
   font-size: 12px;

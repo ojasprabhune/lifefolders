@@ -264,6 +264,31 @@ pub async fn resume_session(
     session.map(Json).ok_or(AppError::NotFound)
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ExtendBody {
+    pub minutes: i32,
+}
+
+pub async fn extend_session(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<ExtendBody>,
+) -> Result<Json<FocusSession>, AppError> {
+    if !(1..=120).contains(&body.minutes) {
+        return Err(AppError::BadRequest("minutes out of range".into()));
+    }
+    let session: Option<FocusSession> = sqlx::query_as(&format!(
+        "UPDATE focus_sessions SET planned_minutes = planned_minutes + $2 \
+         WHERE id = $1 AND ended_at IS NULL \
+         RETURNING {SESSION_COLUMNS}"
+    ))
+    .bind(id)
+    .bind(body.minutes)
+    .fetch_optional(&state.pool)
+    .await?;
+    session.map(Json).ok_or(AppError::NotFound)
+}
+
 pub async fn list_for_task(
     State(state): State<AppState>,
     Path(task_id): Path<Uuid>,
