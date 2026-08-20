@@ -1710,6 +1710,24 @@ header > .brand {
   background: transparent;
 }
 
+/* Weekly cadences get one bar per week instead of 7 day-dots - sized to
+   fill the same column height (7 cells + 6 gaps) so switching between a
+   daily and a weekly cadence via the chips doesn't jump the grid's height. */
+.cadence-cell.weekly {
+  height: 122px;
+  border: 1px solid var(--line);
+  background: transparent;
+}
+
+.cadence-cell.weekly.done {
+  border-color: var(--cadence);
+  background: var(--cadence);
+}
+
+.cadence-cell.weekly.future {
+  border-color: transparent;
+}
+
 .cadence-manage {
   margin: 18px 0 8px;
   border: 1px solid var(--line);

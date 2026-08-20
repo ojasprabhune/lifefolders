@@ -78,6 +78,7 @@ export function Cadences({ open }: { open: boolean }) {
   const weeks = useMemo(buildWeeks, [])
   const today = dateToStr(new Date())
   const selected = cadences.find((h) => h.id === selectedId) ?? null
+  const weekly = selected?.target_frequency === 'weekly'
 
   if (!mounted) return null
 
@@ -122,11 +123,11 @@ export function Cadences({ open }: { open: boolean }) {
               <div className="cadence-stats">
                 <div className="stat-tile">
                   <span className="stat-num">{completions?.current_streak ?? 0}</span>
-                  <span className="stat-label">current streak</span>
+                  <span className="stat-label">current streak{weekly ? ' (wks)' : ''}</span>
                 </div>
                 <div className="stat-tile">
                   <span className="stat-num">{completions?.longest_streak ?? 0}</span>
-                  <span className="stat-label">longest streak</span>
+                  <span className="stat-label">longest streak{weekly ? ' (wks)' : ''}</span>
                 </div>
               </div>
 
@@ -147,22 +148,41 @@ export function Cadences({ open }: { open: boolean }) {
                   })}
                 </div>
                 <div className="cadence-weeks">
-                  {weeks.map((col, i) => (
-                    <div key={i} className="cadence-week">
-                      {col.map((d) => {
-                        const str = dateToStr(d)
-                        const future = str > today
-                        const lit = done.has(str)
-                        return (
+                  {weeks.map((col, i) => {
+                    // A weekly cadence isn't meant to happen every day, so a
+                    // per-day dot per day just reads as noise - one cell per
+                    // week (hit anywhere in it, or not) matches the actual
+                    // target and lines up with the streak now counting weeks.
+                    if (weekly) {
+                      const weekStr = dateToStr(col[0])
+                      const future = weekStr > today
+                      const lit = col.some((d) => done.has(dateToStr(d)))
+                      return (
+                        <div key={i} className="cadence-week">
                           <div
-                            key={str}
-                            className={`cadence-cell ${future ? 'future' : lit ? 'done' : ''}`}
-                            title={str}
+                            className={`cadence-cell weekly ${future ? 'future' : lit ? 'done' : ''}`}
+                            title={weekStr}
                           />
-                        )
-                      })}
-                    </div>
-                  ))}
+                        </div>
+                      )
+                    }
+                    return (
+                      <div key={i} className="cadence-week">
+                        {col.map((d) => {
+                          const str = dateToStr(d)
+                          const future = str > today
+                          const lit = done.has(str)
+                          return (
+                            <div
+                              key={str}
+                              className={`cadence-cell ${future ? 'future' : lit ? 'done' : ''}`}
+                              title={str}
+                            />
+                          )
+                        })}
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             </div>

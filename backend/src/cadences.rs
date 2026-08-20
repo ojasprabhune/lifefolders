@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
-use chrono::{DateTime, Duration, NaiveDate, TimeZone, Utc};
+use chrono::{DateTime, Datelike, Duration, NaiveDate, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
@@ -232,8 +232,15 @@ pub async fn completions(
     let offset = q.tz_offset_min.unwrap_or(0);
     let today = (Utc::now() - Duration::minutes(offset as i64)).date_naive();
     // Fetch a little before the window so a streak running up to the window's
-    // first day is measured against real neighbours, not a hard cutoff.
-    let since = today - Duration::days(days + 1);
+    // first day is measured against real neighbours, not a hard cutoff. A
+    // full extra week (not just a day) so a weekly cadence's streak is safe
+    // too, in case the window's first day lands mid-week.
+    let since = today - Duration::days(days + 8);
+
+    let (freq,): (String,) = sqlx::query_as("SELECT target_frequency FROM cadences WHERE id = $1")
+        .bind(id)
+        .fetch_one(&state.pool)
+        .await?;
 
     let rows: Vec<(DateTime<Utc>,)> = sqlx::query_as(
         "SELECT created_at FROM logs \
@@ -252,8 +259,13 @@ pub async fn completions(
         .map(|(ts,)| (ts - Duration::minutes(offset as i64)).date_naive())
         .collect();
 
-    let current_streak = current_run(&all, today);
-    let longest_streak = longest_run(&all);
+    // A weekly cadence isn't meant to happen every day, so a day-based streak
+    // is nearly always zero for one - count consecutive weeks hit instead.
+    let (current_streak, longest_streak) = if freq == "weekly" {
+        (current_run_weekly(&all, today), longest_run_weekly(&all))
+    } else {
+        (current_run(&all, today), longest_run(&all))
+    };
 
     // Only surface the dates inside the requested window to the client; the
     // extra day pulled above was just for accurate streak measurement.
@@ -328,14 +340,62 @@ fn longest_run(dates: &BTreeSet<NaiveDate>) -> i64 {
     longest
 }
 
+// Sunday-aligned, matching the frontend's week columns (buildWeeks in
+// Cadences.tsx) so "this week" means the same 7 days on both ends.
+fn week_start(d: NaiveDate) -> NaiveDate {
+    d - Duration::days(d.weekday().num_days_from_sunday() as i64)
+}
+
+fn current_run_weekly(dates: &BTreeSet<NaiveDate>, today: NaiveDate) -> i64 {
+    let weeks: BTreeSet<NaiveDate> = dates.iter().map(|&d| week_start(d)).collect();
+    let this_week = week_start(today);
+    let mut week = if weeks.contains(&this_week) {
+        this_week
+    } else if weeks.contains(&(this_week - Duration::days(7))) {
+        // This week isn't done yet, but doesn't break a streak still running
+        // through last week - same idea as current_run falling back to
+        // yesterday when today is empty.
+        this_week - Duration::days(7)
+    } else {
+        return 0;
+    };
+    let mut streak = 0;
+    while weeks.contains(&week) {
+        streak += 1;
+        week -= Duration::days(7);
+    }
+    streak
+}
+
+fn longest_run_weekly(dates: &BTreeSet<NaiveDate>) -> i64 {
+    let weeks: BTreeSet<NaiveDate> = dates.iter().map(|&d| week_start(d)).collect();
+    let mut longest = 0;
+    let mut run = 0;
+    let mut prev: Option<NaiveDate> = None;
+    for &w in &weeks {
+        run = match prev {
+            Some(p) if w == p + Duration::days(7) => run + 1,
+            _ => 1,
+        };
+        longest = longest.max(run);
+        prev = Some(w);
+    }
+    longest
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{current_run, longest_run};
+    use super::{current_run, current_run_weekly, longest_run, longest_run_weekly, week_start};
     use chrono::{Duration, NaiveDate};
     use std::collections::BTreeSet;
 
     fn set(days: &[i64], today: NaiveDate) -> BTreeSet<NaiveDate> {
         days.iter().map(|&n| today + Duration::days(n)).collect()
+    }
+
+    fn weeks(offsets: &[i64], today: NaiveDate) -> BTreeSet<NaiveDate> {
+        let this_week = week_start(today);
+        offsets.iter().map(|&n| this_week + Duration::days(n * 7)).collect()
     }
 
     #[test]
@@ -365,5 +425,47 @@ mod tests {
         let today = NaiveDate::from_ymd_opt(2026, 8, 12).unwrap();
         let dates = set(&[0, -1, -3, -4, -5, -6, -9], today);
         assert_eq!(longest_run(&dates), 4);
+    }
+
+    #[test]
+    fn current_streak_weekly_counts_back_from_this_week() {
+        let today = NaiveDate::from_ymd_opt(2026, 8, 12).unwrap();
+        // this week, last week, two weeks ago hit; gap; older run
+        let dates = weeks(&[0, -1, -2, -4, -5], today);
+        assert_eq!(current_run_weekly(&dates, today), 3);
+    }
+
+    #[test]
+    fn current_streak_weekly_falls_back_to_last_week_when_this_week_missing() {
+        let today = NaiveDate::from_ymd_opt(2026, 8, 12).unwrap();
+        let dates = weeks(&[-1, -2], today);
+        assert_eq!(current_run_weekly(&dates, today), 2);
+    }
+
+    #[test]
+    fn current_streak_weekly_zero_when_gap_before_this_week() {
+        let today = NaiveDate::from_ymd_opt(2026, 8, 12).unwrap();
+        let dates = weeks(&[-2, -3], today);
+        assert_eq!(current_run_weekly(&dates, today), 0);
+    }
+
+    #[test]
+    fn longest_streak_weekly_finds_best_run() {
+        let today = NaiveDate::from_ymd_opt(2026, 8, 12).unwrap();
+        let dates = weeks(&[0, -1, -3, -4, -5, -6, -9], today);
+        assert_eq!(longest_run_weekly(&dates), 4);
+    }
+
+    #[test]
+    fn weekly_streak_ignores_which_day_within_the_week_was_hit() {
+        // Same weeks as above but hit on different weekdays each time -
+        // should still read as a 3-week streak, not scattered/zero.
+        let today = NaiveDate::from_ymd_opt(2026, 8, 12).unwrap();
+        let this_week = week_start(today);
+        let dates: BTreeSet<NaiveDate> = [(0, 2), (-1, 5), (-2, 0)]
+            .iter()
+            .map(|&(week_offset, day_offset)| this_week + Duration::days(week_offset * 7 + day_offset))
+            .collect();
+        assert_eq!(current_run_weekly(&dates, today), 3);
     }
 }

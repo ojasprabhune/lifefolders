@@ -178,7 +178,10 @@ export function Guide() {
           Define a cadence in the cadences tab (name and a daily or weekly target), then log a
           completion the same way as everything else: say you did it and it matches an active
           cadence by name. The tab shows a binary calendar grid of the last few months plus your
-          current and longest streaks. Hydration is just a cadence named "Water."
+          current and longest streaks. A daily cadence gets a dot per day; a weekly one gets a
+          single bar per week (hit anywhere in it or not) since it was never meant to happen every
+          day, and its streak counts consecutive weeks instead of days. Hydration is just a
+          cadence named "Water."
         </p>
         <ul>
           <li>meditated</li>
