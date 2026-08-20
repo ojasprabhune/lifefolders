@@ -222,6 +222,11 @@ header {
   color: var(--accent);
 }
 
+.today-filter-btn.active {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .entry-input {
   width: 100%;
   font-family: inherit;

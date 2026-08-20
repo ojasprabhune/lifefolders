@@ -8,6 +8,7 @@ const DUE_STRIP_DAYS_AFTER = 16
 
 export function Tasks({ open }: { open: boolean }) {
   const [tasks, setTasks] = useState<TaskWithCheckpoints[]>([])
+  const [todayOnly, setTodayOnly] = useState(false)
   const { mounted, closing } = usePanelState(open)
 
   const refresh = useCallback(() => {
@@ -47,6 +48,12 @@ export function Tasks({ open }: { open: boolean }) {
 
   const openTasks = tasks.filter((t) => t.status !== 'done')
   const grouped = useMemo(() => groupByCategory(openTasks), [openTasks])
+  const dueToday = useMemo(() => {
+    const today = dateToStr(new Date())
+    return openTasks
+      .filter((t) => t.due_date === today)
+      .sort((a, b) => (a.due_time ?? '99:99').localeCompare(b.due_time ?? '99:99'))
+  }, [openTasks])
   const dayCounts = useMemo(
     () => buildDayCounts(openTasks, DUE_STRIP_DAYS_BEFORE, DUE_STRIP_DAYS_AFTER),
     [openTasks],
@@ -66,6 +73,12 @@ export function Tasks({ open }: { open: boolean }) {
       <header>
         <h1 className="brand">sidequests</h1>
         <div className="header-nav">
+          <button
+            className={`guide-link today-filter-btn ${todayOnly ? 'active' : ''}`}
+            onClick={() => setTodayOnly((v) => !v)}
+          >
+            today
+          </button>
           <button className="guide-link refresh-btn" onClick={refresh}>
             ↻
           </button>
@@ -78,24 +91,10 @@ export function Tasks({ open }: { open: boolean }) {
       <DueStrip days={dayCounts} todayIndex={DUE_STRIP_DAYS_BEFORE} />
 
       <main className="list">
-        {Object.entries(grouped).map(([category, items]) => (
-          <section
-            key={category}
-            className={`music-section task-section ${dragOver === category ? 'drag-over' : ''}`}
-            onDragOver={(e) => {
-              e.preventDefault()
-              if (dragOver !== category) setDragOver(category)
-            }}
-            onDragLeave={() => setDragOver((c) => (c === category ? null : c))}
-            onDrop={(e) => {
-              e.preventDefault()
-              setDragOver(null)
-              const id = e.dataTransfer.getData('text/plain')
-              if (id) void moveToCategory(id, category)
-            }}
-          >
-            <h2 className="section-title">{category}</h2>
-            {items.map((t) => (
+        {todayOnly ? (
+          <section className="music-section task-section">
+            <h2 className="section-title">due today</h2>
+            {dueToday.map((t) => (
               <TaskRow
                 key={t.id}
                 task={t}
@@ -104,11 +103,41 @@ export function Tasks({ open }: { open: boolean }) {
                 onDelete={() => void remove(t.id)}
               />
             ))}
+            {dueToday.length === 0 && <div className="empty">nothing due today</div>}
           </section>
-        ))}
-        {openTasks.length === 0 && <div className="empty">nothing due</div>}
+        ) : (
+          Object.entries(grouped).map(([category, items]) => (
+            <section
+              key={category}
+              className={`music-section task-section ${dragOver === category ? 'drag-over' : ''}`}
+              onDragOver={(e) => {
+                e.preventDefault()
+                if (dragOver !== category) setDragOver(category)
+              }}
+              onDragLeave={() => setDragOver((c) => (c === category ? null : c))}
+              onDrop={(e) => {
+                e.preventDefault()
+                setDragOver(null)
+                const id = e.dataTransfer.getData('text/plain')
+                if (id) void moveToCategory(id, category)
+              }}
+            >
+              <h2 className="section-title">{category}</h2>
+              {items.map((t) => (
+                <TaskRow
+                  key={t.id}
+                  task={t}
+                  onCycle={() => void cycleStatus(t)}
+                  onCheckpoint={toggleCheckpoint}
+                  onDelete={() => void remove(t.id)}
+                />
+              ))}
+            </section>
+          ))
+        )}
+        {!todayOnly && openTasks.length === 0 && <div className="empty">nothing due</div>}
 
-        {resolvedTasks.length > 0 && (
+        {!todayOnly && resolvedTasks.length > 0 && (
           <details className="resolved-section">
             <summary className="section-title">resolved ({resolvedTasks.length})</summary>
             <div className="resolved-list">
