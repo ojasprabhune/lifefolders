@@ -50,8 +50,15 @@ export function Tasks({ open }: { open: boolean }) {
   const grouped = useMemo(() => groupByCategory(openTasks), [openTasks])
   const dueToday = useMemo(() => {
     const today = dateToStr(new Date())
+    // "due today" here means anything landing on today's plate: the task's
+    // own due date, or one of its spaced-review checkpoints (7d/3d/1d out
+    // from an exam) coming due - not just tasks due today themselves.
     return openTasks
-      .filter((t) => t.due_date === today)
+      .filter(
+        (t) =>
+          t.due_date === today ||
+          t.checkpoints.some((cp) => cp.status === 'todo' && cp.due_date === today),
+      )
       .sort((a, b) => (a.due_time ?? '99:99').localeCompare(b.due_time ?? '99:99'))
   }, [openTasks])
   const dayCounts = useMemo(
