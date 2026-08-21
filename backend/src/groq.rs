@@ -512,6 +512,12 @@ pub async fn polish(http: &reqwest::Client, api_key: &str, transcript: &str) -> 
         "model": POLISH_MODEL,
         "temperature": 0,
         "max_tokens": 500,
+        // gpt-oss is a reasoning model - it spends tokens on hidden
+        // reasoning before writing the actual answer, and with a capped
+        // max_tokens it can burn the whole budget there and return an
+        // empty content field. Keeping reasoning terse leaves room for it
+        // to actually answer within the cap.
+        "reasoning_effort": "low",
         "messages": [
             {"role": "system", "content": POLISH_PROMPT},
             {"role": "user", "content": raw},
@@ -564,7 +570,12 @@ pub async fn sleep_insight(http: &reqwest::Client, api_key: &str, nights_summary
     let body = json!({
         "model": SLEEP_INSIGHT_MODEL,
         "temperature": 0.4,
-        "max_tokens": 100,
+        "max_tokens": 150,
+        // See the comment in polish(): without this, gpt-oss's hidden
+        // reasoning can eat the whole max_tokens budget and leave content
+        // empty - this was the actual cause of every "couldn't reach the
+        // sleep coach" response, not a model-not-found or network error.
+        "reasoning_effort": "low",
         "messages": [
             {"role": "system", "content": SLEEP_INSIGHT_PROMPT},
             {"role": "user", "content": nights_summary},
