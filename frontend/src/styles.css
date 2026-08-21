@@ -1241,17 +1241,16 @@ header > .brand {
 
 .pst-clock {
   position: fixed;
-  /* On desktop web env(safe-area-inset-top) is 0, so this is just 18px, same
-     as before. Installed as a standalone PWA on iOS, it's the status bar's
-     height (battery/time icons live in it) - drop below that instead of
-     under it. */
-  top: max(18px, calc(env(safe-area-inset-top, 0px) + 6px));
+  /* Sits above the focus-pill's usual spot (bottom: 20px, ~38px tall) so an
+     active clarity session's pill never overlaps the clock; on iOS PWA
+     standalone, env(safe-area-inset-bottom) clears the home-indicator bar. */
+  bottom: max(70px, calc(env(safe-area-inset-bottom, 0px) + 62px));
   right: 20px;
   z-index: 40;
   display: flex;
   font-family: 'mencken-std-text', serif;
   font-weight: 400;
-  font-size: 40px;
+  font-size: 48px;
   line-height: 1;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
@@ -2170,6 +2169,39 @@ header > .brand {
   padding: 14px 16px;
 }
 
+.solace-goal-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.solace-goal-stepper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.solace-goal-stepper button {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--line);
+  background: none;
+  color: var(--ink);
+  cursor: pointer;
+  line-height: 1;
+  font-size: 14px;
+}
+
+.solace-goal-stepper button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .solace-insight {
   margin: 0 0 12px;
   font-size: 13px;
@@ -2218,22 +2250,48 @@ header > .brand {
   color: var(--muted);
 }
 
+.solace-trend-wrap {
+  margin-top: 14px;
+}
+
 .solace-trend {
+  position: relative;
   display: flex;
   align-items: flex-end;
-  gap: 2px;
-  height: 40px;
-  margin-top: 14px;
+  gap: 4px;
+  height: 56px;
 }
 
 .solace-bar {
   flex: 1;
   min-width: 2px;
   background: var(--sleep);
-  opacity: 0.45;
   border-radius: 1px;
 }
 
+/* Hit the goal that night - green like the other "on track" signals
+   (weight-delta.up), so the color itself says "good" without a legend. */
 .solace-bar.hit {
-  opacity: 0.9;
+  background: var(--food);
+}
+
+.solace-goal-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed var(--faint);
+  pointer-events: none;
+}
+
+.solace-trend-labels {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.solace-trend-label {
+  flex: 1;
+  text-align: center;
+  font-size: 9px;
+  color: var(--faint);
 }

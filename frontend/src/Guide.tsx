@@ -226,9 +226,9 @@ export function Guide() {
       </section>
 
       <section>
-        <h2>focus</h2>
+        <h2>clarity</h2>
         <p>
-          A live timer in the focus tab, attached to a sidequest or a cadence. Pick "sidequest"
+          A live timer in the clarity tab, attached to a sidequest or a cadence. Pick "sidequest"
           for an open one (or type a new one) or "cadence" to work against a habit you're
           tracking, choose a length (25/30/45/60 or custom), and start — the countdown mirrors
           into the browser tab title so it's glanceable from another tab. It chimes when the

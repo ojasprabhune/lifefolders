@@ -175,7 +175,7 @@ function badge(log: Log): { label: string; kind: string } {
     case 'weight':
       return { label: 'weight', kind: 'gym' }
     case 'focus_session':
-      return { label: 'focus', kind: 'focus' }
+      return { label: 'clarity', kind: 'focus' }
   }
 }
 

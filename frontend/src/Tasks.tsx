@@ -333,7 +333,7 @@ function TaskRow({
             ))}
           </div>
         )}
-        <a className="task-focus" href={`#/focus?task=${task.id}`} aria-label="focus on this sidequest">
+        <a className="task-focus" href={`#/focus?task=${task.id}`} aria-label="clarity session for this sidequest">
           ▷
         </a>
         <button className="delete-btn" onClick={onDelete}>
@@ -358,7 +358,7 @@ function TaskRow({
       )}
       {expanded && sessions !== null && (
         <div className="task-sessions">
-          {sessions.length === 0 && <div className="task-session-empty">no focus sessions yet</div>}
+          {sessions.length === 0 && <div className="task-session-empty">no clarity sessions yet</div>}
           {sessions.map((s) => (
             <div key={s.id} className="task-session">
               <span>{s.started_at.slice(5, 10)}</span>

@@ -139,7 +139,7 @@ export function FocusTimer() {
   return (
     <div className="app">
       <header>
-        <h1 className="brand">focus</h1>
+        <h1 className="brand">clarity</h1>
         <a className="guide-link" href="#/">
           back
         </a>

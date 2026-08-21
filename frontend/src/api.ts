@@ -83,6 +83,17 @@ export function setShowClock(show: boolean) {
   window.dispatchEvent(new Event('life-clock-pref-changed'))
 }
 
+const SLEEP_GOAL_KEY = 'life_sleep_goal_min'
+
+export function getSleepGoalMin(): number {
+  const n = Number(localStorage.getItem(SLEEP_GOAL_KEY))
+  return Number.isFinite(n) && n > 0 ? n : 480
+}
+
+export function setSleepGoalMin(min: number) {
+  localStorage.setItem(SLEEP_GOAL_KEY, String(min))
+}
+
 // Unauthenticated and DB-free on the backend, so this succeeds the instant
 // the process is up even if the Postgres connection or a real query would
 // still be slow - the cheapest possible "is it alive" probe.

@@ -28,6 +28,6 @@ export const DOMAINS: {
     parsedTypes: ['cadence_completion'],
   },
   { id: 'sidequests', label: 'sidequests', navHref: '#/tasks', filterValue: 'task', parsedTypes: ['task'] },
-  { id: 'focus', label: 'focus', navHref: '#/focus', parsedTypes: ['focus_session'] },
+  { id: 'clarity', label: 'clarity', navHref: '#/focus', parsedTypes: ['focus_session'] },
   { id: 'dailyplan', label: 'daily plan', parsedTypes: [] },
 ]
