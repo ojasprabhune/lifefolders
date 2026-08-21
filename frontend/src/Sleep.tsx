@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { getSleepGoalMin, getSleepInsight, listSleep, setSleepGoalMin } from './api'
+import { Expand } from './Expand'
 import { Panel, usePanelState } from './Panel'
 import { formatDuration } from './Row'
 import type { Log, SleepData } from './types'
@@ -83,17 +84,13 @@ export function Sleep({ open }: { open: boolean }) {
                       : 'no start recorded'}
                 </span>
               </div>
-              <div className="expand">
-                <div className="expand-inner">
-                  {isOpen && (
-                    <div className="editor">
-                      <span className="workout-meta">
-                        {timeShort(data.sleep_start)} to {timeShort(data.sleep_end)}
-                      </span>
-                    </div>
-                  )}
+              <Expand open={isOpen}>
+                <div className="editor">
+                  <span className="workout-meta">
+                    {timeShort(data.sleep_start)} to {timeShort(data.sleep_end)}
+                  </span>
                 </div>
-              </div>
+              </Expand>
             </div>
           )
         })}

@@ -852,18 +852,12 @@ header {
 }
 
 .expand {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows 220ms ease;
-}
-
-.row-wrap.open .expand {
-  grid-template-rows: 1fr;
+  overflow: hidden;
+  transition: max-height 220ms ease;
 }
 
 .expand-inner {
   overflow: hidden;
-  min-height: 0;
 }
 
 .editor {
@@ -1241,11 +1235,10 @@ header > .brand {
 
 .pst-clock {
   position: fixed;
-  /* Sits above the focus-pill's usual spot (bottom: 20px, ~38px tall) so an
-     active clarity session's pill never overlaps the clock; on iOS PWA
-     standalone, env(safe-area-inset-bottom) clears the home-indicator bar. */
-  bottom: max(70px, calc(env(safe-area-inset-bottom, 0px) + 62px));
-  right: 20px;
+  /* Bottom-left, clear of the focus-pill which lives bottom-right. On iOS
+     PWA standalone, env(safe-area-inset-bottom) clears the home-indicator. */
+  bottom: max(20px, calc(env(safe-area-inset-bottom, 0px) + 12px));
+  left: 20px;
   z-index: 40;
   display: flex;
   font-family: 'mencken-std-text', serif;

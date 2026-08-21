@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { listWeights, listWorkouts } from './api'
+import { Expand } from './Expand'
 import { Panel, usePanelState } from './Panel'
 import { WorkoutBreakdown, workoutSummary, workoutVolume } from './Row'
 import type { Log, WeightData, WorkoutData } from './types'
@@ -40,16 +41,12 @@ export function Soma({ open }: { open: boolean }) {
                 <span className="row-main">{workoutSummary(data)}</span>
                 <span className="row-right">{workoutVolume(data)}</span>
               </div>
-              <div className="expand">
-                <div className="expand-inner">
-                  {open && (
-                    <div className="editor">
-                      <WorkoutBreakdown data={data} />
-                      {data.note && <p className="workout-notes">{data.note}</p>}
-                    </div>
-                  )}
+              <Expand open={open}>
+                <div className="editor">
+                  <WorkoutBreakdown data={data} />
+                  {data.note && <p className="workout-notes">{data.note}</p>}
                 </div>
-              </div>
+              </Expand>
             </div>
           )
         })}

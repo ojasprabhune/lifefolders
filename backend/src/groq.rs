@@ -9,7 +9,7 @@ use crate::models::{
 use crate::usda;
 
 const CHAT_URL: &str = "https://api.groq.com/openai/v1/chat/completions";
-const MODELS: &[&str] = &["openai/gpt-oss-120b", "llama-3.3-70b-versatile"];
+const MODELS: &[&str] = &["openai/gpt-oss-120b", "openai/gpt-oss-20b"];
 
 #[derive(Debug, Deserialize)]
 struct ChatResponse {
@@ -486,7 +486,7 @@ async fn chat(
     Err(last_err)
 }
 
-const POLISH_MODEL: &str = "llama-3.1-8b-instant";
+const POLISH_MODEL: &str = "openai/gpt-oss-20b";
 
 const POLISH_PROMPT: &str = "You clean up a raw voice transcript of one short personal log entry \
 about food, people, music, gym, places, travel, sleep or studying. \
@@ -549,7 +549,7 @@ fn usable_polish(raw: &str, cleaned: &str) -> bool {
     cleaned_words >= raw_words.div_ceil(3) && cleaned_words <= raw_words + raw_words / 2 + 3
 }
 
-const SLEEP_INSIGHT_MODEL: &str = "llama-3.1-8b-instant";
+const SLEEP_INSIGHT_MODEL: &str = "openai/gpt-oss-20b";
 
 const SLEEP_INSIGHT_PROMPT: &str = "You are a terse sleep coach. You get a list of someone's recent \
 nights (date, weekday, duration, bedtime, wake time). Reply with exactly one short sentence, under 160 \

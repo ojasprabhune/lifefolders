@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { deleteLog, updateLog } from './api'
+import { Expand } from './Expand'
 import type {
   AlbumData,
   CadenceData,
@@ -236,18 +237,6 @@ function rightSide(log: Log, onRate: (log: Log) => void): React.ReactNode {
 }
 
 export function Row({ log, justParsed, expanded, onToggle, onChange, onDelete, onRate }: RowProps) {
-  const [renderEditor, setRenderEditor] = useState(expanded)
-
-  useEffect(() => {
-    if (expanded) {
-      setRenderEditor(true)
-      return
-    }
-    if (!renderEditor) return
-    const t = setTimeout(() => setRenderEditor(false), 220)
-    return () => clearTimeout(t)
-  }, [expanded, renderEditor])
-
   const quickDelete = async (e: React.MouseEvent) => {
     e.stopPropagation()
     try {
@@ -272,11 +261,9 @@ export function Row({ log, justParsed, expanded, onToggle, onChange, onDelete, o
           ✕
         </button>
       </div>
-      <div className="expand">
-        <div className="expand-inner">
-          {renderEditor && <Editor log={log} onChange={onChange} onDelete={onDelete} onRate={onRate} />}
-        </div>
-      </div>
+      <Expand open={expanded}>
+        <Editor log={log} onChange={onChange} onDelete={onDelete} onRate={onRate} />
+      </Expand>
     </div>
   )
 }
