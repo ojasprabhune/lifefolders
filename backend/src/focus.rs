@@ -96,17 +96,30 @@ pub async fn create_session(
         }
     };
 
+    Ok(Json(open_session(&state, task_id, cadence_id, title, body.planned_minutes).await?))
+}
+
+/// Insert the session row and pair it with the display title. Split out of
+/// create_session so a command ("/start 30 on psych notes") starts a timer
+/// through exactly the same path the picker does, having resolved the
+/// task or cadence its own way.
+pub(crate) async fn open_session(
+    state: &AppState,
+    task_id: Option<Uuid>,
+    cadence_id: Option<Uuid>,
+    title: String,
+    planned_minutes: i32,
+) -> Result<StartedSession, AppError> {
     let session: FocusSession = sqlx::query_as(&format!(
         "INSERT INTO focus_sessions (task_id, cadence_id, planned_minutes) VALUES ($1, $2, $3) \
          RETURNING {SESSION_COLUMNS}"
     ))
     .bind(task_id)
     .bind(cadence_id)
-    .bind(body.planned_minutes)
+    .bind(planned_minutes)
     .fetch_one(&state.pool)
     .await?;
-
-    Ok(Json(StartedSession { session, title }))
+    Ok(StartedSession { session, title })
 }
 
 #[derive(Debug, Deserialize)]

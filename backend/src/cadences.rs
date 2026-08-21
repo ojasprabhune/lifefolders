@@ -23,7 +23,7 @@ pub struct Cadence {
 
 const CADENCE_COLUMNS: &str = "id, name, target_frequency, active, created_at";
 
-async fn active_cadences(state: &AppState) -> Result<Vec<Cadence>, AppError> {
+pub(crate) async fn active_cadences(state: &AppState) -> Result<Vec<Cadence>, AppError> {
     Ok(sqlx::query_as(&format!(
         "SELECT {CADENCE_COLUMNS} FROM cadences WHERE active ORDER BY created_at"
     ))
@@ -35,7 +35,7 @@ async fn active_cadences(state: &AppState) -> Result<Vec<Cadence>, AppError> {
 // containment. A weaker "shares a word" tier would let "read" match "read 30
 // pages" style cadences by accident; a missed match just falls through to a
 // notice, which is safer than logging a completion against the wrong cadence.
-fn best_match<'a>(cadences: &'a [Cadence], query: &str) -> Option<&'a Cadence> {
+pub(crate) fn best_match<'a>(cadences: &'a [Cadence], query: &str) -> Option<&'a Cadence> {
     let q = query.trim().to_lowercase();
     let mut best: Option<(&Cadence, i32)> = None;
     for cadence in cadences {

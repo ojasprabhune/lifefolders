@@ -14,6 +14,7 @@ use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
 mod caldav;
+mod commands;
 mod daily;
 mod focus;
 mod groq;

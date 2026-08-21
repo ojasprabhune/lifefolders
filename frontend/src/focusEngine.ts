@@ -132,6 +132,40 @@ export async function beginFocusSession(body: {
   return current
 }
 
+// Adopt a session the backend already created (a "/start 30 on X" command),
+// instead of calling startFocusSession again and opening a second one. Same
+// bookkeeping as beginFocusSession minus the create call; a session already
+// in flight wins, so a command fired with a timer running is ignored rather
+// than silently replacing it.
+export function adoptFocusSession(s: {
+  id: string
+  title: string
+  planned_minutes: number
+  started_at: string
+}): ActiveFocusSession | null {
+  if (current) return current
+  if (!audio) {
+    const Ctx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+    audio = new Ctx()
+  }
+  void audio.resume()
+  current = {
+    id: s.id,
+    planned: s.planned_minutes,
+    title: s.title,
+    startMs: Date.parse(s.started_at),
+    pausedSeconds: 0,
+    pausedAtMs: null,
+  }
+  ended = false
+  persist()
+  scheduleTick()
+  broadcast()
+  return current
+}
+
 export async function toggleFocusPause(): Promise<void> {
   if (!current) return
   const now = Date.now()

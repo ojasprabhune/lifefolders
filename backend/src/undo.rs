@@ -21,6 +21,7 @@ pub enum UndoAction {
     LogDeleted { log_id: Uuid },
     TaskCreated { task_id: Uuid },
     TaskUpdated { snapshot: Task },
+    TasksUpdated { snapshots: Vec<Task> },
     TaskDeleted { snapshot: Task, checkpoints: Vec<Checkpoint> },
 }
 
@@ -59,6 +60,11 @@ pub async fn undo_last(State(state): State<AppState>) -> Result<StatusCode, AppE
         }
         UndoAction::TaskCreated { task_id } => tasks::undo_created(&state, task_id).await?,
         UndoAction::TaskUpdated { snapshot } => tasks::undo_updated(&state, &snapshot).await?,
+        UndoAction::TasksUpdated { snapshots } => {
+            for snapshot in &snapshots {
+                tasks::undo_updated(&state, snapshot).await?;
+            }
+        }
         UndoAction::TaskDeleted { snapshot, checkpoints } => {
             tasks::undo_deleted(&state, &snapshot, &checkpoints).await?
         }

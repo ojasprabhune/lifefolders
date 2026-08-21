@@ -268,6 +268,7 @@ export interface ProposedTopic {
 export interface CreateResponse {
   logs: Log[]
   notice: string | null
+  focus_session: StartedSession | null
 }
 
 export interface DailyNote {

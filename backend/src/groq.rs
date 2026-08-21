@@ -3,8 +3,8 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::models::{
-    Action, AlbumData, CadenceCompletionRequest, ItineraryEntry, LearningRequest, NutritionData,
-    Parsed, PersonData, PlaceData, SongData, TaskRequest, TripData, WeightData,
+    Action, AlbumData, CadenceCompletionRequest, CommandRequest, ItineraryEntry, LearningRequest,
+    NutritionData, Parsed, PersonData, PlaceData, SongData, TaskRequest, TripData, WeightData,
 };
 use crate::usda;
 
@@ -37,7 +37,7 @@ struct FunctionCall {
     arguments: String,
 }
 
-fn tools() -> Value {
+fn log_tools() -> Value {
     json!([
         {
             "type": "function",
@@ -340,6 +340,122 @@ fn tools() -> Value {
     ])
 }
 
+/// Instructions aimed at things already tracked, as opposed to records of
+/// something that happened. Kept as a separate list so an entry prefixed
+/// with "/" can be offered these and nothing else.
+fn command_tools() -> Value {
+    json!([
+        {
+            "type": "function",
+            "function": {
+                "name": "reschedule_tasks",
+                "description": "Move one or more already-tracked tasks to a new due date. Use for 'push X to friday', 'move everything due tomorrow to monday', 'reschedule the essay'.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "titles": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "The tasks to move, phrased close to their tracked titles. Use this whenever specific tasks are named."
+                        },
+                        "filter": {
+                            "type": "string",
+                            "enum": ["due_today", "due_tomorrow", "overdue"],
+                            "description": "Use instead of titles when the user names a group rather than specific tasks, e.g. 'everything due tomorrow'."
+                        },
+                        "new_due_date": { "type": "string", "description": "The new deadline as YYYY-MM-DD, resolved from the current local date in the system prompt" },
+                        "new_due_time": { "type": "string", "description": "HH:MM in 24-hour time, only when a clock time is stated" }
+                    },
+                    "required": ["new_due_date"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "set_task_status",
+                "description": "Change the status of an already-tracked task, e.g. 'mark the chem lab writeup done', 'set psych notes to in progress'.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "title": { "type": "string", "description": "The task, phrased close to its tracked title" },
+                        "status": { "type": "string", "enum": ["not_started", "in_progress", "done"] }
+                    },
+                    "required": ["title", "status"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "delete_task",
+                "description": "Remove an already-tracked task entirely, e.g. 'delete the drone club poster', 'get rid of the vocab quiz'.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "title": { "type": "string", "description": "The task, phrased close to its tracked title" }
+                    },
+                    "required": ["title"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "recategorize_task",
+                "description": "Move an already-tracked task into a different section, e.g. 'move the poster to clubs', 'that's homework not personal'.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "title": { "type": "string", "description": "The task, phrased close to its tracked title" },
+                        "category": { "type": "string", "description": "The section to move it to, e.g. homework, project, clubs, personal" }
+                    },
+                    "required": ["title", "category"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "start_focus",
+                "description": "Start a focus timer on an already-tracked task or cadence, e.g. 'start 30 on psych notes', 'focus 25 minutes on meditation'.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "title": { "type": "string", "description": "The task to work on, phrased close to its tracked title" },
+                        "cadence_name": { "type": "string", "description": "Use instead of title when the target is one of the active cadences" },
+                        "minutes": { "type": "integer", "description": "Length of the session in minutes; default 25 when unstated" }
+                    },
+                    "required": ["minutes"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "delete_last_entry",
+                "description": "Remove the most recent timeline entry, e.g. 'delete that', 'undo the last entry', 'scratch that'.",
+                "parameters": { "type": "object", "properties": {} }
+            }
+        }
+    ])
+}
+
+/// One flat list so a single call with tool_choice "required" can land on
+/// either kind. `command_only` narrows it to commands for the "/" prefix,
+/// which makes that override deterministic instead of a hint.
+fn tools(command_only: bool) -> Value {
+    if command_only {
+        return command_tools();
+    }
+    let mut all = log_tools();
+    let commands = command_tools();
+    all.as_array_mut()
+        .unwrap()
+        .extend(commands.as_array().unwrap().iter().cloned());
+    all
+}
+
 const SYSTEM_PROMPT: &str = "You parse one short personal log entry into tool calls. \
 Entries are either food eaten (log_nutrition) or people met (log_person). \
 For food, estimate realistic portion weights: a roti is about 40g, a naan about 90g, \
@@ -409,7 +525,7 @@ A stated body weight (\"weighed 158 this morning\", \"158 lbs\", \"72 kg\", \"bo
 155\") is log_weight, with the number as value and lb or kg as unit, defaulting to lb \
 when no unit is given. Body weight is never a food portion: \"2 rotis\", \"150g of rice\", \
 or \"a 200g steak\" is log_nutrition, not log_weight. \
-Always call at least one tool.";
+Most entries are records of something that happened, and get a log_ tool. Some are instructions aimed at things you are already tracking, and get a command tool instead. The test is the verb: \"finished the essay\", \"ate 2 rotis\", \"slept 7 hours\" report something that already happened and are logs. \"push the essay to friday\", \"move everything due tomorrow to monday\", \"reschedule\", \"delete the poster\", \"rename\", \"mark X done\", \"start a 30 minute timer on X\" tell you to change something that already exists, and are commands. A brand new thing with a deadline (\"psych quiz next friday\") is log_task, never reschedule_tasks - there is nothing to move yet. Only use a command tool when the thing it names is already in the open tasks or active cadences listed below; if nothing there matches, prefer the log tool that fits. Always call at least one tool.";
 
 async fn chat(
     http: &reqwest::Client,
@@ -417,6 +533,7 @@ async fn chat(
     raw_text: &str,
     context: &str,
     forced_tool: Option<&str>,
+    command_only: bool,
 ) -> Result<Vec<(String, Value)>> {
     let mut last_err = anyhow!("no groq models attempted");
     let system = format!("{SYSTEM_PROMPT}\n\n{context}");
@@ -432,7 +549,7 @@ async fn chat(
                 { "role": "system", "content": system },
                 { "role": "user", "content": raw_text }
             ],
-            "tools": tools(),
+            "tools": tools(command_only),
             "tool_choice": tool_choice,
             "temperature": 0.2
         });
@@ -668,7 +785,16 @@ pub async fn parse(
         .to_lowercase()
         .starts_with("task:")
         .then_some("log_task");
-    let calls = chat(http, groq_key, raw_text, context, forced_tool).await?;
+    // "/" is the same idea for commands. There is no tool_choice that says
+    // "any of this subset", so instead the log tools are simply not offered
+    // - the model cannot pick one even if the wording sounds like a record.
+    let command_only = raw_text.trim_start().starts_with('/');
+    let text = if command_only {
+        raw_text.trim_start().trim_start_matches('/').trim()
+    } else {
+        raw_text
+    };
+    let calls = chat(http, groq_key, text, context, forced_tool, command_only).await?;
     let mut results = Vec::with_capacity(calls.len());
     for (name, args) in calls {
         match name.as_str() {
@@ -730,6 +856,47 @@ pub async fn parse(
             "log_cadence_completion" => results.push(Action::Cadence(CadenceCompletionRequest {
                 cadence_name: as_str(&args, "cadence_name")?,
             })),
+            "reschedule_tasks" => {
+                let titles = args
+                    .get("titles")
+                    .and_then(Value::as_array)
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(Value::as_str)
+                            .map(str::trim)
+                            .filter(|s| !s.is_empty())
+                            .map(str::to_owned)
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                results.push(Action::Command(CommandRequest::RescheduleTasks {
+                    titles,
+                    filter: opt_str(&args, "filter")
+                        .filter(|f| matches!(f.as_str(), "due_today" | "due_tomorrow" | "overdue")),
+                    new_due_date: as_str(&args, "new_due_date")?,
+                    new_due_time: opt_str(&args, "new_due_time"),
+                }));
+            }
+            "set_task_status" => results.push(Action::Command(CommandRequest::SetTaskStatus {
+                title: as_str(&args, "title")?,
+                status: as_str(&args, "status")?,
+            })),
+            "delete_task" => results.push(Action::Command(CommandRequest::DeleteTask {
+                title: as_str(&args, "title")?,
+            })),
+            "recategorize_task" => results.push(Action::Command(CommandRequest::RecategorizeTask {
+                title: as_str(&args, "title")?,
+                category: as_str(&args, "category")?,
+            })),
+            "start_focus" => results.push(Action::Command(CommandRequest::StartFocus {
+                title: opt_str(&args, "title"),
+                cadence_name: opt_str(&args, "cadence_name"),
+                minutes: args
+                    .get("minutes")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(25) as i32,
+            })),
+            "delete_last_entry" => results.push(Action::Command(CommandRequest::DeleteLastEntry)),
             _ => results.extend(
                 parse_call(http, usda_key, &name, args)
                     .await?

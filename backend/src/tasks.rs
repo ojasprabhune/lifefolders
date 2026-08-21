@@ -39,7 +39,7 @@ pub struct Checkpoint {
 const TASK_COLUMNS: &str =
     "id, title, category, due_date, due_time, effort_minutes, status, is_exam, note, created_at, completed_at";
 
-async fn open_tasks(state: &AppState) -> Result<Vec<Task>, AppError> {
+pub(crate) async fn open_tasks(state: &AppState) -> Result<Vec<Task>, AppError> {
     Ok(sqlx::query_as(&format!(
         "SELECT {TASK_COLUMNS} FROM tasks \
          WHERE archived_at IS NULL AND status != 'done' ORDER BY due_date NULLS LAST"
@@ -55,7 +55,7 @@ async fn open_tasks(state: &AppState) -> Result<Vec<Task>, AppError> {
 // kept silently rescheduling one task instead of creating the other. A
 // missed update just leaves a harmless duplicate; a false match silently
 // clobbers the wrong task, which is worse, so we bias toward the former.
-fn best_match<'a>(items: &'a [Task], query: &str) -> Option<&'a Task> {
+pub(crate) fn best_match<'a>(items: &'a [Task], query: &str) -> Option<&'a Task> {
     let q = query.trim().to_lowercase();
     let mut best: Option<(&Task, i32)> = None;
     for item in items {
@@ -245,7 +245,7 @@ pub(crate) async fn create_task(state: &AppState, req: &TaskRequest) -> Result<T
     Ok(task)
 }
 
-async fn update_task(
+pub(crate) async fn update_task(
     state: &AppState,
     existing: &Task,
     req: &TaskRequest,
@@ -566,7 +566,7 @@ pub async fn patch_task(
     Ok(Json(task))
 }
 
-async fn archive_task(state: &AppState, id: Uuid) -> Result<bool, AppError> {
+pub(crate) async fn archive_task(state: &AppState, id: Uuid) -> Result<bool, AppError> {
     let existing: Option<Task> = sqlx::query_as(&format!(
         "SELECT {TASK_COLUMNS} FROM tasks WHERE id = $1 AND archived_at IS NULL"
     ))

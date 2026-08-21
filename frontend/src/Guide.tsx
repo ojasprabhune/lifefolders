@@ -268,15 +268,55 @@ export function Guide() {
       </section>
 
       <section>
+        <h2>commands</h2>
+        <p>
+          The same box that records things can also change them. Most entries are a record of
+          something that happened; some are an instruction about something already tracked, and
+          those get carried out instead of logged. The difference is the verb: "finished the
+          chem lab writeup" reports, "push the chem lab writeup to friday" instructs. A command
+          writes nothing to the timeline &mdash; it does the thing and replies with a line
+          telling you what changed, and cmd+Z puts it back.
+        </p>
+        <p>
+          Start an entry with <em>/</em> to force it to be read as a command no matter how it's
+          worded, the same idea as <em>task:</em> for sidequests. Commands only ever act on
+          sidequests and cadences you already have; if nothing matches the name you used, it
+          says so and changes nothing rather than guessing at the wrong one.
+        </p>
+        <ul>
+          <li>push everything due tomorrow to friday</li>
+          <li>mark the chem lab writeup done</li>
+          <li>move the drone club poster to homework</li>
+          <li>delete the lit vocab quiz</li>
+          <li>/start 30 on psych notes</li>
+          <li>delete that</li>
+        </ul>
+        <p className="schema">
+          reschedule &middot; set status &middot; recategorize &middot; delete a sidequest
+          &middot; start a timer &middot; delete the last entry
+        </p>
+      </section>
+
+      <section>
         <h2>search</h2>
         <p>
-          The search tab looks through every entry you've ever logged &mdash; the raw text you
-          typed and every parsed field, so a food name, an album title, a person, or a note
-          buried in a sidequest all match. Results are grouped by day, newest first, and each
-          row expands into the same editor as the timeline, so you can fix an old entry
-          without paging back to its date. Press <em>/</em> anywhere outside a text box to
-          jump straight here. Hidden domains stay hidden in results.
+          Everything above only writes. Search is how you read it back. Most of what it's for is
+          sidequests: what was that history assignment called, when was the last psych quiz, what
+          did you write in the note on a project three weeks ago. Paging the date arrows back a
+          day at a time only works for about a week &mdash; this doesn't have that limit.
         </p>
+        <p>
+          It matches the raw text you typed <em>and</em> every parsed field, so a sidequest title,
+          a note buried inside one, a food, an album, or a person all hit. Results are grouped by
+          day, newest first, and each row expands into the same editor as the timeline, so you can
+          fix an old entry in place instead of navigating to its date first. Press <em>/</em>
+          anywhere outside a text box to jump here. Hidden domains stay hidden in results.
+        </p>
+        <ul>
+          <li>psych &mdash; every quiz, note and study session on it</li>
+          <li>drone &mdash; when club work actually got done</li>
+          <li>a person's name, an album title, a food you keep eating</li>
+        </ul>
       </section>
 
       <section>

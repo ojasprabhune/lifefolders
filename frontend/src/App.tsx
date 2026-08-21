@@ -4,6 +4,7 @@ import { getBackendState, markBackendOffline, markBackendOnline, type BackendSta
 import type { Category, Log, PendingLog } from './types'
 import { DOMAINS } from './domains'
 import { Row } from './Row'
+import { adoptFocusSession } from './focusEngine'
 import { Clock } from './Clock'
 import { DailyPlan } from './DailyPlan'
 import { Guide } from './Guide'
@@ -127,6 +128,7 @@ export default function App() {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return
+      if (getHiddenDomains().includes('search')) return
       const target = e.target as HTMLElement | null
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
         return
@@ -307,17 +309,23 @@ function Home() {
 
     for (let attempt = 0; ; attempt++) {
       try {
-        const { logs: created, notice: message } = await createLog(rawText)
+        const { logs: created, notice: message, focus_session } = await createLog(rawText)
         markBackendOnline()
         const createdIds = new Set(created.map((x) => x.id))
         const sleeps = created.filter((x) => x.parsed_type === 'sleep')
         const rest = created.filter((x) => x.parsed_type !== 'sleep')
         setPendings((p) => p.filter((x) => x.tempId !== id))
         setLogs((l) => [...rest, ...l.filter((x) => !createdIds.has(x.id)), ...sleeps])
+        // Fires even when a command produced no logs at all - the sidequests
+        // panel and any open dashboard still need to pick up the change.
         window.dispatchEvent(new Event('life-log-created'))
         if (message) {
           setNotice(message)
           setTimeout(() => setNotice(null), 6000)
+        }
+        if (focus_session) {
+          adoptFocusSession(focus_session)
+          window.location.hash = '#/focus'
         }
         setJustParsed((s) => {
           const next = new Set(s)
@@ -331,6 +339,10 @@ function Home() {
             return next
           })
         }, 500)
+        // A command writes no logs row but does change ones already on
+        // screen (a deleted entry, a rescheduled sidequest), so re-read the
+        // day rather than leaving a stale list.
+        if (created.length === 0) void refresh(today)
         return
       } catch {
         if (attempt === 0) markBackendOffline()
@@ -420,9 +432,6 @@ function Home() {
               {d.label}
             </a>
           ))}
-          <a className="guide-link" href="#/search">
-            search
-          </a>
           <a className="guide-link" href="#/guide">
             guide
           </a>

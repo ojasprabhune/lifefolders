@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::models::{Action, CreateLog, ItineraryEntry, ListQuery, Log, SleepData, UpdateLog};
 use crate::undo::{set_last, UndoAction};
-use crate::{groq, cadences, learning, tasks, wger, AppState};
+use crate::{commands, groq, cadences, learning, tasks, wger, AppState};
 
 pub enum AppError {
     NotFound,
@@ -43,6 +43,9 @@ const LOG_COLUMNS: &str = "id, created_at, raw_input, parsed_type, data";
 pub struct CreateResponse {
     pub logs: Vec<Log>,
     pub notice: Option<String>,
+    // Set when a command started a timer, so the frontend can adopt that
+    // session rather than opening the picker and starting a second one.
+    pub focus_session: Option<crate::focus::StartedSession>,
 }
 
 
@@ -271,6 +274,7 @@ pub async fn create_log(
 
     let mut logs = Vec::with_capacity(actions.len());
     let mut notices = Vec::new();
+    let mut focus_session = None;
     for action in actions {
         match action {
             Action::Entry(entry) => {
@@ -332,6 +336,13 @@ pub async fn create_log(
                 // and checkpoint aware) before returning.
                 logs.push(tasks::apply(&state, raw, req).await?);
             }
+            Action::Command(req) => {
+                let outcome = commands::apply(&state, req, tz_offset).await?;
+                notices.push(outcome.notice);
+                if outcome.focus_session.is_some() {
+                    focus_session = outcome.focus_session;
+                }
+            }
             Action::Cadence(req) => match cadences::apply(&state, raw, &req, tz_offset).await? {
                 cadences::CadenceOutcome::Logged(log) => {
                     set_last(&state, UndoAction::LogCreated { log_ids: vec![log.id] });
@@ -346,7 +357,7 @@ pub async fn create_log(
     }
 
     let notice = (!notices.is_empty()).then(|| notices.join(" "));
-    Ok(Json(CreateResponse { logs, notice }))
+    Ok(Json(CreateResponse { logs, notice, focus_session }))
 }
 
 pub async fn list_workouts(State(state): State<AppState>) -> Result<Json<Vec<Log>>, AppError> {

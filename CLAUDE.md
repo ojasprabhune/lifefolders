@@ -23,6 +23,7 @@ The JSONB-first convention is: unless there's a concrete querying need beyond da
 - **groq.rs** — LLM client (Groq API, tool-calling dispatch, system prompt, context injection).
 - **learning.rs** — learning-domain-specific routes and side-effect logic (field/resource/topic CRUD, PDF ingestion, plan generation).
 - **tasks.rs** — task-domain-specific routes and side-effect logic (task/checkpoint CRUD, fuzzy-match resolution, spaced-review generation).
+- **commands.rs** — apply logic for the command tool group: reschedule/status/recategorize/delete a task, start a focus session, delete the last entry. Returns a notice, never a `logs` row.
 - **search.rs** — plain-text search across every log (`GET /api/search`), `ILIKE` over `raw_input` and `data::text`. Deliberately unindexed and LLM-free; correct at this scale.
 - **rank.rs** — shared pairwise-comparison ranking engine used by album/place/trip domains.
 - **usda.rs** — USDA FoodData Central API client for nutrition grounding.
@@ -30,11 +31,15 @@ The JSONB-first convention is: unless there's a concrete querying need beyond da
 
 ## LLM wiring
 
-A single dispatcher in `groq.rs` sends one big tool list (`log_nutrition`, `log_person`, `log_task`, `log_album`, `log_song`, `log_learning`, `log_workout`, `log_place`, `log_trip`, `log_sleep`, etc.) with `tool_choice: "required"` to one Groq model at a time. Models are tried sequentially (`openai/gpt-oss-120b` → `llama-3.3-70b-versatile`), with fallback on network/API errors.
+A single dispatcher in `groq.rs` sends one flat tool list with `tool_choice: "required"` to one Groq model at a time. The list is two groups concatenated by `tools(command_only)`: `log_tools()` (records of something that happened — `log_nutrition`, `log_person`, `log_task`, `log_album`, `log_song`, `log_learning`, `log_workout`, `log_place`, `log_trip`, `log_sleep`, etc.) and `command_tools()` (instructions about things already tracked — `reschedule_tasks`, `set_task_status`, `delete_task`, `recategorize_task`, `start_focus`, `delete_last_entry`). One call picks either kind. Models are tried sequentially (`openai/gpt-oss-120b` → `llama-3.3-70b-versatile`), with fallback on network/API errors.
 
 The one `SYSTEM_PROMPT` in `groq.rs` contains all domain-specific disambiguation rules (portion-size heuristics, exam vs. project classification, sleep parsing, etc.) — this is where cross-cutting logic lives, not in code branches.
 
 Live app state is injected into the prompt per-request via helper functions (`learning::context_block`, `tasks::context_block`) called in `routes::create_log`. This is how the model resolves free text like "finished the chem lab writeup" against an existing task without needing to know its UUID — the open tasks list is appended to the prompt, and the LLM can reference them by title. Reuse this pattern (`*_context_block`) for any future module that needs to reference live state.
+
+Two deterministic prefixes bypass the model's tool judgment in `parse()`: `task:` forces `log_task` via `tool_choice`, and `/` forces a command by narrowing the offered tools to `command_tools()` alone — there's no `tool_choice` that means "any of this subset", so the log tools simply aren't sent.
+
+Commands mutate existing state and return a `notice` (plus an optional `focus_session` for `start_focus`), never a `logs` row — `create_log` can legitimately come back with an empty `logs` array.
 
 Entities that need side effects beyond "insert into `logs`" (workout session tracking, itinerary appends, learning resource ingestion, task create-or-update) go through special `Action` variants (`Workout`, `ItineraryItem`, `Learning`, `Task`) that get dispatched in `routes::create_log`; everything else becomes `Action::Entry(Parsed::...)` and goes straight into the `logs` table.
 

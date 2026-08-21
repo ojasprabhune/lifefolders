@@ -231,6 +231,24 @@ pub enum Action {
     Learning(LearningRequest),
     Task(TaskRequest),
     Cadence(CadenceCompletionRequest),
+    Command(CommandRequest),
+}
+
+// An instruction aimed at things already tracked, rather than a record of
+// something that happened. Commands write no logs row of their own - they
+// mutate existing state and come back as a notice.
+pub enum CommandRequest {
+    RescheduleTasks {
+        titles: Vec<String>,
+        filter: Option<String>,
+        new_due_date: String,
+        new_due_time: Option<String>,
+    },
+    SetTaskStatus { title: String, status: String },
+    DeleteTask { title: String },
+    RecategorizeTask { title: String, category: String },
+    StartFocus { title: Option<String>, cadence_name: Option<String>, minutes: i32 },
+    DeleteLastEntry,
 }
 
 pub enum Parsed {
