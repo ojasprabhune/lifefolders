@@ -23,6 +23,7 @@ The JSONB-first convention is: unless there's a concrete querying need beyond da
 - **groq.rs** — LLM client (Groq API, tool-calling dispatch, system prompt, context injection).
 - **learning.rs** — learning-domain-specific routes and side-effect logic (field/resource/topic CRUD, PDF ingestion, plan generation).
 - **tasks.rs** — task-domain-specific routes and side-effect logic (task/checkpoint CRUD, fuzzy-match resolution, spaced-review generation).
+- **search.rs** — plain-text search across every log (`GET /api/search`), `ILIKE` over `raw_input` and `data::text`. Deliberately unindexed and LLM-free; correct at this scale.
 - **rank.rs** — shared pairwise-comparison ranking engine used by album/place/trip domains.
 - **usda.rs** — USDA FoodData Central API client for nutrition grounding.
 - **wger.rs** — wger.de gym API client for workout import.
@@ -74,6 +75,8 @@ When adding a new domain, pick this pattern over the recipe only when the intera
 ## Frontend architecture
 
 Hash-based router (no library): `#/` = home (daily timeline), `#/music` / `#/sleep` / `#/tasks` / etc. = dedicated dashboard pages for complex domains.
+
+`#/search` is a panel like those but is not a domain — it stays out of `DOMAINS` for the same reason `guide` does. It renders results with the shared `Row` component, holding them in local state so an edit made from search saves in place.
 
 The `Home` page renders a daily timeline filtered by date and category. Category filters (a `FILTERS` array of value/label pairs) drive chips in the header.
 

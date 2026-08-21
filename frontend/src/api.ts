@@ -162,6 +162,11 @@ export async function listLogs(date: string, category: Category): Promise<Log[]>
   return (await check(res)).json()
 }
 
+export async function searchLogs(q: string): Promise<Log[]> {
+  const res = await fetch(`${API}/api/search?q=${encodeURIComponent(q)}`, { headers: authHeaders() })
+  return (await check(res)).json()
+}
+
 export async function listAlbums(): Promise<AlbumGroups> {
   const res = await fetch(`${API}/api/albums`, { headers: authHeaders() })
   return (await check(res)).json()

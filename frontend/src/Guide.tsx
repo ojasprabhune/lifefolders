@@ -268,6 +268,18 @@ export function Guide() {
       </section>
 
       <section>
+        <h2>search</h2>
+        <p>
+          The search tab looks through every entry you've ever logged &mdash; the raw text you
+          typed and every parsed field, so a food name, an album title, a person, or a note
+          buried in a sidequest all match. Results are grouped by day, newest first, and each
+          row expands into the same editor as the timeline, so you can fix an old entry
+          without paging back to its date. Press <em>/</em> anywhere outside a text box to
+          jump straight here. Hidden domains stay hidden in results.
+        </p>
+      </section>
+
+      <section>
         <h2>tips</h2>
         <ul>
           <li>One thing per entry parses best. Log a meal as separate items for cleaner macros.</li>

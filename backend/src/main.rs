@@ -24,6 +24,7 @@ mod models;
 mod music;
 mod rank;
 mod routes;
+mod search;
 mod sleep;
 mod tasks;
 mod undo;
@@ -163,6 +164,7 @@ async fn main() -> anyhow::Result<()> {
                 .patch(routes::update_log)
                 .delete(routes::delete_log),
         )
+        .route("/api/search", get(search::search))
         .route("/api/albums", get(music::list_albums))
         .route("/api/songs", get(music::list_songs))
         .route("/api/workouts", get(routes::list_workouts))

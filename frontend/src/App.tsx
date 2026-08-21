@@ -16,6 +16,7 @@ import { Music } from './Music'
 import { usePanelState } from './Panel'
 import { Places } from './Places'
 import { RateModal, rateProps } from './RateModal'
+import { Search } from './Search'
 import { Sleep } from './Sleep'
 import { SleepReminder } from './SleepReminder'
 import { Tasks } from './Tasks'
@@ -82,6 +83,7 @@ const PANEL_ROUTE_PREFIXES = [
   '#/cadences',
   '#/learning',
   '#/tasks',
+  '#/search',
 ]
 
 function matches(log: Log, category: Category): boolean {
@@ -120,6 +122,22 @@ export default function App() {
     return () => window.removeEventListener('life-clock-pref-changed', onChange)
   }, [])
 
+  // "/" jumps to search from anywhere, except while typing - it lives here
+  // rather than in Home so it still works from the guide and focus pages.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return
+      const target = e.target as HTMLElement | null
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        return
+      }
+      e.preventDefault()
+      window.location.hash = '#/search'
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   if (!authed) return <Gate onUnlock={() => setAuthed(true)} />
 
   // Guide and focus stay full-page swaps - guide isn't a domain, and focus is
@@ -143,6 +161,7 @@ export default function App() {
             <Cadences open={route.startsWith('#/cadences')} />
             <Learning route={route} open={route.startsWith('#/learning')} />
             <Tasks open={route.startsWith('#/tasks')} />
+            <Search open={route.startsWith('#/search')} />
           </div>
         )}
       </div>
@@ -401,6 +420,9 @@ function Home() {
               {d.label}
             </a>
           ))}
+          <a className="guide-link" href="#/search">
+            search
+          </a>
           <a className="guide-link" href="#/guide">
             guide
           </a>
