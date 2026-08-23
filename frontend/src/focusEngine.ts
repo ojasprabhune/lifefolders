@@ -134,16 +134,16 @@ export async function beginFocusSession(body: {
 
 // Adopt a session the backend already created (a "/start 30 on X" command),
 // instead of calling startFocusSession again and opening a second one. Same
-// bookkeeping as beginFocusSession minus the create call; a session already
-// in flight wins, so a command fired with a timer running is ignored rather
-// than silently replacing it.
+// bookkeeping as beginFocusSession minus the create call. This always wins
+// over whatever is in local state: the server only hands one back when it
+// has no other session open, so a leftover entry here (a tab closed while
+// offline, so the end never reported) is stale and must not shadow it.
 export function adoptFocusSession(s: {
   id: string
   title: string
   planned_minutes: number
   started_at: string
-}): ActiveFocusSession | null {
-  if (current) return current
+}): ActiveFocusSession {
   if (!audio) {
     const Ctx =
       window.AudioContext ||

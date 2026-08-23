@@ -337,8 +337,9 @@ pub async fn create_log(
                 logs.push(tasks::apply(&state, raw, req).await?);
             }
             Action::Command(req) => {
-                let outcome = commands::apply(&state, req, tz_offset).await?;
+                let outcome = commands::apply(&state, raw, req, tz_offset).await?;
                 notices.push(outcome.notice);
+                logs.extend(outcome.logs);
                 if outcome.focus_session.is_some() {
                     focus_session = outcome.focus_session;
                 }

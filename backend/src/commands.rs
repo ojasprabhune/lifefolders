@@ -1,7 +1,7 @@
 use chrono::{Duration, NaiveDate, NaiveTime, Utc};
 
 use crate::focus::{self, StartedSession};
-use crate::models::{CommandRequest, Log};
+use crate::models::{CommandRequest, Log, TaskData};
 use crate::routes::AppError;
 use crate::tasks::{self, Task};
 use crate::undo::{set_last, UndoAction};
@@ -12,19 +12,50 @@ use crate::{cadences, AppState};
 /// logs list instead of a timeline entry.
 pub struct Outcome {
     pub notice: String,
+    pub logs: Vec<Log>,
     pub focus_session: Option<StartedSession>,
 }
 
 fn say(notice: impl Into<String>) -> Outcome {
-    Outcome { notice: notice.into(), focus_session: None }
+    Outcome { notice: notice.into(), logs: Vec::new(), focus_session: None }
+}
+
+/// Write the same kind of timeline row a typed sidequest update writes, so
+/// rescheduling or completing something from a command still leaves history
+/// on the home page instead of only a notice that disappears.
+async fn write_history(
+    state: &AppState,
+    raw: &str,
+    task: &Task,
+    action: &str,
+) -> Result<Log, AppError> {
+    let data = TaskData {
+        task_id: task.id,
+        title: task.title.clone(),
+        category: task.category.clone(),
+        due_date: task.due_date,
+        due_time: task.due_time,
+        status: task.status.clone(),
+        is_exam: task.is_exam,
+        action: action.to_string(),
+        note: None,
+    };
+    Ok(sqlx::query_as(
+        "INSERT INTO logs (raw_input, parsed_type, data) VALUES ($1, 'task', $2) \
+         RETURNING id, created_at, raw_input, parsed_type, data",
+    )
+    .bind(raw)
+    .bind(serde_json::to_value(&data).unwrap())
+    .fetch_one(&state.pool)
+    .await?)
 }
 
 fn pretty_date(d: NaiveDate) -> String {
     d.format("%a %b %-d").to_string()
 }
 
-fn undoable(text: String) -> Outcome {
-    say(format!("{text} — cmd+Z to undo"))
+fn undoable(text: String, logs: Vec<Log>) -> Outcome {
+    Outcome { notice: format!("{text} — cmd+Z to undo"), logs, focus_session: None }
 }
 
 /// Build the TaskRequest that leaves everything alone except the fields a
@@ -68,6 +99,7 @@ async fn filtered_tasks(
 
 pub async fn apply(
     state: &AppState,
+    raw: &str,
     req: CommandRequest,
     tz_offset: i32,
 ) -> Result<Outcome, AppError> {
@@ -114,6 +146,7 @@ pub async fn apply(
             }
 
             let mut snapshots = Vec::with_capacity(targets.len());
+            let mut logs = Vec::with_capacity(targets.len());
             for existing in &targets {
                 snapshots.push(existing.clone());
                 let mut patch = patch_for(existing);
@@ -121,7 +154,8 @@ pub async fn apply(
                 if let Some(t) = time {
                     patch.due_time = Some(t.format("%H:%M").to_string());
                 }
-                tasks::update_task(state, existing, &patch).await?;
+                let (updated, _) = tasks::update_task(state, existing, &patch).await?;
+                logs.push(write_history(state, raw, &updated, "rescheduled").await?);
             }
             set_last(state, UndoAction::TasksUpdated { snapshots });
 
@@ -135,7 +169,7 @@ pub async fn apply(
             if !missed.is_empty() {
                 notice.push_str(&format!(" (no match for \"{}\")", missed.join("\", \"")));
             }
-            Ok(undoable(notice))
+            Ok(undoable(notice, logs))
         }
 
         CommandRequest::SetTaskStatus { title, status } => {
@@ -148,14 +182,15 @@ pub async fn apply(
             let snapshot = existing.clone();
             let mut patch = patch_for(&existing);
             patch.status = Some(status.clone());
-            tasks::update_task(state, &existing, &patch).await?;
+            let (updated, _) = tasks::update_task(state, &existing, &patch).await?;
             set_last(state, UndoAction::TaskUpdated { snapshot });
+            let log = write_history(state, raw, &updated, "status").await?;
             let worded = match status.as_str() {
                 "done" => "done",
                 "in_progress" => "in progress",
                 _ => "not started",
             };
-            Ok(undoable(format!("marked {} {worded}", existing.title)))
+            Ok(undoable(format!("marked {} {worded}", existing.title), vec![log]))
         }
 
         CommandRequest::DeleteTask { title } => {
@@ -164,7 +199,8 @@ pub async fn apply(
             };
             // archive_task records its own TaskDeleted undo, checkpoints included.
             tasks::archive_task(state, existing.id).await?;
-            Ok(undoable(format!("deleted {}", existing.title)))
+            let log = write_history(state, raw, &existing, "deleted").await?;
+            Ok(undoable(format!("deleted {}", existing.title), vec![log]))
         }
 
         CommandRequest::RecategorizeTask { title, category } => {
@@ -178,13 +214,27 @@ pub async fn apply(
             let snapshot = existing.clone();
             let mut patch = patch_for(&existing);
             patch.category = Some(category.clone());
-            tasks::update_task(state, &existing, &patch).await?;
+            let (updated, _) = tasks::update_task(state, &existing, &patch).await?;
             set_last(state, UndoAction::TaskUpdated { snapshot });
-            Ok(undoable(format!("moved {} to {category}", existing.title)))
+            let log = write_history(state, raw, &updated, "moved").await?;
+            Ok(undoable(format!("moved {} to {category}", existing.title), vec![log]))
         }
 
         CommandRequest::StartFocus { title, cadence_name, minutes } => {
             let minutes = minutes.clamp(1, 600);
+            // Opening a second session while one is still running leaves an
+            // orphan the timer never shows and never ends.
+            let running: Option<(String,)> = sqlx::query_as(
+                "SELECT COALESCE(t.title, c.name, 'something') FROM focus_sessions f \
+                 LEFT JOIN tasks t ON t.id = f.task_id \
+                 LEFT JOIN cadences c ON c.id = f.cadence_id \
+                 WHERE f.ended_at IS NULL ORDER BY f.started_at DESC LIMIT 1",
+            )
+            .fetch_optional(&state.pool)
+            .await?;
+            if let Some((name,)) = running {
+                return Ok(say(format!("already timing {name} — stop that one first.")));
+            }
             if let Some(name) = cadence_name.filter(|n| !n.trim().is_empty()) {
                 let active = cadences::active_cadences(state).await?;
                 let Some(cadence) = cadences::best_match(&active, &name) else {
@@ -194,7 +244,7 @@ pub async fn apply(
                     focus::open_session(state, None, Some(cadence.id), cadence.name.clone(), minutes)
                         .await?;
                 let notice = format!("{minutes} min on {}", cadence.name);
-                return Ok(Outcome { notice, focus_session: Some(started) });
+                return Ok(Outcome { notice, logs: Vec::new(), focus_session: Some(started) });
             }
             let Some(title) = title.filter(|t| !t.trim().is_empty()) else {
                 return Ok(say("say what to focus on."));
@@ -206,7 +256,7 @@ pub async fn apply(
                 focus::open_session(state, Some(existing.id), None, existing.title.clone(), minutes)
                     .await?;
             let notice = format!("{minutes} min on {}", existing.title);
-            Ok(Outcome { notice, focus_session: Some(started) })
+            Ok(Outcome { notice, logs: Vec::new(), focus_session: Some(started) })
         }
 
         CommandRequest::DeleteLastEntry => {
@@ -224,7 +274,7 @@ pub async fn apply(
                 .execute(&state.pool)
                 .await?;
             set_last(state, UndoAction::LogDeleted { log_id: log.id });
-            Ok(undoable(format!("deleted \"{}\"", log.raw_input.trim())))
+            Ok(undoable(format!("deleted \"{}\"", log.raw_input.trim()), Vec::new()))
         }
     }
 }
