@@ -5,6 +5,7 @@ use serde_json::{json, Value};
 use crate::models::{
     Action, AlbumData, CadenceCompletionRequest, CommandRequest, ItineraryEntry, LearningRequest,
     NutritionData, Parsed, PersonData, PlaceData, SongData, TaskRequest, TripData, WeightData,
+    WishlistRequest,
 };
 use crate::usda;
 
@@ -321,6 +322,26 @@ fn log_tools() -> Value {
         {
             "type": "function",
             "function": {
+                "name": "add_wishlist_item",
+                "description": "Record something the user WANTS to do later but has not done yet: an album to hear, a place to try, a trip to take, a subject to learn. Only for wants, never for something already done.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "kind": {
+                            "type": "string",
+                            "enum": ["album", "song", "place", "trip", "learning", "other"],
+                            "description": "What sort of thing it is"
+                        },
+                        "title": { "type": "string", "description": "The thing itself, e.g. 'Igor', 'Blue Bottle', 'Lisbon', 'linear algebra'" },
+                        "detail": { "type": "string", "description": "Any extra context, e.g. who recommended it" }
+                    },
+                    "required": ["kind", "title"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "log_weight",
                 "description": "Log the user's own body weight, e.g. 'weighed 158 this morning', '72 kg', 'bodyweight 155 lbs'. This is body weight only, never food portion weights.",
                 "parameters": {
@@ -525,7 +546,7 @@ A stated body weight (\"weighed 158 this morning\", \"158 lbs\", \"72 kg\", \"bo
 155\") is log_weight, with the number as value and lb or kg as unit, defaulting to lb \
 when no unit is given. Body weight is never a food portion: \"2 rotis\", \"150g of rice\", \
 or \"a 200g steak\" is log_nutrition, not log_weight. \
-Most entries are records of something that happened, and get a log_ tool. Some are instructions aimed at things you are already tracking, and get a command tool instead. The test is the verb: \"finished the essay\", \"ate 2 rotis\", \"slept 7 hours\" report something that already happened and are logs. \"push the essay to friday\", \"move everything due tomorrow to monday\", \"reschedule\", \"delete the poster\", \"rename\", \"mark X done\", \"start a 30 minute timer on X\" tell you to change something that already exists, and are commands. A brand new thing with a deadline (\"psych quiz next friday\") is log_task, never reschedule_tasks - there is nothing to move yet. An entry phrased as an order - starting with mark, set, move, push, reschedule, delete, remove, rename, or start - is a command even when the name it uses matches nothing in the lists below. The command reports that nothing matched, which is what the user wants; quietly creating a duplicate task from a mistyped name is not. Past-tense reports of what you did yourself (\"finished the essay\", \"turned in the lab\", \"started the poster\") stay logs. Always call at least one tool.";
+Wanting to do something is not the same as doing it. \"want to listen to X\", \"want to try Y\", \"should read Q\", \"add X to my list\", \"been meaning to watch Z\" are add_wishlist_item - the user has NOT done these yet. \"listened to X\", \"went to Y\", \"read Q\" are the ordinary log tool for that domain. Future tense or a wanting verb means wishlist; past tense means a log. A wishlist item is never a task - it has no deadline and nothing is owed. Most entries are records of something that happened, and get a log_ tool. Some are instructions aimed at things you are already tracking, and get a command tool instead. The test is the verb: \"finished the essay\", \"ate 2 rotis\", \"slept 7 hours\" report something that already happened and are logs. \"push the essay to friday\", \"move everything due tomorrow to monday\", \"reschedule\", \"delete the poster\", \"rename\", \"mark X done\", \"start a 30 minute timer on X\" tell you to change something that already exists, and are commands. A brand new thing with a deadline (\"psych quiz next friday\") is log_task, never reschedule_tasks - there is nothing to move yet. An entry phrased as an order - starting with mark, set, move, push, reschedule, delete, remove, rename, or start - is a command even when the name it uses matches nothing in the lists below. The command reports that nothing matched, which is what the user wants; quietly creating a duplicate task from a mistyped name is not. Past-tense reports of what you did yourself (\"finished the essay\", \"turned in the lab\", \"started the poster\") stay logs. Always call at least one tool.";
 
 async fn chat(
     http: &reqwest::Client,
@@ -897,6 +918,13 @@ pub async fn parse(
                     .unwrap_or(25) as i32,
             })),
             "delete_last_entry" => results.push(Action::Command(CommandRequest::DeleteLastEntry)),
+            "add_wishlist_item" => results.push(Action::Wishlist(WishlistRequest {
+                kind: opt_str(&args, "kind")
+                    .filter(|k| crate::wishlist::KINDS.contains(&k.as_str()))
+                    .unwrap_or_else(|| "other".into()),
+                title: as_str(&args, "title")?,
+                detail: opt_str(&args, "detail"),
+            })),
             _ => results.extend(
                 parse_call(http, usda_key, &name, args)
                     .await?

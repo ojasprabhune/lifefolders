@@ -20,6 +20,7 @@ import type {
   TaskWithCheckpoints,
   Tier,
   Topic,
+  WishlistItem,
 } from './types'
 
 const API = import.meta.env.VITE_API_URL ?? 'https://lifefolders-api.onrender.com'
@@ -165,6 +166,41 @@ export async function listLogs(date: string, category: Category): Promise<Log[]>
 export async function searchLogs(q: string): Promise<Log[]> {
   const res = await fetch(`${API}/api/search?q=${encodeURIComponent(q)}`, { headers: authHeaders() })
   return (await check(res)).json()
+}
+
+export async function listWishlist(): Promise<WishlistItem[]> {
+  const res = await fetch(`${API}/api/wishlist`, { headers: authHeaders() })
+  return (await check(res)).json()
+}
+
+export async function addWishlistItem(body: {
+  kind: string
+  title: string
+  detail?: string
+}): Promise<WishlistItem> {
+  const res = await fetch(`${API}/api/wishlist`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(body),
+  })
+  return (await check(res)).json()
+}
+
+export async function patchWishlistItem(
+  id: string,
+  body: { title?: string; detail?: string; resolved?: boolean },
+): Promise<WishlistItem> {
+  const res = await fetch(`${API}/api/wishlist/${id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(body),
+  })
+  return (await check(res)).json()
+}
+
+export async function archiveWishlistItem(id: string): Promise<void> {
+  const res = await fetch(`${API}/api/wishlist/${id}`, { method: 'DELETE', headers: authHeaders() })
+  await check(res)
 }
 
 export async function listAlbums(): Promise<AlbumGroups> {

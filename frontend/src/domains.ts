@@ -29,6 +29,7 @@ export const DOMAINS: {
   },
   { id: 'sidequests', label: 'sidequests', navHref: '#/tasks', filterValue: 'task', parsedTypes: ['task'] },
   { id: 'clarity', label: 'clarity', navHref: '#/focus', parsedTypes: ['focus_session'] },
+  { id: 'wishlist', label: 'wishlist', navHref: '#/wishlist', filterValue: 'wishlist', parsedTypes: ['wishlist'] },
   { id: 'dailyplan', label: 'daily plan', parsedTypes: [] },
   // No filterValue or parsedTypes: search isn't a kind of entry, it's a way
   // to find them. It's here so it can be hidden like anything else.

@@ -190,6 +190,7 @@ export type ParsedType =
   | 'cadence_completion'
   | 'weight'
   | 'focus_session'
+  | 'wishlist'
 
 export interface Log {
   id: string
@@ -210,6 +211,7 @@ export interface Log {
     | CadenceData
     | WeightData
     | FocusSessionData
+    | WishlistData
 }
 
 export interface Field {
@@ -269,6 +271,26 @@ export interface CreateResponse {
   logs: Log[]
   notice: string | null
   focus_session: StartedSession | null
+}
+
+export type WishlistKind = 'album' | 'song' | 'place' | 'trip' | 'learning' | 'other'
+
+export interface WishlistItem {
+  id: string
+  kind: WishlistKind
+  title: string
+  detail: string | null
+  created_at: string
+  resolved_at: string | null
+  resolved_log_id: string | null
+}
+
+export interface WishlistData {
+  item_id: string
+  kind: WishlistKind
+  title: string
+  action: 'added' | 'resolved'
+  days_waited?: number
 }
 
 export interface DailyNote {
@@ -351,5 +373,6 @@ export type Category =
   | 'sleep'
   | 'task'
   | 'cadence_completion'
+  | 'wishlist'
 
 export type RankDomain = 'album' | 'place' | 'trip'

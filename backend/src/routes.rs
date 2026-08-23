@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::models::{Action, CreateLog, ItineraryEntry, ListQuery, Log, SleepData, UpdateLog};
 use crate::undo::{set_last, UndoAction};
-use crate::{commands, groq, cadences, learning, tasks, wger, AppState};
+use crate::{commands, groq, cadences, learning, tasks, wger, wishlist, AppState};
 
 pub enum AppError {
     NotFound,
@@ -268,6 +268,7 @@ pub async fn create_log(
     context.push_str(&learning::context_block(&state).await);
     context.push_str(&tasks::context_block(&state).await);
     context.push_str(&cadences::context_block(&state).await);
+    context.push_str(&wishlist::context_block(&state).await);
 
     let actions =
         groq::parse(&state.http, &state.groq_key, &state.usda_key, raw, &context).await?;
@@ -336,6 +337,11 @@ pub async fn create_log(
                 // and checkpoint aware) before returning.
                 logs.push(tasks::apply(&state, raw, req).await?);
             }
+            Action::Wishlist(req) => {
+                let (_, log) = wishlist::add(&state, raw, &req.kind, &req.title, req.detail).await?;
+                set_last(&state, UndoAction::LogCreated { log_ids: vec![log.id] });
+                logs.push(log);
+            }
             Action::Command(req) => {
                 let outcome = commands::apply(&state, raw, req, tz_offset).await?;
                 notices.push(outcome.notice);
@@ -354,6 +360,12 @@ pub async fn create_log(
                     notices.push(format!("No cadence matches \"{}\".", req.cadence_name))
                 }
             },
+        }
+    }
+
+    for log in &logs {
+        if let Some(message) = wishlist::try_resolve(&state, log).await? {
+            notices.push(message);
         }
     }
 

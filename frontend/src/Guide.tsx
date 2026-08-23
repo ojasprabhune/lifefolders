@@ -268,6 +268,29 @@ export function Guide() {
       </section>
 
       <section>
+        <h2>wishlist</h2>
+        <p>
+          Everywhere else in here is for things you already did. This is for things you want to do
+          later. Say you want something and it lands on the list instead of the timeline &mdash;
+          the difference is just tense: "want to listen to Igor" goes on the list, "listened to
+          Igor" is a normal log. Nothing fills this in for you; it's only what you put there.
+        </p>
+        <p>
+          The good part is it crosses itself off. When you later log the thing for real, it
+          notices, marks it done, and tells you how long it sat there. You can also add items by
+          hand at the top of the wishlist tab, tick one off with <em>done</em>, or drop it with the
+          &times;. Finished ones collapse into a <em>done</em> dropdown at the bottom with how long
+          each one waited.
+        </p>
+        <ul>
+          <li>want to listen to Igor</li>
+          <li>should read Educated at some point</li>
+          <li>want to try that ramen place downtown</li>
+          <li>been meaning to learn linear algebra</li>
+        </ul>
+      </section>
+
+      <section>
         <h2>commands</h2>
         <p>
           The same box that records things can also change them. Most entries are a record of

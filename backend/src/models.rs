@@ -232,6 +232,14 @@ pub enum Action {
     Task(TaskRequest),
     Cadence(CadenceCompletionRequest),
     Command(CommandRequest),
+    Wishlist(WishlistRequest),
+}
+
+#[derive(Debug)]
+pub struct WishlistRequest {
+    pub kind: String,
+    pub title: String,
+    pub detail: Option<String>,
 }
 
 // An instruction aimed at things already tracked, rather than a record of

@@ -16,6 +16,7 @@ import type {
   TaskData,
   TripData,
   WeightData,
+  WishlistData,
   WorkoutData,
 } from './types'
 
@@ -146,6 +147,19 @@ function summary(log: Log): string {
       const verb = f.completed ? 'focused' : 'focus (stopped)'
       return `${verb} ${f.actual_minutes}m · ${f.title}`
     }
+    case 'wishlist': {
+      const w = log.data as WishlistData
+      if (w.action === 'resolved') {
+        const waited =
+          w.days_waited === undefined
+            ? ''
+            : w.days_waited === 0
+              ? ', same day'
+              : `, after ${w.days_waited} day${w.days_waited === 1 ? '' : 's'}`
+        return `crossed off: ${w.title}${waited}`
+      }
+      return `want to: ${w.title}`
+    }
   }
 }
 
@@ -178,6 +192,8 @@ function badge(log: Log): { label: string; kind: string } {
       return { label: 'weight', kind: 'gym' }
     case 'focus_session':
       return { label: 'clarity', kind: 'focus' }
+    case 'wishlist':
+      return { label: 'wishlist', kind: 'wishlist' }
   }
 }
 

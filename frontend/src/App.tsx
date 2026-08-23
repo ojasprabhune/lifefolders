@@ -22,6 +22,7 @@ import { Sleep } from './Sleep'
 import { SleepReminder } from './SleepReminder'
 import { Tasks } from './Tasks'
 import { Travel } from './Travel'
+import { Wishlist } from './Wishlist'
 
 function localDateStr(d: Date): string {
   const y = d.getFullYear()
@@ -67,6 +68,7 @@ const FILTERS: { value: Category; label: string }[] = [
   { value: 'sleep', label: 'solace' },
   { value: 'task', label: 'sidequests' },
   { value: 'cadence_completion', label: 'cadence' },
+  { value: 'wishlist', label: 'wishlist' },
 ]
 
 // The backend is a free Render service that sleeps after 15 min idle, so the
@@ -85,6 +87,7 @@ const PANEL_ROUTE_PREFIXES = [
   '#/learning',
   '#/tasks',
   '#/search',
+  '#/wishlist',
 ]
 
 function matches(log: Log, category: Category): boolean {
@@ -164,6 +167,7 @@ export default function App() {
             <Learning route={route} open={route.startsWith('#/learning')} />
             <Tasks open={route.startsWith('#/tasks')} />
             <Search open={route.startsWith('#/search')} />
+            <Wishlist open={route.startsWith('#/wishlist')} />
           </div>
         )}
       </div>

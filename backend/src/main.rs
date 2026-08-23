@@ -31,6 +31,7 @@ mod tasks;
 mod undo;
 mod usda;
 mod wger;
+mod wishlist;
 
 #[derive(Clone)]
 pub struct CaldavConfig {
@@ -166,6 +167,11 @@ async fn main() -> anyhow::Result<()> {
                 .delete(routes::delete_log),
         )
         .route("/api/search", get(search::search))
+        .route("/api/wishlist", get(wishlist::list).post(wishlist::create))
+        .route(
+            "/api/wishlist/{id}",
+            axum::routing::patch(wishlist::patch).delete(wishlist::archive),
+        )
         .route("/api/albums", get(music::list_albums))
         .route("/api/songs", get(music::list_songs))
         .route("/api/workouts", get(routes::list_workouts))

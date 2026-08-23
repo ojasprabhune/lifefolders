@@ -20,6 +20,7 @@
   --task: #4338ca;
   --cadence: #65a30d;
   --focus: #e11d48;
+  --wishlist: #c2410c;
 }
 
 /* Dark mode: applied automatically from the OS preference, unless an
@@ -254,6 +255,51 @@ header {
   margin-bottom: 24px;
 }
 
+.wish-add {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  margin-bottom: 24px;
+}
+
+.wish-input {
+  flex: 1;
+  min-width: 0;
+  font-family: inherit;
+  font-size: 16px;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid var(--ink);
+  padding: 8px 0 10px;
+  outline: none;
+  border-radius: 0;
+}
+
+.wish-input::placeholder {
+  color: var(--faint);
+}
+
+.wish-input:focus {
+  border-bottom-color: var(--accent);
+}
+
+.wish-kind {
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.wish-age {
+  color: var(--faint);
+  font-size: 13px;
+  margin-right: 10px;
+}
+
 .dateline {
   display: flex;
   align-items: baseline;
@@ -419,6 +465,10 @@ header {
 
 .badge.focus {
   background: var(--focus);
+}
+
+.badge.wishlist {
+  background: var(--wishlist);
 }
 
 .backend-notice {
