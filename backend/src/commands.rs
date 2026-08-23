@@ -1,4 +1,5 @@
 use chrono::{Duration, NaiveDate, NaiveTime, Utc};
+use uuid::Uuid;
 
 use crate::focus::{self, StartedSession};
 use crate::models::{CommandRequest, Log, TaskData};
@@ -223,17 +224,33 @@ pub async fn apply(
         CommandRequest::StartFocus { title, cadence_name, minutes } => {
             let minutes = minutes.clamp(1, 600);
             // Opening a second session while one is still running leaves an
-            // orphan the timer never shows and never ends.
-            let running: Option<(String,)> = sqlx::query_as(
-                "SELECT COALESCE(t.title, c.name, 'something') FROM focus_sessions f \
+            // orphan the timer never shows and never ends. A session whose
+            // planned time has already run out, though, is one the browser
+            // never got to close (tab shut while offline, so the end never
+            // reported) - refusing on those would wedge the command forever,
+            // so close them out first and carry on.
+            let open: Option<(Uuid, String, i32, chrono::DateTime<Utc>)> = sqlx::query_as(
+                "SELECT f.id, COALESCE(t.title, c.name, 'something'), f.planned_minutes, f.started_at \
+                 FROM focus_sessions f \
                  LEFT JOIN tasks t ON t.id = f.task_id \
                  LEFT JOIN cadences c ON c.id = f.cadence_id \
                  WHERE f.ended_at IS NULL ORDER BY f.started_at DESC LIMIT 1",
             )
             .fetch_optional(&state.pool)
             .await?;
-            if let Some((name,)) = running {
-                return Ok(say(format!("already timing {name} — stop that one first.")));
+            if let Some((id, name, planned, started_at)) = open {
+                let elapsed = (Utc::now() - started_at).num_minutes();
+                if elapsed < planned as i64 {
+                    return Ok(say(format!("already timing {name} — stop that one first.")));
+                }
+                sqlx::query(
+                    "UPDATE focus_sessions SET ended_at = now(), actual_minutes = $2, \
+                     completed = false WHERE id = $1 AND ended_at IS NULL",
+                )
+                .bind(id)
+                .bind(planned)
+                .execute(&state.pool)
+                .await?;
             }
             if let Some(name) = cadence_name.filter(|n| !n.trim().is_empty()) {
                 let active = cadences::active_cadences(state).await?;
