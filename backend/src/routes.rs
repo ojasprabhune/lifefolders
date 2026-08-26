@@ -260,11 +260,29 @@ pub async fn create_log(
     let tz_offset = body.tz_offset_min.unwrap_or(0);
 
     let now_local = Utc::now() - Duration::minutes(tz_offset as i64);
+    // Only a *past* day counts as backdating. A for_date equal to today (or,
+    // defensively, in the future) is just the normal case.
+    let for_date = body
+        .for_date
+        .as_deref()
+        .and_then(|s| NaiveDate::parse_from_str(s.trim(), "%Y-%m-%d").ok())
+        .filter(|d| *d < now_local.date_naive());
+
     let mut context = format!(
         "Current local datetime: {} ({}).\n",
         now_local.format("%Y-%m-%dT%H:%M"),
         now_local.format("%A")
     );
+    if let Some(d) = for_date {
+        context.push_str(&format!(
+            "This entry is being logged for {} ({}), not for today. Resolve \"today\", \
+             \"this morning\", \"tonight\" and any other relative wording against {} \
+             rather than the current date.\n",
+            d,
+            d.format("%A"),
+            d
+        ));
+    }
     context.push_str(&learning::context_block(&state).await);
     context.push_str(&tasks::context_block(&state).await);
     context.push_str(&cadences::context_block(&state).await);
@@ -350,7 +368,9 @@ pub async fn create_log(
                     focus_session = outcome.focus_session;
                 }
             }
-            Action::Cadence(req) => match cadences::apply(&state, raw, &req, tz_offset).await? {
+            Action::Cadence(req) => match cadences::apply(&state, raw, &req, tz_offset, for_date)
+                .await?
+            {
                 cadences::CadenceOutcome::Logged(log) => {
                     set_last(&state, UndoAction::LogCreated { log_ids: vec![log.id] });
                     logs.push(log);
@@ -366,6 +386,27 @@ pub async fn create_log(
     for log in &logs {
         if let Some(message) = wishlist::try_resolve(&state, log).await? {
             notices.push(message);
+        }
+    }
+
+    // Every timeline query buckets rows by created_at's local date, so moving
+    // an entry to another day is entirely a matter of restamping it. Doing it
+    // here once covers every path above - nutrition, sleep, tasks, cadences,
+    // learning - instead of threading a timestamp through a dozen INSERTs.
+    // Local noon keeps the row well clear of either midnight boundary.
+    if let Some(d) = for_date {
+        let at = Utc.from_utc_datetime(&d.and_hms_opt(12, 0, 0).unwrap())
+            + Duration::minutes(tz_offset as i64);
+        let ids: Vec<Uuid> = logs.iter().map(|l| l.id).collect();
+        if !ids.is_empty() {
+            sqlx::query("UPDATE logs SET created_at = $2 WHERE id = ANY($1)")
+                .bind(&ids)
+                .bind(at)
+                .execute(&state.pool)
+                .await?;
+            for log in &mut logs {
+                log.created_at = at;
+            }
         }
     }
 

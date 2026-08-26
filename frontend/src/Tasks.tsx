@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { deleteTask, listTaskFocusSessions, listTasks, patchCheckpoint, patchTask } from './api'
+import {
+  deleteFocusSession,
+  deleteTask,
+  listTaskFocusSessions,
+  listTasks,
+  patchCheckpoint,
+  patchTask,
+} from './api'
 import { Panel, usePanelState } from './Panel'
 import type { FocusSession, TaskWithCheckpoints } from './types'
 
@@ -287,6 +294,8 @@ function TaskRow({
     .pop()
   const [expanded, setExpanded] = useState(false)
   const [sessions, setSessions] = useState<FocusSession[] | null>(null)
+  const [dragging, setDragging] = useState(false)
+  const ghostRef = useRef<HTMLElement | null>(null)
 
   const toggle = () => {
     const next = !expanded
@@ -299,11 +308,33 @@ function TaskRow({
   return (
     <div className={`task-row-wrap ${expanded ? 'open' : ''}`}>
       <div
-        className="task-row"
+        className={`task-row ${dragging ? 'dragging' : ''}`}
         draggable
         onDragStart={(e) => {
           e.dataTransfer.setData('text/plain', task.id)
           e.dataTransfer.effectAllowed = 'move'
+          setDragging(true)
+          // The browser's own drag image comes back blank inside .side-panel,
+          // whose panel-in animation puts the subtree on its own compositing
+          // layer. Handing it an explicit off-screen clone sidesteps the
+          // snapshot heuristic entirely, so the row tracks the cursor again.
+          const row = e.currentTarget
+          const rect = row.getBoundingClientRect()
+          const ghost = row.cloneNode(true) as HTMLElement
+          ghost.style.position = 'fixed'
+          ghost.style.top = '-1000px'
+          ghost.style.left = '0'
+          ghost.style.width = `${rect.width}px`
+          ghost.style.background = 'var(--bg)'
+          ghost.style.pointerEvents = 'none'
+          document.body.appendChild(ghost)
+          ghostRef.current = ghost
+          e.dataTransfer.setDragImage(ghost, e.clientX - rect.left, e.clientY - rect.top)
+        }}
+        onDragEnd={() => {
+          setDragging(false)
+          ghostRef.current?.remove()
+          ghostRef.current = null
         }}
       >
         <button className={`task-status ${task.status}`} onClick={onCycle}>
@@ -359,8 +390,26 @@ function TaskRow({
       {expanded && sessions !== null && (
         <div className="task-sessions">
           {sessions.length === 0 && <div className="task-session-empty">no clarity sessions yet</div>}
+          {sessions.length > 1 && (
+            <div className="task-session-total">
+              {sessions.reduce((sum, s) => sum + (s.actual_minutes ?? 0), 0)}m across{' '}
+              {sessions.length} sessions
+            </div>
+          )}
           {sessions.map((s) => (
             <div key={s.id} className="task-session">
+              <button
+                className="session-delete"
+                aria-label="remove this clarity session"
+                onClick={() => {
+                  setSessions((cur) => (cur ?? []).filter((x) => x.id !== s.id))
+                  deleteFocusSession(s.id).catch(() => {
+                    listTaskFocusSessions(task.id).then(setSessions).catch(() => {})
+                  })
+                }}
+              >
+                ✕
+              </button>
               <span>{s.started_at.slice(5, 10)}</span>
               <span>
                 {s.actual_minutes ?? 0} / {s.planned_minutes}m

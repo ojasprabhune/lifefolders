@@ -23,7 +23,7 @@ The JSONB-first convention is: unless there's a concrete querying need beyond da
 - **groq.rs** — LLM client (Groq API, tool-calling dispatch, system prompt, context injection).
 - **learning.rs** — learning-domain-specific routes and side-effect logic (field/resource/topic CRUD, PDF ingestion, plan generation).
 - **tasks.rs** — task-domain-specific routes and side-effect logic (task/checkpoint CRUD, fuzzy-match resolution, spaced-review generation).
-- **commands.rs** — apply logic for the command tool group: reschedule/status/recategorize/delete a task, start a focus session, delete the last entry. Returns a notice, never a `logs` row.
+- **commands.rs** — apply logic for the command tool group: reschedule/clear-due-date/status/recategorize/delete a task, start a focus session, plan the day, delete the last entry. Returns a notice, never a `logs` row (the exception being the task-history rows `write_history` writes). `plan_today` is the one command that reaches outside the tasks domain: it feeds the clock, `tasks::context_block`, and `focus::minutes_by_task` to `groq::plan_today` and prepends the result to `daily_notes.today_text`.
 - **wishlist.rs** — things wanted but not done yet (`wishlist_items` table). Manual only, never auto-populated. `try_resolve` runs after every insert in `create_log` and crosses an item off when a matching album/song/place/trip/learning entry is finally logged.
 - **search.rs** — plain-text search across every log (`GET /api/search`), `ILIKE` over `raw_input` and `data::text`. Deliberately unindexed and LLM-free; correct at this scale.
 - **rank.rs** — shared pairwise-comparison ranking engine used by album/place/trip domains.
@@ -38,7 +38,11 @@ The one `SYSTEM_PROMPT` in `groq.rs` contains all domain-specific disambiguation
 
 Live app state is injected into the prompt per-request via helper functions (`learning::context_block`, `tasks::context_block`) called in `routes::create_log`. This is how the model resolves free text like "finished the chem lab writeup" against an existing task without needing to know its UUID — the open tasks list is appended to the prompt, and the LLM can reference them by title. Reuse this pattern (`*_context_block`) for any future module that needs to reference live state.
 
-Two deterministic prefixes bypass the model's tool judgment in `parse()`: `task:` forces `log_task` via `tool_choice`, and `/` forces a command by narrowing the offered tools to `command_tools()` alone — there's no `tool_choice` that means "any of this subset", so the log tools simply aren't sent.
+Three deterministic prefixes bypass the model's tool judgment in `parse()`: `task:` forces `log_task` via `tool_choice`, `wish:` forces `add_wishlist_item` (and is the *only* way to reach it — `tools()` leaves that tool out of the list entirely otherwise, so classifying wants by tense can't put things on the list uninvited), and `/` forces a command by narrowing the offered tools to `command_tools()` alone — there's no `tool_choice` that means "any of this subset", so the log tools simply aren't sent.
+
+Inside an entry, three markers are parsed in Rust rather than trusted to the model, all in `tasks.rs`: `#tag` (category), `@time` (due time), and `note:` (everything after it becomes the note verbatim). `strip_markers` keeps all three out of the title as a backstop.
+
+`groq.rs` also holds three single-purpose non-tool-calling model helpers, all the same shape — small model, `reasoning_effort: "low"` to dodge the hidden-reasoning budget trap, `None`/passthrough on any failure so a Groq hiccup never writes something broken: `polish()` (voice transcripts), `sleep_insight()` (the solace blurb), and `plan_today()` (the day plan). Anything the blurb asserts as a *relationship* — a streak, a run, "in a row" — must be computed in Rust and handed over in a facts block (`sleep::build_facts`); the model reliably invents these when left to derive them from raw rows.
 
 Commands mutate existing state and return a `notice` (plus an optional `focus_session` for `start_focus`), never a `logs` row — `create_log` can legitimately come back with an empty `logs` array.
 

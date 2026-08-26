@@ -131,13 +131,14 @@ async function check(res: Response): Promise<Response> {
   return res
 }
 
-export async function createLog(rawText: string): Promise<CreateResponse> {
+export async function createLog(rawText: string, forDate?: string): Promise<CreateResponse> {
   const res = await fetch(`${API}/api/logs`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...authHeaders() },
     body: JSON.stringify({
       raw_text: rawText,
       tz_offset_min: new Date().getTimezoneOffset(),
+      for_date: forDate,
     }),
   })
   return (await check(res)).json()
@@ -240,10 +241,14 @@ export async function listSleep(): Promise<Log[]> {
   return (await check(res)).json()
 }
 
-export async function getSleepInsight(): Promise<{ blurb: string; generated_for: string }> {
-  const res = await fetch(`${API}/api/sleep/insight?tz_offset_min=${new Date().getTimezoneOffset()}`, {
-    headers: authHeaders(),
+export async function getSleepInsight(
+  goalMin: number,
+): Promise<{ blurb: string; generated_for: string }> {
+  const params = new URLSearchParams({
+    tz_offset_min: String(new Date().getTimezoneOffset()),
+    goal_min: String(goalMin),
   })
+  const res = await fetch(`${API}/api/sleep/insight?${params}`, { headers: authHeaders() })
   return (await check(res)).json()
 }
 
@@ -516,4 +521,12 @@ export function beaconEndFocusSession(id: string, completed: boolean): void {
 export async function listTaskFocusSessions(taskId: string): Promise<FocusSession[]> {
   const res = await fetch(`${API}/api/tasks/${taskId}/focus-sessions`, { headers: authHeaders() })
   return (await check(res)).json()
+}
+
+export async function deleteFocusSession(id: string): Promise<void> {
+  const res = await fetch(`${API}/api/focus-sessions/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  })
+  await check(res)
 }

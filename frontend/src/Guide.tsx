@@ -210,14 +210,19 @@ export function Guide() {
           actual clock time ("presentation friday at 2pm") syncs to the calendar at that exact
           time instead of the usual afternoon placeholder; add <em>@time</em> anywhere (e.g.
           "dentist tuesday @3pm") to pin the time exactly, the same idea as #tag for category.
+          The third marker is <em>note:</em> — everything after it becomes the note, word for
+          word, instead of leaving the model to decide what counts as one. Say "remove the due
+          date on X" to take a deadline off without touching the sidequest itself.
           Marking one done tucks it into the <em>resolved</em> dropdown at the bottom of the
-          panel instead of cluttering the open sections.
+          panel instead of cluttering the open sections. Expand a card to see its clarity
+          sessions, the total time they add up to, and an &times; on each to drop one.
         </p>
         <ul>
           <li>psych mcq exam due next friday</li>
           <li>task: return library books #personal</li>
           <li>do 1 module of psych notes</li>
-          <li>finished the chem lab writeup</li>
+          <li>psych notes note: started module 4</li>
+          <li>remove the due date on the ptsa award</li>
           <li>dentist appointment tuesday @3pm</li>
         </ul>
         <p className="schema">
@@ -271,9 +276,11 @@ export function Guide() {
         <h2>wishlist</h2>
         <p>
           Everywhere else in here is for things you already did. This is for things you want to do
-          later. Say you want something and it lands on the list instead of the timeline &mdash;
-          the difference is just tense: "want to listen to Igor" goes on the list, "listened to
-          Igor" is a normal log. Nothing fills this in for you; it's only what you put there.
+          later. Start the entry with <em>wish:</em> and it lands on the list instead of the
+          timeline. That prefix is the only way in &mdash; guessing from tense put too much on the
+          list uninvited, so now "want to listen to Igor" is just a normal music log and
+          "wish: Igor" is the one that goes on the list. Nothing fills this in for you; it's only
+          what you put there.
         </p>
         <p>
           The good part is it crosses itself off. When you later log the thing for real, it
@@ -283,10 +290,10 @@ export function Guide() {
           each one waited.
         </p>
         <ul>
-          <li>want to listen to Igor</li>
-          <li>should read Educated at some point</li>
-          <li>want to try that ramen place downtown</li>
-          <li>been meaning to learn linear algebra</li>
+          <li>wish: Igor</li>
+          <li>wish: read Educated at some point</li>
+          <li>wish: that ramen place downtown</li>
+          <li>wish: learn linear algebra</li>
         </ul>
       </section>
 
@@ -306,17 +313,24 @@ export function Guide() {
           sidequests and cadences you already have; if nothing matches the name you used, it
           says so and changes nothing rather than guessing at the wrong one.
         </p>
+        <p>
+          Asking what to do with the day is a command too. "what should i do first" reads the
+          clock, your open sidequests and how much clarity time each has already had, then writes
+          a short plan &mdash; real times, what to start on, where a break fits &mdash; to the top
+          of today's box below, keeping whatever you'd already written there.
+        </p>
         <ul>
           <li>push everything due tomorrow to friday</li>
           <li>mark the chem lab writeup done</li>
           <li>move the drone club poster to homework</li>
-          <li>delete the lit vocab quiz</li>
+          <li>what should i do first</li>
           <li>/start 30 on psych notes</li>
           <li>delete that</li>
         </ul>
         <p className="schema">
-          reschedule &middot; set status &middot; recategorize &middot; delete a sidequest
-          &middot; start a timer &middot; delete the last entry
+          reschedule &middot; clear a due date &middot; set status &middot; recategorize &middot;
+          delete a sidequest &middot; start a timer &middot; plan the day &middot; delete the last
+          entry
         </p>
       </section>
 

@@ -322,26 +322,6 @@ fn log_tools() -> Value {
         {
             "type": "function",
             "function": {
-                "name": "add_wishlist_item",
-                "description": "Record something the user WANTS to do later but has not done yet: an album to hear, a place to try, a trip to take, a subject to learn. Only for wants, never for something already done.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "kind": {
-                            "type": "string",
-                            "enum": ["album", "song", "place", "trip", "learning", "other"],
-                            "description": "What sort of thing it is"
-                        },
-                        "title": { "type": "string", "description": "The thing itself, e.g. 'Igor', 'Blue Bottle', 'Lisbon', 'linear algebra'" },
-                        "detail": { "type": "string", "description": "Any extra context, e.g. who recommended it" }
-                    },
-                    "required": ["kind", "title"]
-                }
-            }
-        },
-        {
-            "type": "function",
-            "function": {
                 "name": "log_weight",
                 "description": "Log the user's own body weight, e.g. 'weighed 158 this morning', '72 kg', 'bodyweight 155 lbs'. This is body weight only, never food portion weights.",
                 "parameters": {
@@ -388,6 +368,20 @@ fn command_tools() -> Value {
                         "new_due_time": { "type": "string", "description": "HH:MM in 24-hour time, only when a clock time is stated" }
                     },
                     "required": ["new_due_date"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "clear_due_date",
+                "description": "Take the deadline off an already-tracked task, leaving the task itself in place. Use for 'remove the due date on X', 'X isn't due any more', 'clear the deadline on X'. Never record this as a note.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "title": { "type": "string", "description": "The task to clear, phrased close to its tracked title" }
+                    },
+                    "required": ["title"]
                 }
             }
         },
@@ -454,6 +448,14 @@ fn command_tools() -> Value {
         {
             "type": "function",
             "function": {
+                "name": "plan_today",
+                "description": "Answer a question about what to do with the rest of the day by writing a short plan into today's notes. Only for questions, e.g. 'what should i do first', 'what do i have today', 'what's the plan'.",
+                "parameters": { "type": "object", "properties": {} }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "delete_last_entry",
                 "description": "Remove the most recent timeline entry, e.g. 'delete that', 'undo the last entry', 'scratch that'.",
                 "parameters": { "type": "object", "properties": {} }
@@ -462,10 +464,39 @@ fn command_tools() -> Value {
     ])
 }
 
+/// Only ever offered when "wish:" forced it. Deciding wishlist-vs-log by tense
+/// meant ordinary wants and plans kept landing on the list uninvited, so the
+/// prefix is now the single way in and the model is never given the option.
+fn wishlist_tool() -> Value {
+    json!({
+        "type": "function",
+        "function": {
+            "name": "add_wishlist_item",
+            "description": "Record something the user WANTS to do later but has not done yet: an album to hear, a place to try, a trip to take, a subject to learn.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "enum": ["album", "song", "place", "trip", "learning", "other"],
+                        "description": "What sort of thing it is"
+                    },
+                    "title": { "type": "string", "description": "The thing itself, e.g. 'Igor', 'Blue Bottle', 'Lisbon', 'linear algebra'" },
+                    "detail": { "type": "string", "description": "Any extra context, e.g. who recommended it" }
+                },
+                "required": ["kind", "title"]
+            }
+        }
+    })
+}
+
 /// One flat list so a single call with tool_choice "required" can land on
 /// either kind. `command_only` narrows it to commands for the "/" prefix,
 /// which makes that override deterministic instead of a hint.
-fn tools(command_only: bool) -> Value {
+fn tools(command_only: bool, wishlist: bool) -> Value {
+    if wishlist {
+        return json!([wishlist_tool()]);
+    }
     if command_only {
         return command_tools();
     }
@@ -536,7 +567,18 @@ day (\"chem presentation friday at 2pm\", \"essay due 11:59pm\"), also set due_t
 it lands on the calendar at that exact time instead of the default afternoon slot. An \
 entry containing an explicit \"@time\" (e.g. \"dentist tuesday @3pm\") is a deterministic \
 due_time override for log_task, the same idea as \"#tag\" for category - exclude it from \
-the title too. \
+the title too. An entry containing \"note:\" means everything after that marker is the \
+note, word for word - put exactly that text in the note field and exclude the marker and \
+its text from the title. \
+A question about what to do with the rest of the day - \"what should i do first\", \"what do \
+i have today\", \"what's the plan\", \"what should i work on\" - is plan_today. It has to be a \
+question about the day as a whole. An entry that states something to do is not: \"need to change \
+the tires by today\" and \"psych notes due today\" are log_task, because they name a specific \
+piece of work rather than ask what to start on. \
+Taking a deadline off a task is clear_due_date, never log_task and never a note: \
+\"remove the due date on X\", \"clear the deadline on X\", \"X isn't due any more\" all \
+clear it. Writing \"due date removed\" into the note field leaves the deadline sitting \
+there and is always wrong. \
 A short phrase that names doing one of the active cadences (recurring habits/routines) \
 listed below (\"meditated\", \
 \"drank water\", \"journaled\") is log_cadence_completion with cadence_name matching the \
@@ -546,7 +588,7 @@ A stated body weight (\"weighed 158 this morning\", \"158 lbs\", \"72 kg\", \"bo
 155\") is log_weight, with the number as value and lb or kg as unit, defaulting to lb \
 when no unit is given. Body weight is never a food portion: \"2 rotis\", \"150g of rice\", \
 or \"a 200g steak\" is log_nutrition, not log_weight. \
-Wanting to do something is not the same as doing it. \"want to listen to X\", \"want to try Y\", \"should read Q\", \"add X to my list\", \"been meaning to watch Z\" are add_wishlist_item - the user has NOT done these yet. \"listened to X\", \"went to Y\", \"read Q\" are the ordinary log tool for that domain. Future tense or a wanting verb means wishlist; past tense means a log. A wishlist item is never a task - it has no deadline and nothing is owed. Most entries are records of something that happened, and get a log_ tool. Some are instructions aimed at things you are already tracking, and get a command tool instead. The test is the verb: \"finished the essay\", \"ate 2 rotis\", \"slept 7 hours\" report something that already happened and are logs. \"push the essay to friday\", \"move everything due tomorrow to monday\", \"reschedule\", \"delete the poster\", \"rename\", \"mark X done\", \"start a 30 minute timer on X\" tell you to change something that already exists, and are commands. A brand new thing with a deadline (\"psych quiz next friday\") is log_task, never reschedule_tasks - there is nothing to move yet. An entry phrased as an order - starting with mark, set, move, push, reschedule, delete, remove, rename, or start - is a command even when the name it uses matches nothing in the lists below. The command reports that nothing matched, which is what the user wants; quietly creating a duplicate task from a mistyped name is not. Past-tense reports of what you did yourself (\"finished the essay\", \"turned in the lab\", \"started the poster\") stay logs. Always call at least one tool.";
+An entry starting with \"wish:\" is always add_wishlist_item, and it is the only way anything reaches the wishlist - exclude that literal prefix from the title. Without that prefix, wanting phrasing is not special: classify the entry by whatever it is actually about, exactly as you would have anyway. \"want to listen to X\" is still the music tool, \"need to change the tires by today\" is still log_task, and a stated deadline always means log_task. Most entries are records of something that happened, and get a log_ tool. Some are instructions aimed at things you are already tracking, and get a command tool instead. The test is the verb: \"finished the essay\", \"ate 2 rotis\", \"slept 7 hours\" report something that already happened and are logs. \"push the essay to friday\", \"move everything due tomorrow to monday\", \"reschedule\", \"delete the poster\", \"rename\", \"mark X done\", \"start a 30 minute timer on X\" tell you to change something that already exists, and are commands. A brand new thing with a deadline (\"psych quiz next friday\") is log_task, never reschedule_tasks - there is nothing to move yet. An entry phrased as an order - starting with mark, set, move, push, reschedule, delete, remove, rename, or start - is a command even when the name it uses matches nothing in the lists below. The command reports that nothing matched, which is what the user wants; quietly creating a duplicate task from a mistyped name is not. Past-tense reports of what you did yourself (\"finished the essay\", \"turned in the lab\", \"started the poster\") stay logs. Always call at least one tool.";
 
 async fn chat(
     http: &reqwest::Client,
@@ -555,6 +597,7 @@ async fn chat(
     context: &str,
     forced_tool: Option<&str>,
     command_only: bool,
+    wishlist: bool,
 ) -> Result<Vec<(String, Value)>> {
     let mut last_err = anyhow!("no groq models attempted");
     let system = format!("{SYSTEM_PROMPT}\n\n{context}");
@@ -570,7 +613,7 @@ async fn chat(
                 { "role": "system", "content": system },
                 { "role": "user", "content": raw_text }
             ],
-            "tools": tools(command_only),
+            "tools": tools(command_only, wishlist),
             "tool_choice": tool_choice,
             "temperature": 0.2
         });
@@ -695,11 +738,16 @@ fn usable_polish(raw: &str, cleaned: &str) -> bool {
 
 const SLEEP_INSIGHT_MODEL: &str = "openai/gpt-oss-20b";
 
-const SLEEP_INSIGHT_PROMPT: &str = "You are a terse sleep coach. You get a list of someone's recent \
-nights (date, weekday, duration, bedtime, wake time). Reply with exactly one short sentence, under 160 \
-characters, that reacts to a SPECIFIC pattern in this actual data - a number, a trend, a comparison \
-between nights - never a generic 'get more sleep' or 'great job'. Encouraging when the pattern is good, \
-direct but not scolding when it isn't. Output only the sentence: no quotes, no preamble, no markdown.";
+const SLEEP_INSIGHT_PROMPT: &str = "You are a terse sleep coach. You get a FACTS block of \
+already-computed figures, then a list of the person's recent nights (date, weekday, duration, bedtime, \
+wake time). Reply with exactly one short sentence, under 160 characters, that reacts to a SPECIFIC \
+number from the FACTS block - never a generic 'get more sleep' or 'great job'. Encouraging when the \
+pattern is good, direct but not scolding when it isn't. \
+Every relationship you state must come from the FACTS block. Do not work out streaks, runs, or trends \
+yourself. Never say 'in a row', 'back to back', 'consecutive', or 'streak' unless the FACTS block gives \
+you that run - two nights that merely share a trait are not in a row, and two nights a week apart are \
+never consecutive no matter how alike they look. If you are unsure whether two nights are adjacent, do \
+not mention adjacency at all. Output only the sentence: no quotes, no preamble, no markdown.";
 
 /// One-line reaction to a recent-nights summary, generated fresh once a day
 /// and cached by the caller. Returns None on any failure so the caller can
@@ -737,6 +785,53 @@ pub async fn sleep_insight(http: &reqwest::Client, api_key: &str, nights_summary
     Some(text.to_owned())
 }
 
+const PLAN_MODEL: &str = "openai/gpt-oss-20b";
+
+const PLAN_PROMPT: &str = "You lay out the rest of someone's day. You get the current local time \
+and their open sidequests - each with a category, a deadline, a status, and how much focus time \
+they have already put into it. \
+Reply with one or two short lines, all lowercase, no more than 200 characters total. Work forward \
+from the time you are given and name real clock times. Lead with whatever is due soonest, and when \
+two things are equally urgent lead with the one already part-done - finishing it is cheaper than \
+starting the other. Say roughly how long each stretch runs, and it is fine to put a break between \
+them. Anything with a stated deadline time must land before that time. \
+Mention only sidequests from the list, by their tracked titles. Do not invent work, do not add \
+encouragement, and do not explain your reasoning. Output only the plan: no preamble, no bullet \
+characters, no markdown.";
+
+/// The short day plan behind "what should i do first". Same shape as
+/// sleep_insight: one small model call, None on any failure so the caller can
+/// leave the daily note alone rather than writing a broken line into it.
+pub async fn plan_today(http: &reqwest::Client, api_key: &str, brief: &str) -> Option<String> {
+    let body = json!({
+        "model": PLAN_MODEL,
+        "temperature": 0.3,
+        "max_tokens": 400,
+        // Same reasoning-budget trap as polish() and sleep_insight().
+        "reasoning_effort": "low",
+        "messages": [
+            {"role": "system", "content": PLAN_PROMPT},
+            {"role": "user", "content": brief},
+        ],
+    });
+    let resp = http
+        .post(CHAT_URL)
+        .bearer_auth(api_key)
+        .json(&body)
+        .send()
+        .await
+        .ok()?
+        .error_for_status()
+        .ok()?;
+    let value: Value = resp.json().await.ok()?;
+    let text = value["choices"][0]["message"]["content"].as_str()?.trim();
+    let text = text.trim_matches('"').trim().to_lowercase();
+    if text.is_empty() || text.len() > 400 {
+        return None;
+    }
+    Some(text)
+}
+
 #[cfg(test)]
 mod tests {
     use super::usable_polish;
@@ -762,6 +857,99 @@ mod tests {
         ));
         assert!(!usable_polish(raw, ""));
         assert!(!usable_polish(raw, "Sure, here is the cleaned transcript:\nMet Sarah Kim."));
+    }
+
+    // Everything below calls the real Groq API, so it is #[ignore]d and run on
+    // demand with `cargo test -- --ignored --nocapture`. It exists because the
+    // markers and prompt rules added around the tool list are exactly the kind
+    // of change that can silently re-route ordinary entries.
+    use super::parse;
+    use crate::models::{Action, CommandRequest, Parsed};
+
+    fn label(a: &Action) -> String {
+        match a {
+            Action::Entry(Parsed::Nutrition(_)) => "nutrition".into(),
+            Action::Entry(Parsed::Person(_)) => "person".into(),
+            Action::Entry(Parsed::Album(_)) => "album".into(),
+            Action::Entry(Parsed::Song(_)) => "song".into(),
+            Action::Entry(Parsed::Place(_)) => "place".into(),
+            Action::Entry(Parsed::Trip(_)) => "trip".into(),
+            Action::Entry(Parsed::Weight(_)) => "weight".into(),
+            Action::Workout { .. } => "workout".into(),
+            Action::ItineraryItem { .. } => "itinerary".into(),
+            Action::Sleep { .. } => "sleep".into(),
+            Action::Learning(_) => "learning".into(),
+            Action::Task(t) => format!("task({})", t.title),
+            Action::Cadence(_) => "cadence".into(),
+            Action::Wishlist(w) => format!("wishlist({})", w.title),
+            Action::Command(c) => match c {
+                CommandRequest::RescheduleTasks { .. } => "cmd:reschedule".into(),
+                CommandRequest::ClearDueDate { .. } => "cmd:clear_due_date".into(),
+                CommandRequest::SetTaskStatus { .. } => "cmd:set_status".into(),
+                CommandRequest::DeleteTask { .. } => "cmd:delete_task".into(),
+                CommandRequest::RecategorizeTask { .. } => "cmd:recategorize".into(),
+                CommandRequest::StartFocus { .. } => "cmd:start_focus".into(),
+                CommandRequest::DeleteLastEntry => "cmd:delete_last".into(),
+                CommandRequest::PlanToday => "cmd:plan_today".into(),
+            },
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "hits the live Groq API"]
+    async fn classification_smoke_test() {
+        dotenvy::dotenv().ok();
+        let groq_key = std::env::var("GROQ_API_KEY").expect("GROQ_API_KEY");
+        let usda_key = std::env::var("USDA_API_KEY").unwrap_or_default();
+        let http = reqwest::Client::new();
+        let context = "Current local datetime: 2026-08-25T16:10 (Tuesday).\n\
+                       Open tasks:\n\
+                       - [homework] psych notes (due 2026-08-25, in_progress)\n\
+                       - [volunteering] Submit EVHS PTSA VSA award (due 2026-08-23, in_progress)\n\
+                       Active cadences:\n- Water (daily)\n";
+
+        // (entry, what the first action must be)
+        let cases = [
+            // Regressions: ordinary entries must classify exactly as before.
+            ("need to change the tires by today", "task"),
+            ("ate 2 rotis with dal", "nutrition"),
+            ("slept 7 hours last night", "sleep"),
+            ("psych quiz next friday", "task"),
+            ("push the psych notes to friday", "cmd:reschedule"),
+            ("want to listen to Igor", "!task"),
+            // The new behaviour.
+            ("wish: Igor", "wishlist"),
+            ("remove the due date on the ptsa award", "cmd:clear_due_date"),
+            ("what should i do first", "cmd:plan_today"),
+            ("what do i have today", "cmd:plan_today"),
+            ("psych notes note: started module 4", "task"),
+        ];
+
+        let mut failures = Vec::new();
+        for (entry, want) in cases {
+            // The free Groq tier rate-limits a tight loop of these, and a 429
+            // reads as a classification failure, so pace them out.
+            let mut got = String::new();
+            for attempt in 0..4 {
+                tokio::time::sleep(std::time::Duration::from_secs(6 * (attempt + 1))).await;
+                got = match parse(&http, &groq_key, &usda_key, entry, context).await {
+                    Ok(actions) => actions.iter().map(label).collect::<Vec<_>>().join(" + "),
+                    Err(e) => format!("ERROR: {e}"),
+                };
+                if !got.contains("429") {
+                    break;
+                }
+            }
+            let ok = match want.strip_prefix('!') {
+                Some(forbidden) => !got.starts_with(forbidden),
+                None => got.starts_with(want),
+            };
+            println!("{:<45} -> {got}{}", entry, if ok { "" } else { "   <-- WRONG" });
+            if !ok {
+                failures.push(format!("{entry:?}: wanted {want}, got {got}"));
+            }
+        }
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
     }
 }
 
@@ -801,21 +989,31 @@ pub async fn parse(
     // override - skip the model's own tool judgment entirely rather than
     // just hinting, since a bare word (e.g. "exam") has already proven
     // unreliable as a soft signal.
-    let forced_tool = raw_text
-        .trim_start()
-        .to_lowercase()
-        .starts_with("task:")
-        .then_some("log_task");
+    let head = raw_text.trim_start().to_lowercase();
+    // "wish:" is the same idea, and for the wishlist it's the only way in -
+    // the tool isn't in the list at all otherwise, so nothing can drift onto
+    // the list on the strength of sounding like a want.
+    let wishlist = head.starts_with("wish:");
+    let forced_tool = if wishlist {
+        Some("add_wishlist_item")
+    } else if head.starts_with("task:") {
+        Some("log_task")
+    } else {
+        None
+    };
     // "/" is the same idea for commands. There is no tool_choice that says
     // "any of this subset", so instead the log tools are simply not offered
     // - the model cannot pick one even if the wording sounds like a record.
     let command_only = raw_text.trim_start().starts_with('/');
     let text = if command_only {
         raw_text.trim_start().trim_start_matches('/').trim()
+    } else if wishlist {
+        raw_text.trim_start()[5..].trim()
     } else {
         raw_text
     };
-    let calls = chat(http, groq_key, text, context, forced_tool, command_only).await?;
+    let calls =
+        chat(http, groq_key, text, context, forced_tool, command_only, wishlist).await?;
     let mut results = Vec::with_capacity(calls.len());
     for (name, args) in calls {
         match name.as_str() {
@@ -872,6 +1070,7 @@ pub async fn parse(
                     status,
                     is_exam: args.get("is_exam").and_then(Value::as_bool),
                     note: opt_str(&args, "note"),
+                    clear_due_date: false,
                 }));
             }
             "log_cadence_completion" => results.push(Action::Cadence(CadenceCompletionRequest {
@@ -898,6 +1097,9 @@ pub async fn parse(
                     new_due_time: opt_str(&args, "new_due_time"),
                 }));
             }
+            "clear_due_date" => results.push(Action::Command(CommandRequest::ClearDueDate {
+                title: as_str(&args, "title")?,
+            })),
             "set_task_status" => results.push(Action::Command(CommandRequest::SetTaskStatus {
                 title: as_str(&args, "title")?,
                 status: as_str(&args, "status")?,
@@ -918,6 +1120,7 @@ pub async fn parse(
                     .unwrap_or(25) as i32,
             })),
             "delete_last_entry" => results.push(Action::Command(CommandRequest::DeleteLastEntry)),
+            "plan_today" => results.push(Action::Command(CommandRequest::PlanToday)),
             "add_wishlist_item" => results.push(Action::Wishlist(WishlistRequest {
                 kind: opt_str(&args, "kind")
                     .filter(|k| crate::wishlist::KINDS.contains(&k.as_str()))

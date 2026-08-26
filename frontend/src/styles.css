@@ -1543,6 +1543,10 @@ header > .brand {
   cursor: grabbing;
 }
 
+.task-row.dragging {
+  opacity: 0.4;
+}
+
 .task-section {
   border-radius: 8px;
   transition: background-color 120ms ease;
@@ -2093,12 +2097,45 @@ header > .brand {
   gap: 4px;
 }
 
+.task-session-total {
+  font-size: 13px;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  padding-bottom: 2px;
+}
+
 .task-session {
   display: flex;
   gap: 14px;
   font-size: 13px;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+  /* The ✕ hangs in .task-sessions' own left padding rather than joining the
+     flex row, so revealing it on hover never shifts the numbers sideways. */
+  position: relative;
+}
+
+.session-delete {
+  position: absolute;
+  left: -18px;
+  top: 0;
+  font-size: 11px;
+  line-height: inherit;
+  color: var(--faint);
+  padding: 0;
+  border: none;
+  background: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.task-session:hover .session-delete,
+.session-delete:focus-visible {
+  opacity: 1;
+}
+
+.session-delete:hover {
+  color: var(--accent);
 }
 
 .task-session .done {

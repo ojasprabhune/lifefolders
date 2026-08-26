@@ -1,5 +1,5 @@
 use axum::extract::{Path, State};
-use axum::http::{header::AUTHORIZATION, HeaderMap};
+use axum::http::{header::AUTHORIZATION, HeaderMap, StatusCode};
 use axum::Json;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -86,6 +86,7 @@ pub async fn create_session(
                     status: None,
                     is_exam: None,
                     note: None,
+                    clear_due_date: false,
                 };
                 let task = tasks::create_task(&state, &req).await?;
                 (Some(task.id), None, task.title)
@@ -232,6 +233,7 @@ pub async fn end_session(
                 &title,
                 &format!("focus: {title}"),
                 end.tz_offset_min.unwrap_or(0),
+                None,
             )
             .await?;
             if let Some(completion) = completion {
@@ -314,4 +316,49 @@ pub async fn list_for_task(
     .fetch_all(&state.pool)
     .await?;
     Ok(Json(sessions))
+}
+
+/// Minutes already sunk into each task over the last `days`, as
+/// (task_id, minutes, sessions, last date). Lets the day plan tell a sidequest
+/// that's nearly finished apart from one that hasn't been started.
+pub async fn minutes_by_task(
+    state: &AppState,
+    days: i64,
+) -> Result<Vec<(Uuid, i64, i64, DateTime<Utc>)>, AppError> {
+    Ok(sqlx::query_as(
+        "SELECT task_id, COALESCE(SUM(actual_minutes), 0)::bigint, COUNT(*)::bigint, \
+                MAX(started_at) \
+         FROM focus_sessions \
+         WHERE task_id IS NOT NULL AND ended_at IS NOT NULL AND started_at >= $1 \
+         GROUP BY task_id",
+    )
+    .bind(Utc::now() - chrono::Duration::days(days))
+    .fetch_all(&state.pool)
+    .await?)
+}
+
+/// Drop a finished session and the timeline row it wrote. Both or neither -
+/// leaving the log behind would keep showing a session the sidequest no longer
+/// lists, which is the confusion this button exists to clear up.
+pub async fn delete_session(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<StatusCode, AppError> {
+    let deleted: Option<(Uuid,)> =
+        sqlx::query_as("DELETE FROM focus_sessions WHERE id = $1 RETURNING id")
+            .bind(id)
+            .fetch_optional(&state.pool)
+            .await?;
+    if deleted.is_none() {
+        return Err(AppError::NotFound);
+    }
+    sqlx::query(
+        "UPDATE logs SET deleted_at = now() \
+         WHERE parsed_type = 'focus_session' AND deleted_at IS NULL \
+         AND data->>'session_id' = $1",
+    )
+    .bind(id.to_string())
+    .execute(&state.pool)
+    .await?;
+    Ok(StatusCode::NO_CONTENT)
 }

@@ -79,15 +79,21 @@ pub async fn log_completion(
     cadence_name: &str,
     raw: &str,
     tz_offset_min: i32,
+    for_date: Option<NaiveDate>,
 ) -> Result<Option<Log>, AppError> {
-    let today = (Utc::now() - Duration::minutes(tz_offset_min as i64)).date_naive();
+    // create_log restamps created_at afterwards, but this guard runs before
+    // the insert, so it needs the target day handed to it directly.
+    let today = for_date
+        .unwrap_or_else(|| (Utc::now() - Duration::minutes(tz_offset_min as i64)).date_naive());
     let recent: Vec<(DateTime<Utc>,)> = sqlx::query_as(
         "SELECT created_at FROM logs \
          WHERE parsed_type = 'cadence_completion' AND deleted_at IS NULL \
          AND data->>'cadence_id' = $1 AND created_at >= $2",
     )
     .bind(cadence_id.to_string())
-    .bind(Utc::now() - Duration::days(2))
+    // Window around the day being marked, not around now - a backdated tick
+    // would otherwise look past every row it needs to compare against.
+    .bind(Utc.from_utc_datetime(&(today - Duration::days(2)).and_hms_opt(0, 0, 0).unwrap()))
     .fetch_all(&state.pool)
     .await?;
     let already_today = recent
@@ -125,12 +131,15 @@ pub async fn apply(
     raw: &str,
     req: &CadenceCompletionRequest,
     tz_offset_min: i32,
+    for_date: Option<NaiveDate>,
 ) -> Result<CadenceOutcome, AppError> {
     let cadences = active_cadences(state).await?;
     let Some(cadence) = best_match(&cadences, &req.cadence_name) else {
         return Ok(CadenceOutcome::NoMatch);
     };
-    Ok(match log_completion(state, cadence.id, &cadence.name, raw, tz_offset_min).await? {
+    let logged =
+        log_completion(state, cadence.id, &cadence.name, raw, tz_offset_min, for_date).await?;
+    Ok(match logged {
         Some(log) => CadenceOutcome::Logged(log),
         None => CadenceOutcome::AlreadyDone,
     })

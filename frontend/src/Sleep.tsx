@@ -40,10 +40,16 @@ export function Sleep({ open }: { open: boolean }) {
     listSleep()
       .then(setNights)
       .catch(() => {})
-    getSleepInsight()
+  }, [mounted])
+
+  // Refetched on a goal change too: the blurb talks about hitting or missing
+  // the goal, so the server regenerates it rather than serving the old one.
+  useEffect(() => {
+    if (!mounted) return
+    getSleepInsight(goalMin)
       .then((r) => setInsight(r.blurb))
       .catch(() => {})
-  }, [mounted])
+  }, [mounted, goalMin])
 
   const changeGoal = (min: number) => {
     const clamped = Math.min(GOAL_MAX_BOUND, Math.max(GOAL_MIN_BOUND, min))

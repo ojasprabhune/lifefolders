@@ -251,16 +251,22 @@ pub(crate) async fn update_task(
     req: &TaskRequest,
 ) -> Result<(Task, String), AppError> {
     let new_status = req.status.clone().unwrap_or_else(|| existing.status.clone());
-    let new_due = req
-        .due_date
-        .as_deref()
-        .map(|s| parse_due(Some(s)))
-        .unwrap_or(existing.due_date);
-    let new_due_time = req
-        .due_time
-        .as_deref()
-        .map(|s| parse_due_time(Some(s)))
-        .unwrap_or(existing.due_time);
+    // Dropping the deadline drops the clock time with it - a time of day on a
+    // task with no date has nothing to hang off.
+    let (new_due, new_due_time) = if req.clear_due_date {
+        (None, None)
+    } else {
+        (
+            req.due_date
+                .as_deref()
+                .map(|s| parse_due(Some(s)))
+                .unwrap_or(existing.due_date),
+            req.due_time
+                .as_deref()
+                .map(|s| parse_due_time(Some(s)))
+                .unwrap_or(existing.due_time),
+        )
+    };
     let new_is_exam = req.is_exam.unwrap_or(existing.is_exam);
     let completed_at = if new_status == "done" && existing.status != "done" {
         Some(Utc::now())
@@ -428,11 +434,31 @@ fn parse_flexible_time(s: &str) -> Option<NaiveTime> {
         .find_map(|fmt| NaiveTime::parse_from_str(&upper, fmt).ok())
 }
 
-// The LLM is told to leave any "#tag"/"@time" out of the title, but strip
-// them here too as a backstop in case it echoes one back verbatim.
+// Byte offset of a "note:" marker, matched ASCII-case-insensitively. Every
+// byte of the needle is ASCII, so a hit is always on a char boundary and the
+// index is safe to slice on.
+fn note_marker(s: &str) -> Option<usize> {
+    s.as_bytes().windows(5).position(|w| w.eq_ignore_ascii_case(b"note:"))
+}
+
+// "note:" anywhere in the raw entry means everything after it is the note,
+// verbatim - the third deterministic marker alongside "#tag" and "@time".
+// Without it the model decides for itself what counts as a note, which is how
+// "remove the due date" ended up filed as a note rather than acted on.
+fn explicit_note(raw: &str) -> Option<String> {
+    let idx = note_marker(raw)?;
+    let note = raw[idx + 5..].trim();
+    (!note.is_empty()).then(|| note.to_string())
+}
+
+// The LLM is told to leave any "#tag"/"@time"/"note:" out of the title, but
+// strip them here too as a backstop in case it echoes one back verbatim.
 fn strip_markers(title: &str) -> String {
-    title
-        .split_whitespace()
+    let head = match note_marker(title) {
+        Some(idx) => &title[..idx],
+        None => title,
+    };
+    head.split_whitespace()
         .filter(|w| !w.starts_with('#') && !w.starts_with('@'))
         .collect::<Vec<_>>()
         .join(" ")
@@ -444,6 +470,9 @@ pub async fn apply(state: &AppState, raw: &str, mut req: TaskRequest) -> Result<
     }
     if let Some(time) = explicit_time(raw) {
         req.due_time = Some(time.format("%H:%M").to_string());
+    }
+    if let Some(note) = explicit_note(raw) {
+        req.note = Some(note);
     }
     req.title = strip_markers(&req.title);
 
@@ -559,6 +588,7 @@ pub async fn patch_task(
         status: body.status,
         is_exam: body.is_exam,
         note: None,
+        clear_due_date: false,
     };
     let snapshot = existing.clone();
     let (task, _) = update_task(&state, &existing, &req).await?;
@@ -647,4 +677,28 @@ pub async fn patch_checkpoint(
     }
 
     Ok(Json(cp))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{explicit_note, strip_markers};
+
+    #[test]
+    fn note_marker_takes_everything_after_it() {
+        assert_eq!(
+            explicit_note("psych notes note: started module 4").as_deref(),
+            Some("started module 4")
+        );
+        // Case-insensitive, and "notes" must not be mistaken for the marker.
+        assert_eq!(explicit_note("read notes NOTE: ch 3 only").as_deref(), Some("ch 3 only"));
+        assert_eq!(explicit_note("psych notes are done").as_deref(), None);
+        assert_eq!(explicit_note("psych notes note:   ").as_deref(), None);
+    }
+
+    #[test]
+    fn strip_markers_drops_the_note_tail_and_tags() {
+        assert_eq!(strip_markers("psych notes note: started module 4"), "psych notes");
+        assert_eq!(strip_markers("clean the garage #personal @3pm"), "clean the garage");
+        assert_eq!(strip_markers("psych notes"), "psych notes");
+    }
 }

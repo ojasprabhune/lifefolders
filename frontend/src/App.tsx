@@ -309,11 +309,17 @@ function Home() {
       { tempId: id, raw_input: rawText, failed: false, retrying: false },
       ...p.filter((x) => x.tempId !== id),
     ])
-    if (!isToday) setDate(today)
+    // Typing while looking at an earlier day logs to that day - the entry
+    // lands there and the view stays put, rather than snapping back to today.
+    const forDate = isToday ? undefined : date
 
     for (let attempt = 0; ; attempt++) {
       try {
-        const { logs: created, notice: message, focus_session } = await createLog(rawText)
+        const {
+          logs: created,
+          notice: message,
+          focus_session,
+        } = await createLog(rawText, forDate)
         markBackendOnline()
         const createdIds = new Set(created.map((x) => x.id))
         const sleeps = created.filter((x) => x.parsed_type === 'sleep')
@@ -346,7 +352,7 @@ function Home() {
         // A command writes no logs row but does change ones already on
         // screen (a deleted entry, a rescheduled sidequest), so re-read the
         // day rather than leaving a stale list.
-        if (created.length === 0) void refresh(today)
+        if (created.length === 0) void refresh(date)
         return
       } catch {
         if (attempt === 0) markBackendOffline()

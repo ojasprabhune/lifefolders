@@ -16,6 +16,9 @@ pub struct Log {
 pub struct CreateLog {
     pub raw_text: String,
     pub tz_offset_min: Option<i32>,
+    // The day the home timeline is showing, when it isn't today. Everything
+    // the entry writes gets stamped onto that day instead of now.
+    pub for_date: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -184,6 +187,9 @@ pub struct TaskRequest {
     pub status: Option<String>,
     pub is_exam: Option<bool>,
     pub note: Option<String>,
+    // A None due_date means "not mentioned, leave it alone", so there was no
+    // way to say "there is no deadline any more" - this is that way.
+    pub clear_due_date: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -252,11 +258,13 @@ pub enum CommandRequest {
         new_due_date: String,
         new_due_time: Option<String>,
     },
+    ClearDueDate { title: String },
     SetTaskStatus { title: String, status: String },
     DeleteTask { title: String },
     RecategorizeTask { title: String, category: String },
     StartFocus { title: Option<String>, cadence_name: Option<String>, minutes: i32 },
     DeleteLastEntry,
+    PlanToday,
 }
 
 pub enum Parsed {

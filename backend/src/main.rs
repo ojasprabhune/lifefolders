@@ -6,7 +6,7 @@ use axum::extract::{Request, State};
 use axum::http::{header, HeaderValue, Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
@@ -206,6 +206,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/focus-sessions/{id}/pause", post(focus::pause_session))
         .route("/api/focus-sessions/{id}/resume", post(focus::resume_session))
         .route("/api/focus-sessions/{id}/extend", post(focus::extend_session))
+        .route("/api/focus-sessions/{id}", delete(focus::delete_session))
         .route("/api/tasks/{id}/focus-sessions", get(focus::list_for_task))
         .route("/api/recap/send", post(recap::send))
         .route_layer(middleware::from_fn_with_state(state.clone(), require_auth))

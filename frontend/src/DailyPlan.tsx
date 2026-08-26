@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { listDailyNotes, patchDailyNote } from './api'
 
 type SaveState = 'idle' | 'saving' | 'saved'
@@ -41,20 +41,38 @@ export function DailyPlan() {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const date = shiftDate(today, offset)
 
-  useEffect(() => {
-    listDailyNotes(DAYS)
-      .then((rows) => {
-        const map: NoteMap = {}
-        rows.forEach((r) => {
-          map[r.date] = { today_text: r.today_text, tomorrow_text: r.tomorrow_text }
+  const load = useCallback(
+    (showing: string) =>
+      listDailyNotes(DAYS)
+        .then((rows) => {
+          const map: NoteMap = {}
+          rows.forEach((r) => {
+            map[r.date] = { today_text: r.today_text, tomorrow_text: r.tomorrow_text }
+          })
+          notesRef.current = map
+          const n = map[showing]
+          setTodayText(n?.today_text ?? '')
+          setTomorrowText(n?.tomorrow_text ?? '')
         })
-        notesRef.current = map
-        const n = map[today]
-        setTodayText(n?.today_text ?? '')
-        setTomorrowText(n?.tomorrow_text ?? '')
-      })
-      .catch(() => {})
-  }, [today])
+        .catch(() => {}),
+    [],
+  )
+
+  useEffect(() => {
+    void load(today)
+  }, [today, load])
+
+  // "what should i do first" writes straight into today's box on the server,
+  // so the box has to re-read itself. Only when today is the day on screen and
+  // nothing is mid-save, so it can't overwrite what's being typed.
+  useEffect(() => {
+    const onCreated = () => {
+      if (date !== today || saveTimer.current !== undefined) return
+      void load(today)
+    }
+    window.addEventListener('life-log-created', onCreated)
+    return () => window.removeEventListener('life-log-created', onCreated)
+  }, [date, today, load])
 
   // On paging to a different day, load that day's text from what we already
   // fetched. Reads through a ref so a background save (which updates the map)
@@ -70,6 +88,9 @@ export function DailyPlan() {
     setStatus('saving')
     clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(async () => {
+      // Cleared once it fires so "is a save pending" stays an honest question -
+      // the refresh listener reads it to decide whether it may replace the text.
+      saveTimer.current = undefined
       try {
         await patchDailyNote(target, next)
         notesRef.current[target] = next

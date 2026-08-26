@@ -6,7 +6,7 @@ use crate::models::{CommandRequest, Log, TaskData};
 use crate::routes::AppError;
 use crate::tasks::{self, Task};
 use crate::undo::{set_last, UndoAction};
-use crate::{cadences, AppState};
+use crate::{cadences, daily, groq, AppState};
 
 /// A command changes existing state and reports back in words - it never
 /// writes a logs row of its own, so `create_log` gets a notice and an empty
@@ -72,6 +72,7 @@ fn patch_for(existing: &Task) -> crate::models::TaskRequest {
         status: None,
         is_exam: None,
         note: None,
+        clear_due_date: false,
     }
 }
 
@@ -171,6 +172,22 @@ pub async fn apply(
                 notice.push_str(&format!(" (no match for \"{}\")", missed.join("\", \"")));
             }
             Ok(undoable(notice, logs))
+        }
+
+        CommandRequest::ClearDueDate { title } => {
+            let Some(existing) = resolve_one(state, &title).await? else {
+                return Ok(say(format!("no open sidequest matches \"{title}\".")));
+            };
+            if existing.due_date.is_none() {
+                return Ok(say(format!("{} has no due date to clear.", existing.title)));
+            }
+            let snapshot = existing.clone();
+            let mut patch = patch_for(&existing);
+            patch.clear_due_date = true;
+            let (updated, _) = tasks::update_task(state, &existing, &patch).await?;
+            set_last(state, UndoAction::TaskUpdated { snapshot });
+            let log = write_history(state, raw, &updated, "rescheduled").await?;
+            Ok(undoable(format!("cleared the due date on {}", existing.title), vec![log]))
         }
 
         CommandRequest::SetTaskStatus { title, status } => {
@@ -274,6 +291,51 @@ pub async fn apply(
                     .await?;
             let notice = format!("{minutes} min on {}", existing.title);
             Ok(Outcome { notice, logs: Vec::new(), focus_session: Some(started) })
+        }
+
+        CommandRequest::PlanToday => {
+            let now_local = Utc::now() - Duration::minutes(tz_offset as i64);
+            let today = now_local.date_naive();
+            let open = tasks::open_tasks(state).await?;
+            if open.is_empty() {
+                return Ok(say("nothing open to plan around."));
+            }
+
+            let spent = focus::minutes_by_task(state, 14).await?;
+            let mut brief = format!(
+                "It is {} on {}.\nOpen sidequests:\n",
+                now_local.format("%-I:%M%p").to_string().to_lowercase(),
+                now_local.format("%A %Y-%m-%d")
+            );
+            for t in &open {
+                let due = match (t.due_date, t.due_time) {
+                    (Some(d), Some(time)) => format!("due {d} at {}", time.format("%-I:%M%p")),
+                    (Some(d), None) if d == today => "due today".into(),
+                    (Some(d), None) => format!("due {d}"),
+                    (None, _) => "no deadline".into(),
+                };
+                let effort = t
+                    .effort_minutes
+                    .map(|m| format!(", about {m}m of work"))
+                    .unwrap_or_default();
+                let history = match spent.iter().find(|(id, ..)| *id == t.id) {
+                    Some((_, mins, count, last)) => format!(
+                        ", {mins}m of focus across {count} sessions, last on {}",
+                        (*last - Duration::minutes(tz_offset as i64)).format("%Y-%m-%d")
+                    ),
+                    None => ", never worked on".into(),
+                };
+                brief.push_str(&format!(
+                    "- {} [{}] {due}, {}{effort}{history}\n",
+                    t.title, t.category, t.status
+                ));
+            }
+
+            let Some(plan) = groq::plan_today(&state.http, &state.groq_key, &brief).await else {
+                return Ok(say("couldn't put a plan together right now."));
+            };
+            daily::prepend_today(state, today, &plan).await?;
+            Ok(say("added to today's plan"))
         }
 
         CommandRequest::DeleteLastEntry => {
