@@ -162,18 +162,30 @@ export interface CadenceData {
   cadence_name: string
 }
 
-export interface Cadence {
+export type IntervalUnit = 'day' | 'week'
+
+export interface CadenceSchedule {
+  interval_unit: IntervalUnit
+  interval_n: number
+  // 0 = Sunday .. 6 = Saturday. Only meaningful on a weekly cadence; empty
+  // there means "any day inside the week".
+  weekdays: number[]
+}
+
+export interface Cadence extends CadenceSchedule {
   id: string
   name: string
-  target_frequency: 'daily' | 'weekly'
+  anchor_date: string
   active: boolean
   created_at: string
 }
 
 export interface CadenceCompletions {
   dates: string[]
+  due_dates: string[]
   current_streak: number
   longest_streak: number
+  unit: IntervalUnit
 }
 
 export type ParsedType =

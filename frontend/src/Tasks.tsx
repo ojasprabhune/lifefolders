@@ -115,6 +115,7 @@ export function Tasks({ open }: { open: boolean }) {
                 onCycle={() => void cycleStatus(t)}
                 onCheckpoint={toggleCheckpoint}
                 onDelete={() => void remove(t.id)}
+                onRefresh={refresh}
               />
             ))}
             {dueToday.length === 0 && <div className="empty">nothing due today</div>}
@@ -144,6 +145,7 @@ export function Tasks({ open }: { open: boolean }) {
                   onCycle={() => void cycleStatus(t)}
                   onCheckpoint={toggleCheckpoint}
                   onDelete={() => void remove(t.id)}
+                  onRefresh={refresh}
                 />
               ))}
             </section>
@@ -279,11 +281,13 @@ function TaskRow({
   onCycle,
   onCheckpoint,
   onDelete,
+  onRefresh,
 }: {
   task: TaskWithCheckpoints
   onCycle: () => void
   onCheckpoint: (id: string, status: 'todo' | 'done') => void
   onDelete: () => void
+  onRefresh: () => void
 }) {
   const isOverdue = task.due_date && task.due_date < dateToStr(new Date())
   const isSoon = !isOverdue && task.due_date && daysUntil(task.due_date) <= 2
@@ -296,6 +300,21 @@ function TaskRow({
   const [sessions, setSessions] = useState<FocusSession[] | null>(null)
   const [dragging, setDragging] = useState(false)
   const ghostRef = useRef<HTMLElement | null>(null)
+  const [noteDraft, setNoteDraft] = useState(task.note ?? '')
+
+  // Re-sync when the task changes underneath (a typed entry appended a line,
+  // or the same note was edited from the timeline row), but never while it's
+  // focused - that would yank the text out from under the cursor.
+  useEffect(() => {
+    setNoteDraft((d) => (d === '' || document.activeElement?.tagName !== 'TEXTAREA' ? task.note ?? '' : d))
+  }, [task.note])
+
+  const saveNote = async () => {
+    const next = noteDraft.trim()
+    if (next === (task.note ?? '')) return
+    await patchTask(task.id, { note: next }).catch(() => {})
+    onRefresh()
+  }
 
   const toggle = () => {
     const next = !expanded
@@ -371,6 +390,21 @@ function TaskRow({
           ✕
         </button>
       </div>
+      {expanded && (
+        <div className="task-note-edit">
+          <textarea
+            rows={2}
+            value={noteDraft}
+            placeholder="note"
+            onChange={(e) => setNoteDraft(e.target.value)}
+            onBlur={() => void saveNote()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) e.currentTarget.blur()
+            }}
+          />
+          {noteDraft !== (task.note ?? '') && <span className="task-note-hint">unsaved</span>}
+        </div>
+      )}
       {expanded && task.is_exam && task.due_date && (
         <div className="task-checkpoint-dates">
           {[7, 3, 1].map((offset) => {

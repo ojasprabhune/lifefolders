@@ -559,6 +559,10 @@ pub struct PatchTask {
     pub category: Option<String>,
     pub effort_minutes: Option<i32>,
     pub is_exam: Option<bool>,
+    // Editing the field replaces it, unlike a typed progress note, which
+    // appends (see update_task). Correcting a note you can see on screen has
+    // to be able to shorten it, not only grow it.
+    pub note: Option<String>,
 }
 
 pub async fn patch_task(
@@ -591,7 +595,19 @@ pub async fn patch_task(
         clear_due_date: false,
     };
     let snapshot = existing.clone();
-    let (task, _) = update_task(&state, &existing, &req).await?;
+    let (mut task, _) = update_task(&state, &existing, &req).await?;
+    // Set after update_task rather than through it: its note handling appends,
+    // which is right for a typed check-in and wrong for editing the field.
+    if let Some(note) = body.note {
+        let note = note.trim();
+        task = sqlx::query_as(&format!(
+            "UPDATE tasks SET note = $2 WHERE id = $1 RETURNING {TASK_COLUMNS}"
+        ))
+        .bind(id)
+        .bind((!note.is_empty()).then_some(note))
+        .fetch_one(&state.pool)
+        .await?;
+    }
     set_last(&state, UndoAction::TaskUpdated { snapshot });
     Ok(Json(task))
 }

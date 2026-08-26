@@ -177,13 +177,24 @@ export function Guide() {
       <section>
         <h2>cadence</h2>
         <p>
-          Define a cadence in the cadences tab (name and a daily or weekly target), then log a
-          completion the same way as everything else: say you did it and it matches an active
-          cadence by name. The tab shows a binary calendar grid of the last few months plus your
-          current and longest streaks. A daily cadence gets a dot per day; a weekly one gets a
-          single bar per week (hit anywhere in it or not) since it was never meant to happen every
-          day, and its streak counts consecutive weeks instead of days. Hydration is just a
+          Define a cadence in the cadences tab, then log a completion the same way as everything
+          else: say you did it and it matches an active cadence by name. Hydration is just a
           cadence named "Water."
+        </p>
+        <p>
+          Each one repeats on its own schedule &mdash; every N days, or every N weeks on whichever
+          weekdays you pick. Daily is just "every 1 day"; "every 2 weeks on mon/wed/fri" and
+          "every 3 days" work the same way. Hit <em>manage</em> and click a cadence's schedule to
+          change it later; renaming leaves the schedule alone, and changing the interval restarts
+          the count from that day.
+        </p>
+        <p>
+          The grid shows the last few months plus your current and longest streaks. A day it was
+          never due on is faded, not a miss &mdash; skipping it can't break anything, and the
+          streak counts scheduled turns you hit rather than calendar days. Doing something a day
+          late still clears the turn it was owed for. A cadence that's "once a week, any day"
+          gets a single bar per week instead of seven dots, since that's what the target actually
+          is.
         </p>
         <ul>
           <li>meditated</li>
@@ -215,7 +226,10 @@ export function Guide() {
           date on X" to take a deadline off without touching the sidequest itself.
           Marking one done tucks it into the <em>resolved</em> dropdown at the bottom of the
           panel instead of cluttering the open sections. Expand a card to see its clarity
-          sessions, the total time they add up to, and an &times; on each to drop one.
+          sessions, the total time they add up to, and an &times; on each to drop one &mdash; and
+          to edit the note directly. Typed entries still add a line; editing the box replaces
+          what's there, so a note can be corrected and not only grown. The same edit is available
+          on any sidequest row in the timeline, and either way it's the same note.
         </p>
         <ul>
           <li>psych mcq exam due next friday</li>

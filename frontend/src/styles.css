@@ -1811,6 +1811,81 @@ header > .brand {
   border-color: transparent;
 }
 
+/* A day the cadence was never owed on. Faint rather than absent so the grid
+   keeps its shape, but clearly not the same thing as a missed day. */
+.cadence-cell.off {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--line);
+  opacity: 0.35;
+}
+
+.cadence-cell.weekly.off {
+  border-style: dashed;
+  opacity: 0.35;
+}
+
+.stat-num.sched {
+  font-size: 17px;
+  line-height: 1.3;
+}
+
+.sched-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0 4px;
+}
+
+.sched-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sched-word {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.sched-num {
+  width: 48px;
+  padding: 4px 6px;
+  font-size: 14px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+
+.sched-days {
+  display: flex;
+  gap: 4px;
+}
+
+.sched-day {
+  width: 26px;
+  height: 26px;
+  font-size: 12px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  border-radius: 50%;
+  padding: 0;
+}
+
+.sched-day.active {
+  background: var(--cadence);
+  border-color: var(--cadence);
+  color: var(--paper);
+}
+
+.sched-summary {
+  font-size: 12px;
+  color: var(--faint);
+}
+
 .cadence-manage {
   margin: 18px 0 8px;
   border: 1px solid var(--line);
@@ -2095,6 +2170,31 @@ header > .brand {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.task-note-edit {
+  padding: 0 12px 10px 34px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.task-note-edit textarea {
+  flex: 1;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--line);
+  padding: 6px 8px;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.task-note-hint {
+  font-size: 11px;
+  color: var(--faint);
+  padding-top: 8px;
 }
 
 .task-session-total {

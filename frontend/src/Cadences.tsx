@@ -1,9 +1,28 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { archiveCadence, createCadence, getCadenceCompletions, listCadences, patchCadence } from './api'
 import { Panel, usePanelState } from './Panel'
-import type { Cadence, CadenceCompletions } from './types'
+import type { Cadence, CadenceCompletions, CadenceSchedule, IntervalUnit } from './types'
 
 const WEEKS = 14
+const DAY_INITIALS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
+const DAY_NAMES = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
+
+// How a schedule reads in a sentence. Mirrors Schedule::label in cadences.rs;
+// the two are shown in different places (chip vs. LLM prompt) and drifting
+// apart would be confusing rather than broken.
+function scheduleLabel(s: CadenceSchedule): string {
+  const base =
+    s.interval_n === 1
+      ? s.interval_unit === 'week'
+        ? 'weekly'
+        : 'daily'
+      : `every ${s.interval_n} ${s.interval_unit}s`
+  if (s.interval_unit === 'week' && s.weekdays.length > 0) {
+    const days = [...s.weekdays].sort((a, b) => a - b).map((d) => DAY_NAMES[d])
+    return `${base} on ${days.join('/')}`
+  }
+  return base
+}
 
 function dateToStr(d: Date): string {
   const y = d.getFullYear()
@@ -75,10 +94,14 @@ export function Cadences({ open }: { open: boolean }) {
   }, [mounted, refreshCompletions])
 
   const done = useMemo(() => new Set(completions?.dates ?? []), [completions])
+  const due = useMemo(() => new Set(completions?.due_dates ?? []), [completions])
   const weeks = useMemo(buildWeeks, [])
   const today = dateToStr(new Date())
   const selected = cadences.find((h) => h.id === selectedId) ?? null
-  const weekly = selected?.target_frequency === 'weekly'
+  // One cell per week only when the target really is "once this week, any
+  // day" - picking specific weekdays makes the individual days meaningful
+  // again, so those get the normal per-day grid with the off days shaded out.
+  const byWeek = selected?.interval_unit === 'week' && selected.weekdays.length === 0
 
   if (!mounted) return null
 
@@ -123,11 +146,15 @@ export function Cadences({ open }: { open: boolean }) {
               <div className="cadence-stats">
                 <div className="stat-tile">
                   <span className="stat-num">{completions?.current_streak ?? 0}</span>
-                  <span className="stat-label">current streak{weekly ? ' (wks)' : ''}</span>
+                  <span className="stat-label">current streak</span>
                 </div>
                 <div className="stat-tile">
                   <span className="stat-num">{completions?.longest_streak ?? 0}</span>
-                  <span className="stat-label">longest streak{weekly ? ' (wks)' : ''}</span>
+                  <span className="stat-label">longest streak</span>
+                </div>
+                <div className="stat-tile">
+                  <span className="stat-num sched">{scheduleLabel(selected)}</span>
+                  <span className="stat-label">repeats</span>
                 </div>
               </div>
 
@@ -149,18 +176,20 @@ export function Cadences({ open }: { open: boolean }) {
                 </div>
                 <div className="cadence-weeks">
                   {weeks.map((col, i) => {
-                    // A weekly cadence isn't meant to happen every day, so a
-                    // per-day dot per day just reads as noise - one cell per
-                    // week (hit anywhere in it, or not) matches the actual
-                    // target and lines up with the streak now counting weeks.
-                    if (weekly) {
+                    // "Once this week, any day" makes a per-day dot noise -
+                    // one cell per week matches the actual target and lines
+                    // up with the streak counting weeks.
+                    if (byWeek) {
                       const weekStr = dateToStr(col[0])
                       const future = weekStr > today
                       const lit = col.some((d) => done.has(dateToStr(d)))
+                      const owed = col.some((d) => due.has(dateToStr(d)))
                       return (
                         <div key={i} className="cadence-week">
                           <div
-                            className={`cadence-cell weekly ${future ? 'future' : lit ? 'done' : ''}`}
+                            className={`cadence-cell weekly ${
+                              future ? 'future' : lit ? 'done' : owed ? '' : 'off'
+                            }`}
                             title={weekStr}
                           />
                         </div>
@@ -172,11 +201,16 @@ export function Cadences({ open }: { open: boolean }) {
                           const str = dateToStr(d)
                           const future = str > today
                           const lit = done.has(str)
+                          // A day it was never owed on is not a miss, so it
+                          // reads as blank rather than as an empty slot.
+                          const owed = due.has(str)
                           return (
                             <div
                               key={str}
-                              className={`cadence-cell ${future ? 'future' : lit ? 'done' : ''}`}
-                              title={str}
+                              className={`cadence-cell ${
+                                future ? 'future' : lit ? 'done' : owed ? '' : 'off'
+                              }`}
+                              title={owed || lit ? str : `${str} · not due`}
                             />
                           )
                         })}
@@ -193,15 +227,91 @@ export function Cadences({ open }: { open: boolean }) {
   )
 }
 
+const DEFAULT_SCHEDULE: CadenceSchedule = { interval_unit: 'day', interval_n: 1, weekdays: [] }
+
+// The repeat picker, shared by the add form and each row's edit panel. Reads
+// as a sentence - "every [2] weeks / on [S M T W T F S]" - rather than as a
+// fixed daily/weekly choice, so biweekly and mon/wed/fri are sayable.
+function ScheduleEditor({
+  value,
+  onChange,
+}: {
+  value: CadenceSchedule
+  onChange: (next: CadenceSchedule) => void
+}) {
+  const setUnit = (unit: IntervalUnit) =>
+    onChange({ ...value, interval_unit: unit, weekdays: unit === 'week' ? value.weekdays : [] })
+
+  const toggleDay = (d: number) =>
+    onChange({
+      ...value,
+      weekdays: value.weekdays.includes(d)
+        ? value.weekdays.filter((x) => x !== d)
+        : [...value.weekdays, d].sort((a, b) => a - b),
+    })
+
+  return (
+    <div className="sched-editor">
+      <div className="sched-line">
+        <span className="sched-word">every</span>
+        <input
+          className="sched-num"
+          type="number"
+          min={1}
+          max={52}
+          value={value.interval_n}
+          onChange={(e) =>
+            onChange({ ...value, interval_n: Math.min(52, Math.max(1, Number(e.target.value) || 1)) })
+          }
+        />
+        <div className="status-buttons">
+          {(['day', 'week'] as const).map((u) => (
+            <button
+              key={u}
+              className={`filter ${value.interval_unit === u ? 'active' : ''}`}
+              onClick={() => setUnit(u)}
+            >
+              {value.interval_n === 1 ? u : `${u}s`}
+            </button>
+          ))}
+        </div>
+      </div>
+      {value.interval_unit === 'week' && (
+        <div className="sched-line">
+          <span className="sched-word">on</span>
+          <div className="sched-days">
+            {DAY_INITIALS.map((initial, d) => (
+              <button
+                key={d}
+                className={`sched-day ${value.weekdays.includes(d) ? 'active' : ''}`}
+                onClick={() => toggleDay(d)}
+                aria-label={DAY_NAMES[d]}
+              >
+                {initial}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <span className="sched-summary">
+        {scheduleLabel(value)}
+        {value.interval_unit === 'week' && value.weekdays.length === 0 && ' — any day that week'}
+      </span>
+    </div>
+  )
+}
+
 function Manage({ cadences, onChange }: { cadences: Cadence[]; onChange: () => void }) {
   const [name, setName] = useState('')
-  const [frequency, setFrequency] = useState<'daily' | 'weekly'>('daily')
+  const [schedule, setSchedule] = useState<CadenceSchedule>(DEFAULT_SCHEDULE)
+  const [editingId, setEditingId] = useState<string | null>(null)
 
   const add = async () => {
     const trimmed = name.trim()
     if (!trimmed) return
-    await createCadence({ name: trimmed, target_frequency: frequency }).catch(() => {})
+    await createCadence({ name: trimmed, ...schedule }).catch(() => {})
     setName('')
+    setSchedule(DEFAULT_SCHEDULE)
     onChange()
   }
 
@@ -213,29 +323,51 @@ function Manage({ cadences, onChange }: { cadences: Cadence[]; onChange: () => v
   const rename = async (id: string, current: string, next: string) => {
     const trimmed = next.trim()
     if (!trimmed || trimmed === current) return
-    await patchCadence(id, trimmed).catch(() => {})
+    await patchCadence(id, { name: trimmed }).catch(() => {})
+    onChange()
+  }
+
+  const reschedule = async (id: string, next: CadenceSchedule) => {
+    await patchCadence(id, next).catch(() => {})
     onChange()
   }
 
   return (
     <div className="cadence-manage">
       {cadences.map((h) => (
-        <div key={h.id} className="cadence-manage-row">
-          <span>
-            <input
-              className="cadence-name-input"
-              defaultValue={h.name}
-              size={Math.max(h.name.length, 1)}
-              onBlur={(e) => void rename(h.id, h.name, e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') e.currentTarget.blur()
-              }}
-            />{' '}
-            <span className="row-sub">{h.target_frequency}</span>
-          </span>
-          <button className="delete-btn" onClick={() => void remove(h.id)} aria-label="archive cadence">
-            ✕
-          </button>
+        <div key={h.id}>
+          <div className="cadence-manage-row">
+            <span>
+              <input
+                className="cadence-name-input"
+                defaultValue={h.name}
+                size={Math.max(h.name.length, 1)}
+                onBlur={(e) => void rename(h.id, h.name, e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') e.currentTarget.blur()
+                }}
+              />{' '}
+              <button
+                className="row-sub link-btn"
+                onClick={() => setEditingId((c) => (c === h.id ? null : h.id))}
+              >
+                {scheduleLabel(h)}
+              </button>
+            </span>
+            <button
+              className="delete-btn"
+              onClick={() => void remove(h.id)}
+              aria-label="archive cadence"
+            >
+              ✕
+            </button>
+          </div>
+          {editingId === h.id && (
+            <ScheduleEditor
+              value={h}
+              onChange={(next) => void reschedule(h.id, next)}
+            />
+          )}
         </div>
       ))}
       <div className="cadence-manage-add">
@@ -248,16 +380,8 @@ function Manage({ cadences, onChange }: { cadences: Cadence[]; onChange: () => v
           }}
           placeholder="new cadence"
         />
+        <ScheduleEditor value={schedule} onChange={setSchedule} />
         <div className="status-buttons">
-          {(['daily', 'weekly'] as const).map((f) => (
-            <button
-              key={f}
-              className={`filter ${frequency === f ? 'active' : ''}`}
-              onClick={() => setFrequency(f)}
-            >
-              {f}
-            </button>
-          ))}
           <button className="action save" onClick={() => void add()} disabled={!name.trim()}>
             add
           </button>

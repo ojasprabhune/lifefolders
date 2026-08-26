@@ -16,12 +16,120 @@ use crate::AppState;
 pub struct Cadence {
     pub id: Uuid,
     pub name: String,
-    pub target_frequency: String,
+    pub interval_unit: String,
+    pub interval_n: i32,
+    pub weekdays: Vec<i16>,
+    pub anchor_date: NaiveDate,
     pub active: bool,
     pub created_at: DateTime<Utc>,
 }
 
-const CADENCE_COLUMNS: &str = "id, name, target_frequency, active, created_at";
+const CADENCE_COLUMNS: &str =
+    "id, name, interval_unit, interval_n, weekdays, anchor_date, active, created_at";
+
+/// When a cadence is meant to happen. Every N days, or every N weeks on a set
+/// of weekdays - an empty weekday set means "once anywhere inside that week",
+/// which is what the old "weekly" cadence meant and still the right shape for
+/// something you owe once a week but don't care which day.
+///
+/// Everything downstream works in *occurrences* rather than calendar days: a
+/// day the cadence wasn't due is not a miss, so skipping it can't break a
+/// streak.
+pub struct Schedule {
+    pub unit: String,
+    pub every: i64,
+    pub weekdays: Vec<i16>,
+    pub anchor: NaiveDate,
+}
+
+impl Schedule {
+    pub fn of(c: &Cadence) -> Self {
+        Schedule {
+            unit: c.interval_unit.clone(),
+            every: c.interval_n.max(1) as i64,
+            weekdays: c.weekdays.clone(),
+            anchor: c.anchor_date,
+        }
+    }
+
+    fn weekly(&self) -> bool {
+        self.unit == "week"
+    }
+
+    /// Is the period containing `d` one the interval lands on?
+    fn active_period(&self, d: NaiveDate) -> bool {
+        // Nothing before the anchor is owed - a cadence made on Wednesday
+        // shouldn't show Monday of that week as a day you missed.
+        if d < self.anchor {
+            return false;
+        }
+        let (a, b) = (self.period_start(self.anchor), self.period_start(d));
+        let step = if self.weekly() { 7 } else { 1 };
+        ((b - a).num_days() / step) % self.every == 0
+    }
+
+    fn period_start(&self, d: NaiveDate) -> NaiveDate {
+        if self.weekly() {
+            week_start(d)
+        } else {
+            d
+        }
+    }
+
+    /// Every occurrence in `from..=to`, ascending. A weekly cadence with no
+    /// weekdays picked contributes one occurrence per active week, dated to
+    /// that week's Sunday; everything else contributes one per due day.
+    pub fn occurrences(&self, from: NaiveDate, to: NaiveDate) -> Vec<NaiveDate> {
+        let mut out = Vec::new();
+        let mut d = from.max(self.anchor);
+        while d <= to {
+            if self.active_period(d) {
+                if !self.weekly() {
+                    out.push(d);
+                } else if self.weekdays.is_empty() {
+                    let start = week_start(d);
+                    if out.last() != Some(&start) {
+                        out.push(start);
+                    }
+                } else if self.weekdays.contains(&(d.weekday().num_days_from_sunday() as i16)) {
+                    out.push(d);
+                }
+            }
+            d += Duration::days(1);
+        }
+        out
+    }
+
+    /// True when `d` is itself a day the cadence is owed on - what the grid
+    /// shades to distinguish "not due" from "missed".
+    pub fn is_due_on(&self, d: NaiveDate) -> bool {
+        if !self.active_period(d) {
+            return false;
+        }
+        if !self.weekly() || self.weekdays.is_empty() {
+            return true;
+        }
+        self.weekdays.contains(&(d.weekday().num_days_from_sunday() as i16))
+    }
+
+    pub fn label(&self) -> String {
+        let unit = if self.weekly() { "week" } else { "day" };
+        let base = match self.every {
+            1 if self.weekly() => "weekly".to_string(),
+            1 => "daily".to_string(),
+            n => format!("every {n} {unit}s"),
+        };
+        if self.weekly() && !self.weekdays.is_empty() {
+            const NAMES: [&str; 7] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+            let mut days: Vec<i16> = self.weekdays.clone();
+            days.sort_unstable();
+            let names: Vec<&str> =
+                days.iter().filter_map(|d| NAMES.get(*d as usize).copied()).collect();
+            return format!("{base} on {}", names.join("/"));
+        }
+        base
+    }
+}
 
 pub(crate) async fn active_cadences(state: &AppState) -> Result<Vec<Cadence>, AppError> {
     Ok(sqlx::query_as(&format!(
@@ -63,7 +171,7 @@ pub async fn context_block(state: &AppState) -> String {
     }
     let mut out = String::from("Active cadences:\n");
     for h in cadences.iter().take(40) {
-        out.push_str(&format!("- {} ({})\n", h.name, h.target_frequency));
+        out.push_str(&format!("- {} ({})\n", h.name, Schedule::of(h).label()));
     }
     out
 }
@@ -152,7 +260,34 @@ pub async fn list_cadences(State(state): State<AppState>) -> Result<Json<Vec<Cad
 #[derive(Debug, Deserialize)]
 pub struct CreateCadence {
     pub name: String,
-    pub target_frequency: Option<String>,
+    pub interval_unit: Option<String>,
+    pub interval_n: Option<i32>,
+    pub weekdays: Option<Vec<i16>>,
+}
+
+/// Validate and normalise a schedule coming off the wire. Weekdays are only
+/// meaningful on a weekly cadence, so a day-unit one drops them rather than
+/// storing a set nothing will ever read.
+fn clean_schedule(
+    unit: Option<&str>,
+    n: Option<i32>,
+    weekdays: Option<Vec<i16>>,
+) -> Result<(String, i32, Vec<i16>), AppError> {
+    let unit = unit.unwrap_or("day");
+    if !matches!(unit, "day" | "week") {
+        return Err(AppError::BadRequest("interval_unit must be day or week".into()));
+    }
+    let n = n.unwrap_or(1);
+    if !(1..=52).contains(&n) {
+        return Err(AppError::BadRequest("interval_n must be between 1 and 52".into()));
+    }
+    let mut days = if unit == "week" { weekdays.unwrap_or_default() } else { Vec::new() };
+    if days.iter().any(|d| !(0..=6).contains(d)) {
+        return Err(AppError::BadRequest("weekdays must be 0-6".into()));
+    }
+    days.sort_unstable();
+    days.dedup();
+    Ok((unit.to_string(), n, days))
 }
 
 pub async fn create_cadence(
@@ -163,15 +298,16 @@ pub async fn create_cadence(
     if name.is_empty() {
         return Err(AppError::BadRequest("name is empty".into()));
     }
-    let freq = body.target_frequency.as_deref().unwrap_or("daily");
-    if !matches!(freq, "daily" | "weekly") {
-        return Err(AppError::BadRequest("frequency must be daily or weekly".into()));
-    }
+    let (unit, n, weekdays) =
+        clean_schedule(body.interval_unit.as_deref(), body.interval_n, body.weekdays)?;
     let cadence: Cadence = sqlx::query_as(&format!(
-        "INSERT INTO cadences (name, target_frequency) VALUES ($1, $2) RETURNING {CADENCE_COLUMNS}"
+        "INSERT INTO cadences (name, interval_unit, interval_n, weekdays) \
+         VALUES ($1, $2, $3, $4) RETURNING {CADENCE_COLUMNS}"
     ))
     .bind(name)
-    .bind(freq)
+    .bind(&unit)
+    .bind(n)
+    .bind(&weekdays)
     .fetch_one(&state.pool)
     .await?;
     Ok(Json(cadence))
@@ -179,7 +315,10 @@ pub async fn create_cadence(
 
 #[derive(Debug, Deserialize)]
 pub struct PatchCadence {
-    pub name: String,
+    pub name: Option<String>,
+    pub interval_unit: Option<String>,
+    pub interval_n: Option<i32>,
+    pub weekdays: Option<Vec<i16>>,
 }
 
 pub async fn patch_cadence(
@@ -187,18 +326,43 @@ pub async fn patch_cadence(
     Path(id): Path<Uuid>,
     Json(body): Json<PatchCadence>,
 ) -> Result<Json<Cadence>, AppError> {
-    let name = body.name.trim();
-    if name.is_empty() {
-        return Err(AppError::BadRequest("name is empty".into()));
-    }
-    let cadence: Option<Cadence> = sqlx::query_as(&format!(
-        "UPDATE cadences SET name = $2 WHERE id = $1 AND active RETURNING {CADENCE_COLUMNS}"
+    let existing: Option<Cadence> =
+        sqlx::query_as(&format!("SELECT {CADENCE_COLUMNS} FROM cadences WHERE id = $1 AND active"))
+            .bind(id)
+            .fetch_optional(&state.pool)
+            .await?;
+    let existing = existing.ok_or(AppError::NotFound)?;
+
+    let name = match body.name.as_deref().map(str::trim) {
+        Some("") => return Err(AppError::BadRequest("name is empty".into())),
+        Some(n) => n.to_string(),
+        None => existing.name.clone(),
+    };
+    // A schedule field only counts as "being changed" when the unit is sent
+    // too, so renaming can't silently reset an every-2-weeks cadence to daily.
+    let (unit, n, weekdays) = match body.interval_unit.as_deref() {
+        Some(u) => clean_schedule(Some(u), body.interval_n, body.weekdays)?,
+        None => (existing.interval_unit.clone(), existing.interval_n, existing.weekdays.clone()),
+    };
+
+    // Re-anchor when the interval changes so "every 2 weeks" restarts from the
+    // week you changed it, which is what picking a new schedule means. An
+    // unchanged schedule keeps its original anchor and its whole history.
+    let rescheduled = unit != existing.interval_unit || n != existing.interval_n;
+    let cadence: Cadence = sqlx::query_as(&format!(
+        "UPDATE cadences SET name = $2, interval_unit = $3, interval_n = $4, weekdays = $5, \
+            anchor_date = CASE WHEN $6 THEN CURRENT_DATE ELSE anchor_date END \
+         WHERE id = $1 AND active RETURNING {CADENCE_COLUMNS}"
     ))
     .bind(id)
-    .bind(name)
-    .fetch_optional(&state.pool)
+    .bind(&name)
+    .bind(&unit)
+    .bind(n)
+    .bind(&weekdays)
+    .bind(rescheduled)
+    .fetch_one(&state.pool)
     .await?;
-    cadence.map(Json).ok_or(AppError::NotFound)
+    Ok(Json(cadence))
 }
 
 // Archive rather than delete: past completion logs still reference the cadence
@@ -228,8 +392,13 @@ pub struct CompletionsQuery {
 #[derive(Debug, Serialize)]
 pub struct Completions {
     pub dates: Vec<NaiveDate>,
+    // The days inside the window the cadence was actually owed on, so the grid
+    // can shade "not due" differently from "missed" - without it an every-2-
+    // weeks cadence looks like a wall of failures.
+    pub due_dates: Vec<NaiveDate>,
     pub current_streak: i64,
     pub longest_streak: i64,
+    pub unit: String,
 }
 
 pub async fn completions(
@@ -246,10 +415,12 @@ pub async fn completions(
     // too, in case the window's first day lands mid-week.
     let since = today - Duration::days(days + 8);
 
-    let (freq,): (String,) = sqlx::query_as("SELECT target_frequency FROM cadences WHERE id = $1")
-        .bind(id)
-        .fetch_one(&state.pool)
-        .await?;
+    let cadence: Cadence =
+        sqlx::query_as(&format!("SELECT {CADENCE_COLUMNS} FROM cadences WHERE id = $1"))
+            .bind(id)
+            .fetch_one(&state.pool)
+            .await?;
+    let schedule = Schedule::of(&cadence);
 
     let rows: Vec<(DateTime<Utc>,)> = sqlx::query_as(
         "SELECT created_at FROM logs \
@@ -268,20 +439,27 @@ pub async fn completions(
         .map(|(ts,)| (ts - Duration::minutes(offset as i64)).date_naive())
         .collect();
 
-    // A weekly cadence isn't meant to happen every day, so a day-based streak
-    // is nearly always zero for one - count consecutive weeks hit instead.
-    let (current_streak, longest_streak) = if freq == "weekly" {
-        (current_run_weekly(&all, today), longest_run_weekly(&all))
-    } else {
-        (current_run(&all, today), longest_run(&all))
-    };
+    let occurrences = schedule.occurrences(since, today);
+    let current_streak = current_run(&occurrences, &all, today);
+    let longest_streak = longest_run(&occurrences, &all, today);
 
     // Only surface the dates inside the requested window to the client; the
-    // extra day pulled above was just for accurate streak measurement.
+    // extra days pulled above were just for accurate streak measurement.
     let start = today - Duration::days(days - 1);
     let dates: Vec<NaiveDate> = all.into_iter().filter(|d| *d >= start).collect();
+    let due_dates: Vec<NaiveDate> = start
+        .iter_days()
+        .take_while(|d| *d <= today)
+        .filter(|d| schedule.is_due_on(*d))
+        .collect();
 
-    Ok(Json(Completions { dates, current_streak, longest_streak }))
+    Ok(Json(Completions {
+        dates,
+        due_dates,
+        current_streak,
+        longest_streak,
+        unit: cadence.interval_unit,
+    }))
 }
 
 /// The single strongest live streak across all active cadences, as
@@ -308,45 +486,13 @@ pub async fn max_current_streak(
             .into_iter()
             .map(|(ts,)| (ts - Duration::minutes(tz_offset as i64)).date_naive())
             .collect();
-        let streak = current_run(&dates, today);
+        let occurrences = Schedule::of(&c).occurrences(since, today);
+        let streak = current_run(&occurrences, &dates, today);
         if streak > 0 && best.as_ref().map(|(_, s)| streak > *s).unwrap_or(true) {
             best = Some((c.name.clone(), streak));
         }
     }
     Ok(best)
-}
-
-// Consecutive days counting back from today, or from yesterday when today
-// isn't done yet, so an unfinished-but-alive streak still shows.
-fn current_run(dates: &BTreeSet<NaiveDate>, today: NaiveDate) -> i64 {
-    let mut day = if dates.contains(&today) {
-        today
-    } else if dates.contains(&(today - Duration::days(1))) {
-        today - Duration::days(1)
-    } else {
-        return 0;
-    };
-    let mut streak = 0;
-    while dates.contains(&day) {
-        streak += 1;
-        day -= Duration::days(1);
-    }
-    streak
-}
-
-fn longest_run(dates: &BTreeSet<NaiveDate>) -> i64 {
-    let mut longest = 0;
-    let mut run = 0;
-    let mut prev: Option<NaiveDate> = None;
-    for &d in dates {
-        run = match prev {
-            Some(p) if d == p + Duration::days(1) => run + 1,
-            _ => 1,
-        };
-        longest = longest.max(run);
-        prev = Some(d);
-    }
-    longest
 }
 
 // Sunday-aligned, matching the frontend's week columns (buildWeeks in
@@ -355,126 +501,214 @@ fn week_start(d: NaiveDate) -> NaiveDate {
     d - Duration::days(d.weekday().num_days_from_sunday() as i64)
 }
 
-fn current_run_weekly(dates: &BTreeSet<NaiveDate>, today: NaiveDate) -> i64 {
-    let weeks: BTreeSet<NaiveDate> = dates.iter().map(|&d| week_start(d)).collect();
-    let this_week = week_start(today);
-    let mut week = if weeks.contains(&this_week) {
-        this_week
-    } else if weeks.contains(&(this_week - Duration::days(7))) {
-        // This week isn't done yet, but doesn't break a streak still running
-        // through last week - same idea as current_run falling back to
-        // yesterday when today is empty.
-        this_week - Duration::days(7)
+/// Was the occurrence starting at `slot` satisfied? A completion counts toward
+/// the latest occurrence at or before it, so finishing an "every 3 days"
+/// cadence a day late still clears that occurrence rather than falling into a
+/// gap and reading as a miss.
+fn satisfied(occurrences: &[NaiveDate], i: usize, dates: &BTreeSet<NaiveDate>) -> bool {
+    let start = occurrences[i];
+    let end = occurrences.get(i + 1).copied();
+    dates
+        .range(start..)
+        .take_while(|d| end.map(|e| **d < e).unwrap_or(true))
+        .next()
+        .is_some()
+}
+
+/// Consecutive satisfied occurrences counting back from the most recent one.
+/// The current occurrence being unfinished doesn't break the streak - it just
+/// hasn't happened yet - so the count falls back to the one before it, the
+/// same forgiveness the day-based version always had for "today".
+fn current_run(occurrences: &[NaiveDate], dates: &BTreeSet<NaiveDate>, today: NaiveDate) -> i64 {
+    let last = match occurrences.iter().rposition(|d| *d <= today) {
+        Some(i) => i,
+        None => return 0,
+    };
+    let mut i = if satisfied(occurrences, last, dates) {
+        last
+    } else if last > 0 && satisfied(occurrences, last - 1, dates) {
+        last - 1
     } else {
         return 0;
     };
     let mut streak = 0;
-    while weeks.contains(&week) {
+    loop {
+        if !satisfied(occurrences, i, dates) {
+            break;
+        }
         streak += 1;
-        week -= Duration::days(7);
+        if i == 0 {
+            break;
+        }
+        i -= 1;
     }
     streak
 }
 
-fn longest_run_weekly(dates: &BTreeSet<NaiveDate>) -> i64 {
-    let weeks: BTreeSet<NaiveDate> = dates.iter().map(|&d| week_start(d)).collect();
+fn longest_run(occurrences: &[NaiveDate], dates: &BTreeSet<NaiveDate>, today: NaiveDate) -> i64 {
     let mut longest = 0;
     let mut run = 0;
-    let mut prev: Option<NaiveDate> = None;
-    for &w in &weeks {
-        run = match prev {
-            Some(p) if w == p + Duration::days(7) => run + 1,
-            _ => 1,
-        };
+    for i in 0..occurrences.len() {
+        // An occurrence still in the future is not a miss; stop rather than
+        // letting empty future slots reset the run to zero.
+        if occurrences[i] > today {
+            break;
+        }
+        run = if satisfied(occurrences, i, dates) { run + 1 } else { 0 };
         longest = longest.max(run);
-        prev = Some(w);
     }
     longest
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{current_run, current_run_weekly, longest_run, longest_run_weekly, week_start};
+    use super::{current_run, longest_run, week_start, Cadence, Schedule};
     use chrono::{Duration, NaiveDate};
     use std::collections::BTreeSet;
 
-    fn set(days: &[i64], today: NaiveDate) -> BTreeSet<NaiveDate> {
-        days.iter().map(|&n| today + Duration::days(n)).collect()
+    fn day(n: i64) -> NaiveDate {
+        NaiveDate::from_ymd_opt(2026, 8, 12).unwrap() + Duration::days(n)
     }
 
-    fn weeks(offsets: &[i64], today: NaiveDate) -> BTreeSet<NaiveDate> {
-        let this_week = week_start(today);
-        offsets.iter().map(|&n| this_week + Duration::days(n * 7)).collect()
+    fn schedule(unit: &str, every: i64, weekdays: &[i16], anchor: NaiveDate) -> Schedule {
+        Schedule {
+            unit: unit.into(),
+            every,
+            weekdays: weekdays.to_vec(),
+            anchor,
+        }
+    }
+
+    fn set(offsets: &[i64]) -> BTreeSet<NaiveDate> {
+        offsets.iter().map(|&n| day(n)).collect()
+    }
+
+    // A plain daily cadence has to behave exactly as it did before schedules
+    // existed, since every existing cadence was migrated into this shape.
+    #[test]
+    fn daily_streak_counts_back_from_today() {
+        let today = day(0);
+        let sched = schedule("day", 1, &[], day(-30));
+        let occ = sched.occurrences(day(-30), today);
+        assert_eq!(current_run(&occ, &set(&[0, -1, -2, -4, -5]), today), 3);
     }
 
     #[test]
-    fn current_streak_counts_back_from_today() {
-        let today = NaiveDate::from_ymd_opt(2026, 8, 12).unwrap();
-        // today, yesterday, two days ago done; gap; older run
-        let dates = set(&[0, -1, -2, -4, -5], today);
-        assert_eq!(current_run(&dates, today), 3);
+    fn daily_streak_uses_yesterday_when_today_missing() {
+        let today = day(0);
+        let sched = schedule("day", 1, &[], day(-30));
+        let occ = sched.occurrences(day(-30), today);
+        assert_eq!(current_run(&occ, &set(&[-1, -2]), today), 2);
     }
 
     #[test]
-    fn current_streak_uses_yesterday_when_today_missing() {
-        let today = NaiveDate::from_ymd_opt(2026, 8, 12).unwrap();
-        let dates = set(&[-1, -2], today);
-        assert_eq!(current_run(&dates, today), 2);
+    fn daily_streak_zero_when_gap_before_today() {
+        let today = day(0);
+        let sched = schedule("day", 1, &[], day(-30));
+        let occ = sched.occurrences(day(-30), today);
+        assert_eq!(current_run(&occ, &set(&[-2, -3]), today), 0);
     }
 
     #[test]
-    fn current_streak_zero_when_gap_before_today() {
-        let today = NaiveDate::from_ymd_opt(2026, 8, 12).unwrap();
-        let dates = set(&[-2, -3], today);
-        assert_eq!(current_run(&dates, today), 0);
+    fn daily_longest_run_finds_best_stretch() {
+        let today = day(0);
+        let sched = schedule("day", 1, &[], day(-30));
+        let occ = sched.occurrences(day(-30), today);
+        assert_eq!(longest_run(&occ, &set(&[0, -1, -3, -4, -5, -6, -9]), today), 4);
     }
 
-    #[test]
-    fn longest_streak_finds_best_run() {
-        let today = NaiveDate::from_ymd_opt(2026, 8, 12).unwrap();
-        let dates = set(&[0, -1, -3, -4, -5, -6, -9], today);
-        assert_eq!(longest_run(&dates), 4);
-    }
-
-    #[test]
-    fn current_streak_weekly_counts_back_from_this_week() {
-        let today = NaiveDate::from_ymd_opt(2026, 8, 12).unwrap();
-        // this week, last week, two weeks ago hit; gap; older run
-        let dates = weeks(&[0, -1, -2, -4, -5], today);
-        assert_eq!(current_run_weekly(&dates, today), 3);
-    }
-
-    #[test]
-    fn current_streak_weekly_falls_back_to_last_week_when_this_week_missing() {
-        let today = NaiveDate::from_ymd_opt(2026, 8, 12).unwrap();
-        let dates = weeks(&[-1, -2], today);
-        assert_eq!(current_run_weekly(&dates, today), 2);
-    }
-
-    #[test]
-    fn current_streak_weekly_zero_when_gap_before_this_week() {
-        let today = NaiveDate::from_ymd_opt(2026, 8, 12).unwrap();
-        let dates = weeks(&[-2, -3], today);
-        assert_eq!(current_run_weekly(&dates, today), 0);
-    }
-
-    #[test]
-    fn longest_streak_weekly_finds_best_run() {
-        let today = NaiveDate::from_ymd_opt(2026, 8, 12).unwrap();
-        let dates = weeks(&[0, -1, -3, -4, -5, -6, -9], today);
-        assert_eq!(longest_run_weekly(&dates), 4);
-    }
-
+    // The old "weekly" cadence: once anywhere in the week, streak counts weeks.
     #[test]
     fn weekly_streak_ignores_which_day_within_the_week_was_hit() {
-        // Same weeks as above but hit on different weekdays each time -
-        // should still read as a 3-week streak, not scattered/zero.
-        let today = NaiveDate::from_ymd_opt(2026, 8, 12).unwrap();
+        let today = day(0);
         let this_week = week_start(today);
-        let dates: BTreeSet<NaiveDate> = [(0, 2), (-1, 5), (-2, 0)]
+        let sched = schedule("week", 1, &[], this_week - Duration::days(70));
+        let occ = sched.occurrences(this_week - Duration::days(70), today);
+        // one hit per week, on a different weekday each time
+        let dates: BTreeSet<NaiveDate> = [0i64, -7, -14]
             .iter()
-            .map(|&(week_offset, day_offset)| this_week + Duration::days(week_offset * 7 + day_offset))
+            .enumerate()
+            .map(|(i, &w)| this_week + Duration::days(w + i as i64))
             .collect();
-        assert_eq!(current_run_weekly(&dates, today), 3);
+        assert_eq!(current_run(&occ, &dates, today), 3);
+    }
+
+    #[test]
+    fn weekly_streak_falls_back_to_last_week_when_this_week_missing() {
+        let today = day(0);
+        let this_week = week_start(today);
+        let sched = schedule("week", 1, &[], this_week - Duration::days(70));
+        let occ = sched.occurrences(this_week - Duration::days(70), today);
+        let dates: BTreeSet<NaiveDate> =
+            [-7i64, -14].iter().map(|&w| this_week + Duration::days(w)).collect();
+        assert_eq!(current_run(&occ, &dates, today), 2);
+    }
+
+    // The whole point of the schedule: a day it was never owed on is not a
+    // miss. Every 3 days, hit on schedule, nothing in between - still a streak.
+    #[test]
+    fn every_n_days_skips_the_days_between() {
+        let today = day(0);
+        let sched = schedule("day", 3, &[], day(-9));
+        let occ = sched.occurrences(day(-30), today);
+        assert_eq!(occ, vec![day(-9), day(-6), day(-3), day(0)]);
+        assert_eq!(current_run(&occ, &set(&[0, -3, -6, -9]), today), 4);
+        // Completions land on the occurrence they follow, never the one ahead
+        // of them: -1 and -2 both belong to the -3 occurrence, so -6 is still
+        // an unambiguous miss and the streak stops there.
+        assert_eq!(current_run(&occ, &set(&[-1, -2]), today), 1);
+    }
+
+    #[test]
+    fn biweekly_on_chosen_weekdays_only_counts_those_days() {
+        let anchor = NaiveDate::from_ymd_opt(2026, 8, 2).unwrap(); // a Sunday
+        let today = NaiveDate::from_ymd_opt(2026, 8, 31).unwrap();
+        // every 2 weeks, on monday and friday
+        let sched = schedule("week", 2, &[1, 5], anchor);
+        let occ = sched.occurrences(anchor, today);
+        let expect: Vec<NaiveDate> = ["2026-08-03", "2026-08-07", "2026-08-17", "2026-08-21", "2026-08-31"]
+            .iter()
+            .map(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap())
+            .collect();
+        assert_eq!(occ, expect);
+        // the off weeks are not due at all
+        assert!(!sched.is_due_on(NaiveDate::from_ymd_opt(2026, 8, 10).unwrap()));
+        assert!(sched.is_due_on(NaiveDate::from_ymd_opt(2026, 8, 17).unwrap()));
+        // wednesday of an active week is not a due day either
+        assert!(!sched.is_due_on(NaiveDate::from_ymd_opt(2026, 8, 19).unwrap()));
+    }
+
+    #[test]
+    fn a_late_completion_still_clears_its_occurrence() {
+        let today = day(0);
+        let sched = schedule("day", 3, &[], day(-9));
+        let occ = sched.occurrences(day(-30), today);
+        // due on -9/-6/-3/0, done a day late each time except today
+        assert_eq!(current_run(&occ, &set(&[-8, -5, -2]), today), 3);
+    }
+
+    #[test]
+    fn labels_read_the_way_you_would_say_them() {
+        let a = day(0);
+        assert_eq!(schedule("day", 1, &[], a).label(), "daily");
+        assert_eq!(schedule("day", 3, &[], a).label(), "every 3 days");
+        assert_eq!(schedule("week", 1, &[], a).label(), "weekly");
+        assert_eq!(schedule("week", 2, &[], a).label(), "every 2 weeks");
+        assert_eq!(schedule("week", 2, &[1, 3, 5], a).label(), "every 2 weeks on mon/wed/fri");
+    }
+
+    #[test]
+    fn schedule_of_defaults_a_zero_interval_to_one() {
+        let c = Cadence {
+            id: uuid::Uuid::nil(),
+            name: "x".into(),
+            interval_unit: "day".into(),
+            interval_n: 0,
+            weekdays: vec![],
+            anchor_date: day(0),
+            active: true,
+            created_at: chrono::Utc::now(),
+        };
+        assert_eq!(Schedule::of(&c).every, 1);
     }
 }

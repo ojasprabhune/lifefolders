@@ -8,6 +8,7 @@ import type {
   FieldSummary,
   Cadence,
   CadenceCompletions,
+  CadenceSchedule,
   FocusSession,
   Log,
   StartedSession,
@@ -380,6 +381,7 @@ export async function patchTask(
     category: string
     effort_minutes: number
     is_exam: boolean
+    note: string
   }>,
 ): Promise<Task> {
   const res = await fetch(`${API}/api/tasks/${id}`, {
@@ -409,10 +411,9 @@ export async function listCadences(): Promise<Cadence[]> {
   return (await check(res)).json()
 }
 
-export async function createCadence(body: {
-  name: string
-  target_frequency: 'daily' | 'weekly'
-}): Promise<Cadence> {
+export async function createCadence(
+  body: { name: string } & Partial<CadenceSchedule>,
+): Promise<Cadence> {
   const res = await fetch(`${API}/api/cadences`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...authHeaders() },
@@ -421,11 +422,14 @@ export async function createCadence(body: {
   return (await check(res)).json()
 }
 
-export async function patchCadence(id: string, name: string): Promise<Cadence> {
+export async function patchCadence(
+  id: string,
+  body: Partial<{ name: string } & CadenceSchedule>,
+): Promise<Cadence> {
   const res = await fetch(`${API}/api/cadences/${id}`, {
     method: 'PATCH',
     headers: { 'content-type': 'application/json', ...authHeaders() },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify(body),
   })
   return (await check(res)).json()
 }

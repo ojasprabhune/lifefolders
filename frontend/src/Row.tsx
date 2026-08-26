@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { deleteLog, updateLog } from './api'
+import { deleteLog, patchTask, updateLog } from './api'
 import { Expand } from './Expand'
 import type {
   AlbumData,
@@ -572,6 +572,19 @@ function TaskLogEditor({ log, onChange, onDelete }: EditorProps) {
   const data = log.data as TaskData
   const [note, setNote] = useState(data.note ?? '')
   const { saving, error, save, remove } = useEditor(log, onChange, onDelete)
+
+  // The row is a snapshot of one moment, but the note people actually mean is
+  // the live one on the sidequest - so write both, and let the sidequests
+  // panel pick the change up. Without this the only way to fix a note was to
+  // type another entry.
+  const submit = async () => {
+    if (data.task_id) {
+      await patchTask(data.task_id, { note: note.trim() })
+        .then(() => window.dispatchEvent(new Event('life-log-created')))
+        .catch(() => {})
+    }
+    save({ note: note.trim() || null })
+  }
   const meta = [
     data.is_exam ? 'exam' : data.category,
     data.status,
@@ -588,12 +601,7 @@ function TaskLogEditor({ log, onChange, onDelete }: EditorProps) {
         <span>note</span>
         <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
       </label>
-      <EditorFooter
-        saving={saving}
-        error={error}
-        onSave={() => save({ note: note.trim() || null })}
-        onDelete={remove}
-      />
+      <EditorFooter saving={saving} error={error} onSave={() => void submit()} onDelete={remove} />
     </div>
   )
 }
