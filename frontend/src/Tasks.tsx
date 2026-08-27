@@ -46,8 +46,15 @@ export function Tasks({ open }: { open: boolean }) {
     refresh()
   }
 
+  // "exam" is a section, not a category - groupByCategory keys off is_exam
+  // first, so patching only the category left anything the parser had flagged
+  // as an exam stuck in that section wherever it was dropped. Dropping into
+  // the section sets the flag (and keeps whatever category it already had);
+  // dropping anywhere else clears it, which is also what takes its spaced
+  // study checkpoints away.
   const moveToCategory = async (id: string, category: string) => {
-    await patchTask(id, { category }).catch(() => {})
+    const patch = category === 'exam' ? { is_exam: true } : { category, is_exam: false }
+    await patchTask(id, patch).catch(() => {})
     refresh()
   }
 

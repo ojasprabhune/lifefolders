@@ -231,7 +231,15 @@ pub async fn apply(
             };
             let snapshot = existing.clone();
             let mut patch = patch_for(&existing);
-            patch.category = Some(category.clone());
+            // Same rule the sidequests panel drags by: "exam" is a section
+            // driven by is_exam, not a category. Naming it sets the flag;
+            // naming anything else clears it, so a quiz the parser guessed
+            // was an exam can actually be moved back out to homework.
+            let to_exam = matches!(category.as_str(), "exam" | "exams");
+            patch.is_exam = Some(to_exam);
+            if !to_exam {
+                patch.category = Some(category.clone());
+            }
             let (updated, _) = tasks::update_task(state, &existing, &patch).await?;
             undo::record(state, Effect::TasksUpdated(vec![snapshot]));
             let log = write_history(state, raw, &updated, "moved").await?;
