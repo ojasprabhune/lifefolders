@@ -40,6 +40,7 @@ export function FocusTimer() {
   const [remaining, setRemaining] = useState(0)
   const [summary, setSummary] = useState<FocusSummary | null>(null)
   const [error, setError] = useState('')
+  const [confirmingStop, setConfirmingStop] = useState(false)
 
   useEffect(() => {
     listTasks()
@@ -243,20 +244,40 @@ export function FocusTimer() {
         <div className="focus-running">
           <div className={`focus-clock ${paused ? 'paused' : ''}`}>{mmss(remaining)}</div>
           <div className="focus-task">{active.title}</div>
-          <div className="focus-running-actions">
-            <button className="focus-pause" onClick={() => void toggleFocusPause()}>
-              {paused ? 'resume' : 'pause'}
-            </button>
-            <button className="focus-extend" onClick={() => void extendFocus(5)}>
-              +5 min
-            </button>
-            <button className="focus-finish" onClick={() => void stopFocusSession(true)}>
-              finished early
-            </button>
-            <button className="focus-stop" onClick={() => void stopFocusSession(false)}>
-              stop
-            </button>
-          </div>
+          {/* Stop and "finished early" both end the session but mean opposite
+              things - one counts as done, the other doesn't - and stop sat
+              right next to it with no way back. So it asks first. */}
+          {confirmingStop ? (
+            <div className="focus-confirm">
+              <span className="focus-confirm-label">did you finish it?</span>
+              <div className="focus-running-actions">
+                <button className="focus-finish" onClick={() => void stopFocusSession(true)}>
+                  finished early
+                </button>
+                <button className="focus-stop" onClick={() => void stopFocusSession(false)}>
+                  no, just stop
+                </button>
+                <button className="focus-pause" onClick={() => setConfirmingStop(false)}>
+                  keep going
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="focus-running-actions">
+              <button className="focus-pause" onClick={() => void toggleFocusPause()}>
+                {paused ? 'resume' : 'pause'}
+              </button>
+              <button className="focus-extend" onClick={() => void extendFocus(5)}>
+                +5 min
+              </button>
+              <button className="focus-finish" onClick={() => void stopFocusSession(true)}>
+                finished early
+              </button>
+              <button className="focus-stop" onClick={() => setConfirmingStop(true)}>
+                stop
+              </button>
+            </div>
+          )}
         </div>
       )}
 

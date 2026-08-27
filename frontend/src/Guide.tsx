@@ -259,7 +259,9 @@ export function Guide() {
           without restarting it. Wrapped up before the timer did? Hit "finished early" — it ends
           the session the same as running out the clock (chimes, marks a tied cadence done for
           the day). Hit stop instead if you're abandoning the session rather than finishing it;
-          that one doesn't count as done. Either way a session is logged to the timeline and
+          that one doesn't count as done. Stop asks which you meant before it ends anything,
+          since the two sit next to each other and mean opposite things — the clock keeps
+          running while it asks, and "keep going" backs out. Either way a session is logged to the timeline and
           shows in the sidequest's history (expand one in the sidequests panel).
           Hit pause to freeze the clock without ending the session — paused time doesn't count
           against your minutes worked. The session keeps running even if you navigate elsewhere;
