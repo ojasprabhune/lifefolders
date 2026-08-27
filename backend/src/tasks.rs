@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::models::{Log, TaskData, TaskRequest};
 use crate::routes::AppError;
-use crate::undo::{set_last, UndoAction};
+use crate::undo::{self, Effect};
 use crate::AppState;
 
 #[derive(Debug, Serialize, FromRow, Clone)]
@@ -490,12 +490,12 @@ pub async fn apply(state: &AppState, raw: &str, mut req: TaskRequest) -> Result<
         {
             let snapshot = existing.clone();
             let (task, action) = update_task(state, &existing, &req).await?;
-            set_last(state, UndoAction::TaskUpdated { snapshot });
+            undo::record(state, Effect::TasksUpdated(vec![snapshot]));
             (task, action)
         }
         _ => {
             let task = create_task(state, &req).await?;
-            set_last(state, UndoAction::TaskCreated { task_id: task.id });
+            undo::record(state, Effect::TaskCreated(task.id));
             (task, "created".to_string())
         }
     };
@@ -582,6 +582,7 @@ pub async fn patch_task(
     .fetch_optional(&state.pool)
     .await?;
     let existing = existing.ok_or(AppError::NotFound)?;
+    undo::begin(&state);
 
     let req = TaskRequest {
         title: existing.title.clone(),
@@ -608,7 +609,7 @@ pub async fn patch_task(
         .fetch_one(&state.pool)
         .await?;
     }
-    set_last(&state, UndoAction::TaskUpdated { snapshot });
+    undo::record(&state, Effect::TasksUpdated(vec![snapshot]));
     Ok(Json(task))
 }
 
@@ -634,7 +635,7 @@ pub(crate) async fn archive_task(state: &AppState, id: Uuid) -> Result<bool, App
         .await?;
     spawn_calendar_delete(state, id);
     clear_pending_checkpoints(state, id).await?;
-    set_last(state, UndoAction::TaskDeleted { snapshot: existing, checkpoints });
+    undo::record(state, Effect::TaskDeleted { snapshot: existing, checkpoints });
     Ok(true)
 }
 
@@ -651,6 +652,7 @@ pub async fn delete_task(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
+    undo::begin(&state);
     if !archive_task(&state, id).await? {
         return Err(AppError::NotFound);
     }

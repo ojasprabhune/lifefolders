@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::models::{FocusSessionData, TaskRequest};
 use crate::routes::AppError;
-use crate::undo::{set_last, UndoAction};
+use crate::undo::{self, Effect};
 use crate::{cadences, tasks, AppState};
 
 #[derive(Debug, Serialize, FromRow)]
@@ -159,6 +159,7 @@ pub async fn end_session(
     if !authorized(&state, &headers, end.token.as_deref()) {
         return Err(AppError::Unauthorized);
     }
+    undo::begin(&state);
 
     // Subtract accumulated paused_seconds, plus whatever's elapsed in an
     // still-open pause (ending mid-pause is allowed), from the wall-clock
@@ -242,7 +243,7 @@ pub async fn end_session(
         }
     }
 
-    set_last(&state, UndoAction::LogCreated { log_ids });
+    undo::record(&state, Effect::LogsCreated(log_ids));
 
     Ok(Json(session))
 }

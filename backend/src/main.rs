@@ -59,7 +59,7 @@ pub struct AppState {
     pub wger_key: Option<String>,
     pub caldav: Option<CaldavConfig>,
     pub recap: Option<RecapConfig>,
-    pub last_action: Arc<Mutex<Option<undo::UndoAction>>>,
+    pub last_action: Arc<Mutex<Vec<undo::Effect>>>,
 }
 
 async fn require_auth(State(state): State<AppState>, req: Request, next: Next) -> Response {
@@ -144,7 +144,7 @@ async fn main() -> anyhow::Result<()> {
         })
     })();
 
-    let last_action = Arc::new(Mutex::new(None));
+    let last_action = Arc::new(Mutex::new(Vec::new()));
     let state = AppState {
         pool,
         http,

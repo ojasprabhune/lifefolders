@@ -5,7 +5,7 @@ use crate::focus::{self, StartedSession};
 use crate::models::{CommandRequest, Log, TaskData};
 use crate::routes::AppError;
 use crate::tasks::{self, Task};
-use crate::undo::{set_last, UndoAction};
+use crate::undo::{self, Effect};
 use crate::{cadences, daily, groq, AppState};
 
 /// A command changes existing state and reports back in words - it never
@@ -159,7 +159,7 @@ pub async fn apply(
                 let (updated, _) = tasks::update_task(state, existing, &patch).await?;
                 logs.push(write_history(state, raw, &updated, "rescheduled").await?);
             }
-            set_last(state, UndoAction::TasksUpdated { snapshots });
+            undo::record(state, Effect::TasksUpdated(snapshots));
 
             let n = targets.len();
             let subject = if n == 1 {
@@ -185,7 +185,7 @@ pub async fn apply(
             let mut patch = patch_for(&existing);
             patch.clear_due_date = true;
             let (updated, _) = tasks::update_task(state, &existing, &patch).await?;
-            set_last(state, UndoAction::TaskUpdated { snapshot });
+            undo::record(state, Effect::TasksUpdated(vec![snapshot]));
             let log = write_history(state, raw, &updated, "rescheduled").await?;
             Ok(undoable(format!("cleared the due date on {}", existing.title), vec![log]))
         }
@@ -201,7 +201,7 @@ pub async fn apply(
             let mut patch = patch_for(&existing);
             patch.status = Some(status.clone());
             let (updated, _) = tasks::update_task(state, &existing, &patch).await?;
-            set_last(state, UndoAction::TaskUpdated { snapshot });
+            undo::record(state, Effect::TasksUpdated(vec![snapshot]));
             let log = write_history(state, raw, &updated, "status").await?;
             let worded = match status.as_str() {
                 "done" => "done",
@@ -233,7 +233,7 @@ pub async fn apply(
             let mut patch = patch_for(&existing);
             patch.category = Some(category.clone());
             let (updated, _) = tasks::update_task(state, &existing, &patch).await?;
-            set_last(state, UndoAction::TaskUpdated { snapshot });
+            undo::record(state, Effect::TasksUpdated(vec![snapshot]));
             let log = write_history(state, raw, &updated, "moved").await?;
             Ok(undoable(format!("moved {} to {category}", existing.title), vec![log]))
         }
@@ -352,7 +352,7 @@ pub async fn apply(
                 .bind(log.id)
                 .execute(&state.pool)
                 .await?;
-            set_last(state, UndoAction::LogDeleted { log_id: log.id });
+            undo::record(state, Effect::LogsDeleted(vec![log.id]));
             Ok(undoable(format!("deleted \"{}\"", log.raw_input.trim()), Vec::new()))
         }
     }

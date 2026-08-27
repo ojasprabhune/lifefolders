@@ -6,7 +6,7 @@ use chrono::{Duration, NaiveDate, TimeZone, Utc};
 use uuid::Uuid;
 
 use crate::models::{Action, CreateLog, ItineraryEntry, ListQuery, Log, SleepData, UpdateLog};
-use crate::undo::{set_last, UndoAction};
+use crate::undo::{self, Effect};
 use crate::{commands, groq, cadences, learning, tasks, wger, wishlist, AppState};
 
 pub enum AppError {
@@ -258,6 +258,7 @@ pub async fn create_log(
         return Err(AppError::BadRequest("raw_text is empty".into()));
     }
     let tz_offset = body.tz_offset_min.unwrap_or(0);
+    undo::begin(&state);
 
     let now_local = Utc::now() - Duration::minutes(tz_offset as i64);
     // Only a *past* day counts as backdating. A for_date equal to today (or,
@@ -298,7 +299,6 @@ pub async fn create_log(
         match action {
             Action::Entry(entry) => {
                 let log = insert_log(&state, raw, entry.type_name(), entry.to_json()).await?;
-                set_last(&state, UndoAction::LogCreated { log_ids: vec![log.id] });
                 logs.push(log);
             }
             Action::Workout { note, allow_not_today } => {
@@ -309,7 +309,6 @@ pub async fn create_log(
                 match wger::sync(&state.http, wger_key, tz_offset, note, allow_not_today).await {
                     Ok(wger::Outcome::Synced(data)) => {
                         let log = upsert_workout(&state, raw, &data).await?;
-                        set_last(&state, UndoAction::LogCreated { log_ids: vec![log.id] });
                         logs.push(log);
                     }
                     Ok(wger::Outcome::Notice(msg)) => notices.push(msg),
@@ -325,39 +324,30 @@ pub async fn create_log(
                     let wake_ts = parse_at(&wake_at, tz_offset);
                     let start_log = handle_sleep(&state, raw, "start", at_ts, tz_offset).await?;
                     let end_log = handle_sleep(&state, raw, "end", wake_ts, tz_offset).await?;
-                    set_last(
-                        &state,
-                        UndoAction::LogCreated { log_ids: vec![start_log.id, end_log.id] },
-                    );
+                    logs.push(start_log);
                     logs.push(end_log);
                 } else {
                     let log = handle_sleep(&state, raw, &action, at_ts, tz_offset).await?;
-                    set_last(&state, UndoAction::LogCreated { log_ids: vec![log.id] });
                     logs.push(log);
                 }
             }
             Action::ItineraryItem { destination, name, note } => {
                 match append_itinerary(&state, destination.as_deref(), &name, note).await? {
-                    Some(log) => {
-                        set_last(&state, UndoAction::LogCreated { log_ids: vec![log.id] });
-                        logs.push(log);
-                    }
+                    Some(log) => logs.push(log),
                     None => notices.push("No trip found to add to.".to_string()),
                 }
             }
             Action::Learning(req) => {
                 let log = learning::apply(&state, raw, req).await?;
-                set_last(&state, UndoAction::LogCreated { log_ids: vec![log.id] });
                 logs.push(log);
             }
             Action::Task(req) => {
-                // tasks::apply already records its own richer undo (calendar
-                // and checkpoint aware) before returning.
+                // tasks::apply records its own richer effect (calendar and
+                // checkpoint aware) on top of the timeline row.
                 logs.push(tasks::apply(&state, raw, req).await?);
             }
             Action::Wishlist(req) => {
                 let (_, log) = wishlist::add(&state, raw, &req.kind, &req.title, req.detail).await?;
-                set_last(&state, UndoAction::LogCreated { log_ids: vec![log.id] });
                 logs.push(log);
             }
             Action::Command(req) => {
@@ -371,10 +361,7 @@ pub async fn create_log(
             Action::Cadence(req) => match cadences::apply(&state, raw, &req, tz_offset, for_date)
                 .await?
             {
-                cadences::CadenceOutcome::Logged(log) => {
-                    set_last(&state, UndoAction::LogCreated { log_ids: vec![log.id] });
-                    logs.push(log);
-                }
+                cadences::CadenceOutcome::Logged(log) => logs.push(log),
                 cadences::CadenceOutcome::AlreadyDone => {}
                 cadences::CadenceOutcome::NoMatch => {
                     notices.push(format!("No cadence matches \"{}\".", req.cadence_name))
@@ -408,6 +395,14 @@ pub async fn create_log(
                 log.created_at = at;
             }
         }
+    }
+
+    // Every row this entry produced, in one effect - including the history
+    // rows a task update or a command wrote. Undoing "move the test to friday"
+    // has to take its "rescheduled" timeline line with it, not just put the
+    // due date back.
+    if !logs.is_empty() {
+        undo::record(&state, Effect::LogsCreated(logs.iter().map(|l| l.id).collect()));
     }
 
     let notice = (!notices.is_empty()).then(|| notices.join(" "));
@@ -506,6 +501,7 @@ pub async fn update_log(
     .fetch_optional(&state.pool)
     .await?;
     let before = before.ok_or(AppError::NotFound)?;
+    undo::begin(&state);
 
     let log: Option<Log> = sqlx::query_as(&format!(
         "UPDATE logs SET \
@@ -521,7 +517,7 @@ pub async fn update_log(
     .await?;
     let log = log.ok_or(AppError::NotFound)?;
 
-    set_last(&state, UndoAction::LogUpdated { snapshot: before });
+    undo::record(&state, Effect::LogUpdated(before));
     Ok(Json(log))
 }
 
@@ -536,16 +532,20 @@ pub async fn delete_log(
     .fetch_optional(&state.pool)
     .await?;
     let existing = existing.ok_or(AppError::NotFound)?;
+    undo::begin(&state);
 
     sqlx::query("UPDATE logs SET deleted_at = now() WHERE id = $1")
         .bind(id)
         .execute(&state.pool)
         .await?;
+    undo::record(&state, Effect::LogsDeleted(vec![id]));
 
     // Task-type log rows just record what happened for the timeline - the
     // real task lives in its own table. Deleting the timeline entry should
     // take the actual task with it too, not leave an orphan in the Tasks
     // panel that no longer has anything to show where it came from.
+    // cascade_delete records the archived task as a second effect, so undo
+    // brings back both halves rather than only the sidequest.
     let task_id = (existing.parsed_type == "task")
         .then(|| existing.data.get("task_id").and_then(|v| v.as_str()))
         .flatten()
@@ -553,8 +553,6 @@ pub async fn delete_log(
 
     if let Some(task_id) = task_id {
         tasks::cascade_delete(&state, task_id).await?;
-    } else {
-        set_last(&state, UndoAction::LogDeleted { log_id: id });
     }
     Ok(StatusCode::NO_CONTENT)
 }
