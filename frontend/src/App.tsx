@@ -4,7 +4,7 @@ import { getBackendState, markBackendOffline, markBackendOnline, type BackendSta
 import type { Category, Log, PendingLog } from './types'
 import { DOMAINS } from './domains'
 import { Row } from './Row'
-import { adoptFocusSession } from './focusEngine'
+import { adoptFocusSession, restoreFocusSession } from './focusEngine'
 import { Clock } from './Clock'
 import { DailyPlan } from './DailyPlan'
 import { Guide } from './Guide'
@@ -117,6 +117,13 @@ export default function App() {
     window.addEventListener('life-unauthorized', onUnauthorized)
     return () => window.removeEventListener('life-unauthorized', onUnauthorized)
   }, [])
+
+  // Pick a running timer back up after a reload. Needs a token, so it waits
+  // for auth rather than firing at module load.
+  useEffect(() => {
+    if (!authed) return
+    void restoreFocusSession()
+  }, [authed])
 
   // The toggle lives in the guide, a separately mounted page, so it can't
   // just set local state here - it broadcasts instead.

@@ -479,6 +479,11 @@ export async function startFocusSession(body: {
   return (await check(res)).json()
 }
 
+export async function getActiveFocusSession(): Promise<StartedSession | null> {
+  const res = await fetch(`${API}/api/focus-sessions/active`, { headers: authHeaders() })
+  return (await check(res)).json()
+}
+
 export async function pauseFocusSession(id: string): Promise<FocusSession> {
   const res = await fetch(`${API}/api/focus-sessions/${id}/pause`, {
     method: 'POST',
@@ -516,12 +521,6 @@ export async function endFocusSession(id: string, completed: boolean): Promise<v
 // Fire-and-forget end for tab close. sendBeacon can't set an auth header, so
 // the token rides in the body; text/plain keeps it a "simple" request (no CORS
 // preflight) so it actually goes out during unload.
-export function beaconEndFocusSession(id: string, completed: boolean): void {
-  const token = getToken()
-  const body = { completed, token, tz_offset_min: new Date().getTimezoneOffset() }
-  navigator.sendBeacon(`${API}/api/focus-sessions/${id}/end`, new Blob([JSON.stringify(body)], { type: 'text/plain' }))
-}
-
 export async function listTaskFocusSessions(taskId: string): Promise<FocusSession[]> {
   const res = await fetch(`${API}/api/tasks/${taskId}/focus-sessions`, { headers: authHeaders() })
   return (await check(res)).json()

@@ -264,7 +264,10 @@ export function Guide() {
           Hit pause to freeze the clock without ending the session — paused time doesn't count
           against your minutes worked. The session keeps running even if you navigate elsewhere;
           a little pill in the corner shows the remaining time and jumps back to the timer when
-          tapped. Closing the tab mid-session ends it as a stop, keeping whatever time elapsed.
+          tapped. It survives a reload too — the session lives on the server, so refreshing (or
+          closing the tab and coming back) picks the countdown up where it was, still paused if
+          you left it paused. Leave it running past its planned time with nothing watching and
+          it gets closed out at whatever you planned, counted as a stop rather than a finish.
           The ▷ on a sidequest row jumps straight here with it selected.
         </p>
       </section>

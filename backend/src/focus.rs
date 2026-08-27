@@ -123,6 +123,56 @@ pub(crate) async fn open_session(
     Ok(StartedSession { session, title })
 }
 
+/// The session still running, if there is one, so a page load can pick the
+/// timer back up instead of losing it. A reload fires the same unload events
+/// as closing the tab, so the browser can't tell them apart and used to end
+/// the session on both; the server knows perfectly well it's still open.
+///
+/// A session whose planned time already ran out while nothing was watching is
+/// closed out here rather than handed back, capped at what was planned - the
+/// same treatment (and the same reasoning) as the open-session check in
+/// `commands::StartFocus`. Without the cap, a tab closed on a 30 minute timer
+/// and reopened the next day would bank a day of focus.
+pub async fn active_session(
+    State(state): State<AppState>,
+) -> Result<Json<Option<StartedSession>>, AppError> {
+    let open: Option<FocusSession> = sqlx::query_as(&format!(
+        "SELECT {SESSION_COLUMNS} FROM focus_sessions \
+         WHERE ended_at IS NULL ORDER BY started_at DESC LIMIT 1"
+    ))
+    .fetch_optional(&state.pool)
+    .await?;
+    let Some(session) = open else { return Ok(Json(None)) };
+
+    // Mirrors end_session's arithmetic: wall clock minus banked pause minus
+    // the pause currently open, so a session left paused doesn't age out.
+    let paused_now = session.paused_at.map(|p| (Utc::now() - p).num_seconds()).unwrap_or(0);
+    let active_secs =
+        (Utc::now() - session.started_at).num_seconds() - session.paused_seconds as i64 - paused_now;
+    if active_secs >= session.planned_minutes as i64 * 60 {
+        sqlx::query(
+            "UPDATE focus_sessions SET ended_at = now(), actual_minutes = $2, completed = false \
+             WHERE id = $1 AND ended_at IS NULL",
+        )
+        .bind(session.id)
+        .bind(session.planned_minutes)
+        .execute(&state.pool)
+        .await?;
+        return Ok(Json(None));
+    }
+
+    let title: (String,) = sqlx::query_as(
+        "SELECT COALESCE(t.title, c.name, 'something') FROM focus_sessions f \
+         LEFT JOIN tasks t ON t.id = f.task_id \
+         LEFT JOIN cadences c ON c.id = f.cadence_id \
+         WHERE f.id = $1",
+    )
+    .bind(session.id)
+    .fetch_one(&state.pool)
+    .await?;
+    Ok(Json(Some(StartedSession { session, title: title.0 })))
+}
+
 #[derive(Debug, Deserialize)]
 struct EndBody {
     completed: bool,

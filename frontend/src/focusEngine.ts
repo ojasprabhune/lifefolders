@@ -1,11 +1,11 @@
 // Owns the one active focus session as module state (not React state) so it
-// keeps running — countdown, pause math, natural completion, tab-close bail —
+// keeps running — countdown, pause math, natural completion, reload —
 // regardless of which page is mounted. FocusTimer and FocusPill both just
 // read getFocusSession() and listen for 'life-focus-changed' to reflect it;
 // neither owns the timer.
 import {
-  beaconEndFocusSession,
   endFocusSession,
+  getActiveFocusSession,
   extendFocusSession,
   pauseFocusSession,
   resumeFocusSession,
@@ -143,6 +143,8 @@ export function adoptFocusSession(s: {
   title: string
   planned_minutes: number
   started_at: string
+  paused_at?: string | null
+  paused_seconds?: number
 }): ActiveFocusSession {
   if (!audio) {
     const Ctx =
@@ -156,14 +158,45 @@ export function adoptFocusSession(s: {
     planned: s.planned_minutes,
     title: s.title,
     startMs: Date.parse(s.started_at),
-    pausedSeconds: 0,
-    pausedAtMs: null,
+    pausedSeconds: s.paused_seconds ?? 0,
+    pausedAtMs: s.paused_at ? Date.parse(s.paused_at) : null,
   }
   ended = false
   persist()
   scheduleTick()
   broadcast()
   return current
+}
+
+// Called once at startup. A reload fires the same unload events as closing the
+// tab, so the page can't tell them apart - the server can, because the session
+// is simply still open there. Whatever it says wins over local state: it hands
+// back nothing if the session was properly stopped, and closes out one whose
+// time ran out while nothing was watching.
+export async function restoreFocusSession(): Promise<void> {
+  let active: Awaited<ReturnType<typeof getActiveFocusSession>>
+  try {
+    active = await getActiveFocusSession()
+  } catch {
+    return // offline: keep ticking whatever localStorage had
+  }
+  if (!active) {
+    if (!current) return
+    window.clearInterval(tickTimer)
+    current = null
+    persist()
+    broadcast()
+    return
+  }
+  if (current?.id === active.id && current.pausedAtMs !== null) return
+  adoptFocusSession({
+    id: active.id,
+    title: active.title,
+    planned_minutes: active.planned_minutes,
+    started_at: active.started_at,
+    paused_at: active.paused_at,
+    paused_seconds: active.paused_seconds,
+  })
 }
 
 export async function toggleFocusPause(): Promise<void> {
@@ -220,20 +253,12 @@ export async function stopFocusSession(completed: boolean): Promise<void> {
   }
 }
 
-// If the tab is actually closed mid-session, best-effort end it as a manual
-// stop so no session is left dangling open in the database. Lives at module
-// scope (not tied to any component's mount) since the session itself now
-// outlives whichever page started it.
-function bail() {
-  if (!current || ended) return
-  ended = true
-  window.clearInterval(tickTimer)
-  beaconEndFocusSession(current.id, false)
-  current = null
-  persist()
-}
-window.addEventListener('beforeunload', bail)
-window.addEventListener('pagehide', bail)
+// Nothing is ended on unload any more. beforeunload/pagehide fire identically
+// for a reload and for a real close, so ending there threw away a session
+// every time the page was refreshed. Leaving it open costs nothing: the next
+// load either adopts it (restoreFocusSession) or, if its planned time has
+// since run out, the server closes it out capped at what was planned.
 
-// Resume ticking on a fresh page load if a session was already running.
+// Resume ticking immediately from localStorage so the countdown is right on
+// the first frame; restoreFocusSession reconciles with the server just after.
 if (current) scheduleTick()
