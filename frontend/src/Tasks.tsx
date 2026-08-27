@@ -309,6 +309,7 @@ function TaskRow({
   const [dragging, setDragging] = useState(false)
   const ghostRef = useRef<HTMLElement | null>(null)
   const [noteDraft, setNoteDraft] = useState(task.note ?? '')
+  const [titleDraft, setTitleDraft] = useState(task.title)
 
   // Re-sync when the task changes underneath (a typed entry appended a line,
   // or the same note was edited from the timeline row), but never while it's
@@ -317,10 +318,27 @@ function TaskRow({
     setNoteDraft((d) => (d === '' || document.activeElement?.tagName !== 'TEXTAREA' ? task.note ?? '' : d))
   }, [task.note])
 
+  useEffect(() => {
+    setTitleDraft((d) => (document.activeElement?.tagName !== 'INPUT' ? task.title : d))
+  }, [task.title])
+
   const saveNote = async () => {
     const next = noteDraft.trim()
     if (next === (task.note ?? '')) return
     await patchTask(task.id, { note: next }).catch(() => {})
+    onRefresh()
+  }
+
+  // A sidequest with no name can't be found again, so an emptied box reverts
+  // rather than saving.
+  const saveTitle = async () => {
+    const next = titleDraft.trim()
+    if (!next) {
+      setTitleDraft(task.title)
+      return
+    }
+    if (next === task.title) return
+    await patchTask(task.id, { title: next }).catch(() => {})
     onRefresh()
   }
 
@@ -403,6 +421,20 @@ function TaskRow({
       </div>
       {expanded && (
         <div className="task-note-edit">
+          <input
+            className="task-title-input"
+            value={titleDraft}
+            placeholder="title"
+            onChange={(e) => setTitleDraft(e.target.value)}
+            onBlur={() => void saveTitle()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.currentTarget.blur()
+              if (e.key === 'Escape') {
+                setTitleDraft(task.title)
+                e.currentTarget.blur()
+              }
+            }}
+          />
           <textarea
             rows={2}
             value={noteDraft}

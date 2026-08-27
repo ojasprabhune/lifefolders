@@ -375,6 +375,7 @@ export async function listTasks(): Promise<TaskWithCheckpoints[]> {
 export async function patchTask(
   id: string,
   body: Partial<{
+    title: string
     status: string
     due_date: string
     due_time: string

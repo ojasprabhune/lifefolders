@@ -331,7 +331,8 @@ pub(crate) async fn update_task(
 async fn restore_task_fields(state: &AppState, snapshot: &Task) -> Result<Task, AppError> {
     let task: Task = sqlx::query_as(&format!(
         "UPDATE tasks SET status = $2, due_date = $3, due_time = $8, is_exam = $4, \
-            effort_minutes = $5, note = $6, completed_at = $7 \
+            effort_minutes = $5, note = $6, completed_at = $7, \
+            title = $9, category = $10 \
          WHERE id = $1 RETURNING {TASK_COLUMNS}"
     ))
     .bind(snapshot.id)
@@ -342,6 +343,8 @@ async fn restore_task_fields(state: &AppState, snapshot: &Task) -> Result<Task, 
     .bind(&snapshot.note)
     .bind(snapshot.completed_at)
     .bind(snapshot.due_time)
+    .bind(&snapshot.title)
+    .bind(&snapshot.category)
     .fetch_one(&state.pool)
     .await?;
 
@@ -553,6 +556,7 @@ pub async fn list_tasks(State(state): State<AppState>) -> Result<Json<Vec<TaskWi
 
 #[derive(Debug, Deserialize)]
 pub struct PatchTask {
+    pub title: Option<String>,
     pub status: Option<String>,
     pub due_date: Option<String>,
     pub due_time: Option<String>,
@@ -597,18 +601,44 @@ pub async fn patch_task(
     };
     let snapshot = existing.clone();
     let (mut task, _) = update_task(&state, &existing, &req).await?;
-    // Set after update_task rather than through it: its note handling appends,
-    // which is right for a typed check-in and wrong for editing the field.
-    if let Some(note) = body.note {
-        let note = note.trim();
+
+    // Both applied after update_task rather than through it: it treats title
+    // as the thing to match an existing task *by*, and appends to note rather
+    // than replacing. Editing either field on screen means replace.
+    let new_title = body.title.as_deref().map(str::trim).filter(|t| !t.is_empty());
+    if new_title.is_some() || body.note.is_some() {
+        let note = body.note.as_deref().map(str::trim).filter(|n| !n.is_empty());
         task = sqlx::query_as(&format!(
-            "UPDATE tasks SET note = $2 WHERE id = $1 RETURNING {TASK_COLUMNS}"
+            "UPDATE tasks SET \
+                title = COALESCE($2, title), \
+                note = CASE WHEN $3 THEN $4 ELSE note END \
+             WHERE id = $1 RETURNING {TASK_COLUMNS}"
         ))
         .bind(id)
-        .bind((!note.is_empty()).then_some(note))
+        .bind(new_title)
+        .bind(body.note.is_some())
+        .bind(note)
         .fetch_one(&state.pool)
         .await?;
     }
+
+    // The title is baked into the calendar event summaries - the task's own
+    // and each pending checkpoint's ("study: X (7d out)") - so a rename has to
+    // push them again. update_task already synced, but with the old name.
+    if new_title.is_some_and(|t| t != existing.title) {
+        spawn_calendar_sync(&state, &task);
+        let pending: Vec<Checkpoint> = sqlx::query_as(
+            "SELECT id, task_id, offset_days, due_date, status FROM task_checkpoints \
+             WHERE task_id = $1 AND status = 'todo'",
+        )
+        .bind(id)
+        .fetch_all(&state.pool)
+        .await?;
+        for cp in pending {
+            spawn_checkpoint_sync(&state, cp.id, &task.title, cp.offset_days, cp.due_date);
+        }
+    }
+
     undo::record(&state, Effect::TasksUpdated(vec![snapshot]));
     Ok(Json(task))
 }

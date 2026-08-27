@@ -2199,8 +2199,19 @@ header > .brand {
 .task-note-edit {
   padding: 0 12px 10px 34px;
   display: flex;
-  align-items: flex-start;
+  flex-direction: column;
+  align-items: stretch;
   gap: 8px;
+}
+
+.task-title-input {
+  width: 100%;
+  font-size: 15px;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--line);
+  padding: 6px 8px;
+  font-family: inherit;
 }
 
 .task-note-edit textarea {
@@ -2218,7 +2229,6 @@ header > .brand {
 .task-note-hint {
   font-size: 11px;
   color: var(--faint);
-  padding-top: 8px;
 }
 
 .task-session-total {

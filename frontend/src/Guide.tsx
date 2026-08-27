@@ -231,7 +231,7 @@ export function Guide() {
           Marking one done tucks it into the <em>resolved</em> dropdown at the bottom of the
           panel instead of cluttering the open sections. Expand a card to see its clarity
           sessions, the total time they add up to, and an &times; on each to drop one &mdash; and
-          to edit the note directly. Typed entries still add a line; editing the box replaces
+          to edit its title and note directly. Typed entries still add a line to the note; editing the box replaces
           what's there, so a note can be corrected and not only grown. The same edit is available
           on any sidequest row in the timeline, and either way it's the same note.
         </p>
