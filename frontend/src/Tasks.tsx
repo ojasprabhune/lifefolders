@@ -7,6 +7,7 @@ import {
   patchCheckpoint,
   patchTask,
 } from './api'
+import { dayLabel, dueLabel } from './dates'
 import { Panel, usePanelState } from './Panel'
 import type { FocusSession, TaskWithCheckpoints } from './types'
 
@@ -369,8 +370,11 @@ function TaskRow({
         <div className="task-main" onClick={toggle}>
           <div className="task-title">{task.title}</div>
           {task.due_date && (
-            <div className={`task-due ${isOverdue ? 'overdue' : isSoon ? 'soon' : ''}`}>
-              {task.due_date}
+            <div
+              className={`task-due ${isOverdue ? 'overdue' : isSoon ? 'soon' : ''}`}
+              title={task.due_date}
+            >
+              {dueLabel(task.due_date)}
               {task.due_time && ` · ${formatDueTime(task.due_time)}`}
             </div>
           )}
@@ -421,7 +425,9 @@ function TaskRow({
             return (
               <div key={offset} className={`checkpoint-date-row ${isDue ? 'due' : ''} ${cp?.status ?? ''}`}>
                 <span className="checkpoint-date-label">{offset}d</span>
-                <span className="checkpoint-date-value">{due}</span>
+                <span className="checkpoint-date-value" title={due}>
+                  {cp?.status === 'done' ? dayLabel(due) : dueLabel(due)}
+                </span>
                 {cp?.status === 'done' && <span>✓</span>}
               </div>
             )
@@ -482,8 +488,8 @@ function ResolvedRow({
         <div className="task-main">
           <div className="task-title">{task.title}</div>
           {task.due_date && (
-            <div className="task-due">
-              {task.due_date}
+            <div className="task-due" title={task.due_date}>
+              {dayLabel(task.due_date)}
               {task.due_time && ` · ${formatDueTime(task.due_time)}`}
             </div>
           )}
