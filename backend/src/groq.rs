@@ -736,25 +736,36 @@ fn usable_polish(raw: &str, cleaned: &str) -> bool {
     cleaned_words >= raw_words.div_ceil(3) && cleaned_words <= raw_words + raw_words / 2 + 3
 }
 
-const SLEEP_INSIGHT_MODEL: &str = "openai/gpt-oss-20b";
+// The bigger model for this one: it runs once a day, and 20b wrote the same
+// sentence skeleton every time no matter how the prompt asked it not to.
+const SLEEP_INSIGHT_MODEL: &str = "openai/gpt-oss-120b";
 
-const SLEEP_INSIGHT_PROMPT: &str = "You are a terse sleep coach. You get a FACTS block of \
-already-computed figures, then a list of the person's recent nights (date, weekday, duration, bedtime, \
-wake time). Reply with exactly one short sentence, under 160 characters, that reacts to a SPECIFIC \
-number from the FACTS block - never a generic 'get more sleep' or 'great job'. Encouraging when the \
-pattern is good, direct but not scolding when it isn't. \
-The FACTS block is split into RECENT and BACKGROUND. The sentence must be about a RECENT figure - last \
-night, the last few nights, or how they compare to the stretch before. A BACKGROUND figure may appear \
-only as contrast inside that sentence, never as its subject: do not open with the longest or shortest \
-night, the weekday/weekend split, or a whole-window total, and do not dwell on a night that happened \
-several nights before the most recent one. When the recent nights point somewhere - a stretch up or down \
-on the one before it, a live streak, a run of misses - say that instead of restating last night's number \
-on its own. \
+const SLEEP_INSIGHT_PROMPT: &str = "You are this person\'s sleep coach - a friend who actually wants \
+them to get their sleep and texts them once a day about it. You get a FACTS block of already-computed \
+figures, then their recent nights (date, weekday, duration, bedtime, wake time), and sometimes the \
+lines you already sent them on previous days. \
+Write 1 to 3 short sentences, under 240 characters, all lowercase. Talk like a real person texting: \
+casual, warm, blunt when it is earned. Light slang is fine where it lands naturally; never force it, \
+and never sound like a wellness app, a fortune cookie, or a motivational poster. \
+Somewhere in the message use one real figure from the RECENT section and one real clock time from the \
+TONIGHT section - but do not always put them in that order or give them the same weight. Some days open \
+with the ask and barely mention last night; some days react first. The clock time is when they need to \
+be asleep, not an alarm to set. Mean the ask: hold them to it, do not soften it into a suggestion. \
+Vary yourself hard. The lines you already sent are shown to you, and yours today must not share their \
+skeleton: if they opened on a duration, do not open on a duration; if they closed with a push, close \
+some other way. A TODAY\'S ANGLE line tells you what shape today\'s message takes - follow it exactly, \
+even when a different shape feels more natural; it is there so they do not get the same message with \
+new numbers in it every morning. \
+Use ordinary apostrophes and quotes, not typographic ones. \
+The FACTS block is split into RECENT, TONIGHT and BACKGROUND. A BACKGROUND figure may appear only as \
+contrast, never as the subject: do not open with the longest or shortest night, the weekday/weekend \
+split, or a whole-window total, and do not dwell on a night that happened several nights before the \
+most recent one. \
 Every relationship you state must come from the FACTS block. Do not work out streaks, runs, or trends \
-yourself. Never say 'in a row', 'back to back', 'consecutive', or 'streak' unless the FACTS block gives \
+yourself. Never say \'in a row\', \'back to back\', \'consecutive\', or \'streak\' unless the FACTS block gives \
 you that run - two nights that merely share a trait are not in a row, and two nights a week apart are \
 never consecutive no matter how alike they look. If you are unsure whether two nights are adjacent, do \
-not mention adjacency at all. Output only the sentence: no quotes, no preamble, no markdown.";
+not mention adjacency at all. Output only the message: no quotes, no preamble, no markdown.";
 
 /// One-line reaction to a recent-nights summary, generated fresh once a day
 /// and cached by the caller. Returns None on any failure so the caller can
@@ -762,7 +773,9 @@ not mention adjacency at all. Output only the sentence: no quotes, no preamble, 
 pub async fn sleep_insight(http: &reqwest::Client, api_key: &str, nights_summary: &str) -> Option<String> {
     let body = json!({
         "model": SLEEP_INSIGHT_MODEL,
-        "temperature": 0.4,
+        // The blurb is the same shape of input every day, so a cool
+        // temperature made it write the same sentence with new numbers in it.
+        "temperature": 0.9,
         // Low reasoning effort still spends some of this budget before the
         // first content token, and 150 was tight enough to cut sentences off
         // mid-word.
@@ -792,7 +805,20 @@ pub async fn sleep_insight(http: &reqwest::Client, api_key: &str, nights_summary
     if text.is_empty() || text.len() > 400 {
         return None;
     }
-    Some(text.to_owned())
+    // Asking for straight punctuation only half works, and the stray ones it
+    // reaches for (a non-breaking hyphen in "8-hour", a narrow space before a
+    // unit) look like encoding damage next to the rest of the app's text.
+    Some(
+        text.chars()
+            .map(|c| match c {
+                '\u{2018}' | '\u{2019}' => '\'',
+                '\u{201c}' | '\u{201d}' => '"',
+                '\u{2010}' | '\u{2011}' => '-',
+                '\u{00a0}' | '\u{202f}' => ' ',
+                c => c,
+            })
+            .collect(),
+    )
 }
 
 const PLAN_MODEL: &str = "openai/gpt-oss-20b";
