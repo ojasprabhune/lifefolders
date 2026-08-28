@@ -8,6 +8,7 @@ import {
   patchTask,
 } from './api'
 import { dayLabel, dueLabel } from './dates'
+import { Expand } from './Expand'
 import { Panel, usePanelState } from './Panel'
 import type { FocusSession, TaskWithCheckpoints } from './types'
 
@@ -419,7 +420,7 @@ function TaskRow({
           ✕
         </button>
       </div>
-      {expanded && (
+      <Expand open={expanded}>
         <div className="task-note-edit">
           <input
             className="task-title-input"
@@ -447,57 +448,57 @@ function TaskRow({
           />
           {noteDraft !== (task.note ?? '') && <span className="task-note-hint">unsaved</span>}
         </div>
-      )}
-      {expanded && task.is_exam && task.due_date && (
-        <div className="task-checkpoint-dates">
-          {[7, 3, 1].map((offset) => {
-            const due = shiftDateStr(task.due_date as string, -offset)
-            const cp = task.checkpoints.find((c) => c.offset_days === offset)
-            const isDue = (cp?.status ?? 'todo') === 'todo' && daysUntil(due) <= 0
-            return (
-              <div key={offset} className={`checkpoint-date-row ${isDue ? 'due' : ''} ${cp?.status ?? ''}`}>
-                <span className="checkpoint-date-label">{offset}d</span>
-                <span className="checkpoint-date-value" title={due}>
-                  {cp?.status === 'done' ? dayLabel(due) : dueLabel(due)}
-                </span>
-                {cp?.status === 'done' && <span>✓</span>}
+        {task.is_exam && task.due_date && (
+          <div className="task-checkpoint-dates">
+            {[7, 3, 1].map((offset) => {
+              const due = shiftDateStr(task.due_date as string, -offset)
+              const cp = task.checkpoints.find((c) => c.offset_days === offset)
+              const isDue = (cp?.status ?? 'todo') === 'todo' && daysUntil(due) <= 0
+              return (
+                <div key={offset} className={`checkpoint-date-row ${isDue ? 'due' : ''} ${cp?.status ?? ''}`}>
+                  <span className="checkpoint-date-label">{offset}d</span>
+                  <span className="checkpoint-date-value" title={due}>
+                    {cp?.status === 'done' ? dayLabel(due) : dueLabel(due)}
+                  </span>
+                  {cp?.status === 'done' && <span>✓</span>}
+                </div>
+              )
+            })}
+          </div>
+        )}
+        {sessions !== null && (
+          <div className="task-sessions">
+            {sessions.length === 0 && <div className="task-session-empty">no clarity sessions yet</div>}
+            {sessions.length > 1 && (
+              <div className="task-session-total">
+                {sessions.reduce((sum, s) => sum + (s.actual_minutes ?? 0), 0)}m across{' '}
+                {sessions.length} sessions
               </div>
-            )
-          })}
-        </div>
-      )}
-      {expanded && sessions !== null && (
-        <div className="task-sessions">
-          {sessions.length === 0 && <div className="task-session-empty">no clarity sessions yet</div>}
-          {sessions.length > 1 && (
-            <div className="task-session-total">
-              {sessions.reduce((sum, s) => sum + (s.actual_minutes ?? 0), 0)}m across{' '}
-              {sessions.length} sessions
-            </div>
-          )}
-          {sessions.map((s) => (
-            <div key={s.id} className="task-session">
-              <button
-                className="session-delete"
-                aria-label="remove this clarity session"
-                onClick={() => {
-                  setSessions((cur) => (cur ?? []).filter((x) => x.id !== s.id))
-                  deleteFocusSession(s.id).catch(() => {
-                    listTaskFocusSessions(task.id).then(setSessions).catch(() => {})
-                  })
-                }}
-              >
-                ✕
-              </button>
-              <span>{s.started_at.slice(5, 10)}</span>
-              <span>
-                {s.actual_minutes ?? 0} / {s.planned_minutes}m
-              </span>
-              <span className={s.completed ? 'done' : 'stopped'}>{s.completed ? '✓' : '⊘'}</span>
-            </div>
-          ))}
-        </div>
-      )}
+            )}
+            {sessions.map((s) => (
+              <div key={s.id} className="task-session">
+                <button
+                  className="session-delete"
+                  aria-label="remove this clarity session"
+                  onClick={() => {
+                    setSessions((cur) => (cur ?? []).filter((x) => x.id !== s.id))
+                    deleteFocusSession(s.id).catch(() => {
+                      listTaskFocusSessions(task.id).then(setSessions).catch(() => {})
+                    })
+                  }}
+                >
+                  ✕
+                </button>
+                <span>{s.started_at.slice(5, 10)}</span>
+                <span>
+                  {s.actual_minutes ?? 0} / {s.planned_minutes}m
+                </span>
+                <span className={s.completed ? 'done' : 'stopped'}>{s.completed ? '✓' : '⊘'}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Expand>
     </div>
   )
 }
