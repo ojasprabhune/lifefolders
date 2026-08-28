@@ -743,6 +743,13 @@ already-computed figures, then a list of the person's recent nights (date, weekd
 wake time). Reply with exactly one short sentence, under 160 characters, that reacts to a SPECIFIC \
 number from the FACTS block - never a generic 'get more sleep' or 'great job'. Encouraging when the \
 pattern is good, direct but not scolding when it isn't. \
+The FACTS block is split into RECENT and BACKGROUND. The sentence must be about a RECENT figure - last \
+night, the last few nights, or how they compare to the stretch before. A BACKGROUND figure may appear \
+only as contrast inside that sentence, never as its subject: do not open with the longest or shortest \
+night, the weekday/weekend split, or a whole-window total, and do not dwell on a night that happened \
+several nights before the most recent one. When the recent nights point somewhere - a stretch up or down \
+on the one before it, a live streak, a run of misses - say that instead of restating last night's number \
+on its own. \
 Every relationship you state must come from the FACTS block. Do not work out streaks, runs, or trends \
 yourself. Never say 'in a row', 'back to back', 'consecutive', or 'streak' unless the FACTS block gives \
 you that run - two nights that merely share a trait are not in a row, and two nights a week apart are \
@@ -756,7 +763,10 @@ pub async fn sleep_insight(http: &reqwest::Client, api_key: &str, nights_summary
     let body = json!({
         "model": SLEEP_INSIGHT_MODEL,
         "temperature": 0.4,
-        "max_tokens": 150,
+        // Low reasoning effort still spends some of this budget before the
+        // first content token, and 150 was tight enough to cut sentences off
+        // mid-word.
+        "max_tokens": 300,
         // See the comment in polish(): without this, gpt-oss's hidden
         // reasoning can eat the whole max_tokens budget and leave content
         // empty - this was the actual cause of every "couldn't reach the
