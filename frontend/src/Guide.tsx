@@ -153,6 +153,13 @@ export function Guide() {
           against an 8 hour goal, and a short daily note reacting to your actual recent
           pattern instead of generic advice.
         </p>
+        <p>
+          <em>fullscreen</em> opens the whole picture on its own page: the bedtime to aim
+          for tonight, a row per night showing when you were actually asleep, how far your
+          bedtime and wake time have drifted, your running sleep debt, and which weekdays
+          you give up first. Panels appear as you log enough nights to make them mean
+          something.
+        </p>
         <ul>
           <li>sleeping now</li>
           <li>just woke up</li>

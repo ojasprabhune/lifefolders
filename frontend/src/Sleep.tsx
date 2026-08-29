@@ -3,30 +3,12 @@ import { getSleepGoalMin, getSleepInsight, listSleep, setSleepGoalMin } from './
 import { Expand } from './Expand'
 import { Panel, usePanelState } from './Panel'
 import { formatDuration } from './Row'
+import { computeMetrics, dayName, formatSigned, shortDay, timeShort } from './sleepStats'
 import type { Log, SleepData } from './types'
 
-const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
-const SHORT_DAY_NAMES = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
-const GOAL_STEP_MIN = 30
-const GOAL_MIN_BOUND = 240 // 4h
-const GOAL_MAX_BOUND = 720 // 12h
-const TREND_NIGHTS = 14
-
-function dayName(dateStr: string): string {
-  return DAY_NAMES[new Date(dateStr + 'T00:00').getDay()]
-}
-
-function shortDay(dateStr: string): string {
-  return SHORT_DAY_NAMES[new Date(dateStr + 'T00:00').getDay()]
-}
-
-function timeShort(iso: string | null): string {
-  if (!iso) return '?'
-  return new Date(iso)
-    .toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-    .toLowerCase()
-    .replace(' ', '')
-}
+export const GOAL_STEP_MIN = 30
+export const GOAL_MIN_BOUND = 240 // 4h
+export const GOAL_MAX_BOUND = 720 // 12h
 
 export function Sleep({ open }: { open: boolean }) {
   const [nights, setNights] = useState<Log[]>([])
@@ -63,9 +45,14 @@ export function Sleep({ open }: { open: boolean }) {
     <Panel closing={closing}>
       <header>
         <h1 className="brand">solace</h1>
-        <a className="guide-link" href="#/">
-          back
-        </a>
+        <div className="header-nav">
+          <a className="guide-link" href="#/sleep/all">
+            fullscreen
+          </a>
+          <a className="guide-link" href="#/">
+            back
+          </a>
+        </div>
       </header>
 
       <SolaceMetrics nights={nights} insight={insight} goalMin={goalMin} onChangeGoal={changeGoal} />
@@ -104,90 +91,6 @@ export function Sleep({ open }: { open: boolean }) {
       </main>
     </Panel>
   )
-}
-
-type Metrics = {
-  avg7: number | null
-  avg30: number | null
-  consistencyMin: number | null
-  weekdayAvg: number | null
-  weekendAvg: number | null
-  streak: number
-  vsGoal: number | null
-  trend: { night_date: string; duration_min: number | null }[]
-}
-
-function computeMetrics(nights: Log[], goalMin: number): Metrics {
-  // API returns newest first already; drop the still-in-progress night (no
-  // duration yet) from anything that averages or streaks on duration.
-  const closed = nights.map((n) => n.data as SleepData).filter((d) => d.duration_min !== null)
-
-  const avg = (arr: SleepData[]): number | null =>
-    arr.length ? arr.reduce((s, d) => s + (d.duration_min ?? 0), 0) / arr.length : null
-
-  const last7 = closed.slice(0, 7)
-  const last30 = closed.slice(0, 30)
-  const avg7 = avg(last7)
-
-  // Bedtime consistency: minutes-of-day for sleep_start, with anything
-  // before noon pushed a day forward so a 12:30am bedtime sits numerically
-  // next to an 11:30pm one instead of 23 hours away.
-  const bedtimeMinutes = closed
-    .filter((d) => d.sleep_start !== null)
-    .map((d) => {
-      const t = new Date(d.sleep_start as string)
-      const m = t.getHours() * 60 + t.getMinutes()
-      return m < 12 * 60 ? m + 24 * 60 : m
-    })
-  const consistencyMin = bedtimeMinutes.length > 1 ? stddev(bedtimeMinutes) : null
-
-  const isWeekend = (dateStr: string) => [0, 6].includes(new Date(dateStr + 'T00:00').getDay())
-  const weekdayAvg = avg(closed.filter((d) => !isWeekend(d.night_date)))
-  const weekendAvg = avg(closed.filter((d) => isWeekend(d.night_date)))
-
-  // Streak: consecutive logged nights, no calendar gaps, each hitting the
-  // goal, counted back from the most recent night.
-  let streak = 0
-  let cursor: string | null = null
-  for (const d of closed) {
-    if ((d.duration_min ?? 0) < goalMin) break
-    if (cursor !== null && shiftDate(d.night_date, 1) !== cursor) break
-    streak++
-    cursor = d.night_date
-  }
-
-  // Average per-night gap to goal over the last week - deliberately an
-  // average, not a 7-night sum, so it reads against the same scale as avg7
-  // right next to it instead of looking like a single scary total.
-  const vsGoal = avg7 !== null ? avg7 - goalMin : null
-
-  const trend = [...nights]
-    .slice(0, TREND_NIGHTS)
-    .map((n) => n.data as SleepData)
-    .reverse()
-    .map((d) => ({ night_date: d.night_date, duration_min: d.duration_min }))
-
-  return { avg7, avg30: avg(last30), consistencyMin, weekdayAvg, weekendAvg, streak, vsGoal, trend }
-}
-
-function stddev(arr: number[]): number {
-  const mean = arr.reduce((s, v) => s + v, 0) / arr.length
-  const variance = arr.reduce((s, v) => s + (v - mean) ** 2, 0) / arr.length
-  return Math.sqrt(variance)
-}
-
-function shiftDate(dateStr: string, days: number): string {
-  const d = new Date(dateStr + 'T00:00')
-  d.setDate(d.getDate() + days)
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
-function formatSigned(minutes: number): string {
-  const sign = minutes < 0 ? '-' : '+'
-  return `${sign}${formatDuration(Math.abs(Math.round(minutes)))}`
 }
 
 function SolaceMetrics({
