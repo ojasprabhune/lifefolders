@@ -64,18 +64,24 @@ export function Tasks({ open }: { open: boolean }) {
 
   const openTasks = tasks.filter((t) => t.status !== 'done')
   const grouped = useMemo(() => groupByCategory(openTasks), [openTasks])
-  const dueToday = useMemo(() => {
+  // "today's plate" is the task's own due date or one of its spaced-review
+  // checkpoints (7d/3d/1d out from an exam) coming due - not just tasks due
+  // today themselves. Anything with such a date already behind us is overdue
+  // and belongs on the same screen: a deadline you missed is still today's
+  // problem, and hiding it here was the only place it could go unnoticed.
+  const { overdue, dueToday } = useMemo(() => {
     const today = dateToStr(new Date())
-    // "due today" here means anything landing on today's plate: the task's
-    // own due date, or one of its spaced-review checkpoints (7d/3d/1d out
-    // from an exam) coming due - not just tasks due today themselves.
-    return openTasks
-      .filter(
-        (t) =>
-          t.due_date === today ||
-          t.checkpoints.some((cp) => cp.status === 'todo' && cp.due_date === today),
-      )
-      .sort((a, b) => (a.due_time ?? '99:99').localeCompare(b.due_time ?? '99:99'))
+    const late: TaskWithCheckpoints[] = []
+    const now: TaskWithCheckpoints[] = []
+    for (const t of openTasks) {
+      const dates = plateDates(t)
+      if (dates.includes(today)) now.push(t)
+      else if (dates.some((d) => d < today)) late.push(t)
+    }
+    return {
+      overdue: late.sort((a, b) => oldestPlateDate(a).localeCompare(oldestPlateDate(b))),
+      dueToday: now.sort((a, b) => (a.due_time ?? '99:99').localeCompare(b.due_time ?? '99:99')),
+    }
   }, [openTasks])
   const dayCounts = useMemo(
     () => buildDayCounts(openTasks, DUE_STRIP_DAYS_BEFORE, DUE_STRIP_DAYS_AFTER),
@@ -115,20 +121,37 @@ export function Tasks({ open }: { open: boolean }) {
 
       <main className="list">
         {todayOnly ? (
-          <section className="music-section task-section">
-            <h2 className="section-title">due today</h2>
-            {dueToday.map((t) => (
-              <TaskRow
-                key={t.id}
-                task={t}
-                onCycle={() => void cycleStatus(t)}
-                onCheckpoint={toggleCheckpoint}
-                onDelete={() => void remove(t.id)}
-                onRefresh={refresh}
-              />
-            ))}
-            {dueToday.length === 0 && <div className="empty">nothing due today</div>}
-          </section>
+          <>
+            {overdue.length > 0 && (
+              <section className="music-section task-section">
+                <h2 className="section-title overdue-title">overdue ({overdue.length})</h2>
+                {overdue.map((t) => (
+                  <TaskRow
+                    key={t.id}
+                    task={t}
+                    onCycle={() => void cycleStatus(t)}
+                    onCheckpoint={toggleCheckpoint}
+                    onDelete={() => void remove(t.id)}
+                    onRefresh={refresh}
+                  />
+                ))}
+              </section>
+            )}
+            <section className="music-section task-section">
+              <h2 className="section-title">due today</h2>
+              {dueToday.map((t) => (
+                <TaskRow
+                  key={t.id}
+                  task={t}
+                  onCycle={() => void cycleStatus(t)}
+                  onCheckpoint={toggleCheckpoint}
+                  onDelete={() => void remove(t.id)}
+                  onRefresh={refresh}
+                />
+              ))}
+              {dueToday.length === 0 && <div className="empty">nothing due today</div>}
+            </section>
+          </>
         ) : (
           Object.entries(grouped).map(([category, items]) => (
             <section
@@ -175,6 +198,16 @@ export function Tasks({ open }: { open: boolean }) {
       </main>
     </Panel>
   )
+}
+
+function plateDates(t: TaskWithCheckpoints): string[] {
+  const dates = t.checkpoints.filter((cp) => cp.status === 'todo').map((cp) => cp.due_date)
+  if (t.due_date) dates.push(t.due_date)
+  return dates
+}
+
+function oldestPlateDate(t: TaskWithCheckpoints): string {
+  return plateDates(t).sort()[0] ?? ''
 }
 
 function groupByCategory(tasks: TaskWithCheckpoints[]): Record<string, TaskWithCheckpoints[]> {

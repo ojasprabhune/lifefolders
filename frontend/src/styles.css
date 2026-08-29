@@ -1608,6 +1608,10 @@ header > .brand {
   font-weight: 600;
 }
 
+.section-title.overdue-title {
+  color: var(--accent);
+}
+
 .task-due.soon {
   color: var(--accent);
 }
