@@ -249,6 +249,7 @@ function Gate({ onUnlock }: { onUnlock: () => void }) {
 function Home() {
   const [date, setDate] = useState(() => localDateStr(new Date()))
   const [slide, setSlide] = useState<'back' | 'forward' | null>(null)
+  const [shownDate, setShownDate] = useState(() => localDateStr(new Date()))
   const [category, setCategory] = useState<Category>('all')
   const [logs, setLogs] = useState<Log[]>([])
   const [hiddenDomains] = useState<string[]>(() => getHiddenDomains())
@@ -284,9 +285,15 @@ function Home() {
     setDate((d) => shiftDate(d, delta))
   }
 
+  // The slide is keyed to the day whose entries are actually mounted, not the
+  // one that was requested. Keying it to `date` ran the animation the instant
+  // the arrow was clicked, while the current day's rows were still on screen -
+  // so those slid in and were then swapped for the new ones, unanimated, the
+  // moment the fetch landed.
   const refresh = useCallback(async (d: string) => {
     try {
       setLogs(await listLogs(d, 'all'))
+      setShownDate(d)
     } catch {
       // a failed fetch leaves the previous list; logging still works
     }
@@ -605,7 +612,7 @@ function Home() {
         </span>
       </div>
 
-      <main className={`list ${slide ? `slide-${slide}` : ''}`} key={date} ref={listRef}>
+      <main className={`list ${slide ? `slide-${slide}` : ''}`} key={shownDate} ref={listRef}>
         {notice && <div className="notice">{notice}</div>}
         {isToday &&
           pendings.map((p) => (
