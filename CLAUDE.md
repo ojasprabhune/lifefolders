@@ -107,6 +107,10 @@ The `Home` page renders a daily timeline filtered by date and category. Category
 
 `Row.tsx` is a per-log-type renderer registry: for each `log.parsed_type`, it dispatches to a `summary()` (one-line description), `badge()` (category/label), `rightSide()` (optional metadata), and `Editor()` (inline edit form). Each type gets a mini editor component (`FoodEditor`, `PersonEditor`, `TaskLogEditor`, etc.) that uses `useEditor` to handle mutations.
 
+Motion on the timeline lives in `frontend/src/motion.ts` plus keyframes in `styles.css`, all of it dependency-free. Three things there are worth not relearning. `useFlipList` takes an explicit deps array rather than running every render: typing in the entry box re-renders Home, and measuring `offsetTop` per row on every keystroke is a forced layout each time — it also reads every position before starting any animation, so one layout flush covers the whole list. `collapseAndRemove` animates a measured pixel height (not `auto`, which isn't animatable) before the row leaves the DOM, so the rows below slide up. And the decode sweep in `Row.tsx` is an overlay of `log.raw_input` clipped from its left edge, which means the `justParsed` window in `App.tsx` must outlast the sweep's duration in CSS — they are coupled, and 500ms against a 520ms animation cut it off a frame early.
+
+The mic level is the one place a value is written straight to the DOM rather than through state: the analyser writes `--l0`..`--l4` onto the button at 60fps, because re-rendering Home (and the whole timeline beneath it) that often would be absurd.
+
 Voice input is wired end-to-end: hold the mic button in the input area → `MediaRecorder` → `POST /api/transcribe` (Whisper) → `groq::polish()` (small model cleanup) → text appended to the input box → submit flows through the normal parse pipeline. New entity types get voice capture for free once a tool def exists.
 
 ## Constraints

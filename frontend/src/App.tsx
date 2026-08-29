@@ -7,6 +7,7 @@ import { Row } from './Row'
 import { adoptFocusSession, restoreFocusSession } from './focusEngine'
 import { Clock } from './Clock'
 import { DailyPlan } from './DailyPlan'
+import { useFlipList } from './motion'
 import { Guide } from './Guide'
 import { Soma } from './Soma'
 import { CadenceWall, Cadences } from './Cadences'
@@ -76,6 +77,8 @@ const FILTERS: { value: Category; label: string }[] = [
 // first request after a gap often fails while it cold-starts (30-60s+).
 // Retry a few times with backoff before surfacing the manual retry button,
 // so a cold start resolves itself instead of needing a tap.
+const MIC_BARS = 5
+
 const RETRY_DELAYS_MS = [2000, 5000, 10000, 20000]
 
 const PANEL_ROUTE_PREFIXES = [
@@ -245,6 +248,7 @@ function Gate({ onUnlock }: { onUnlock: () => void }) {
 
 function Home() {
   const [date, setDate] = useState(() => localDateStr(new Date()))
+  const [slide, setSlide] = useState<'back' | 'forward' | null>(null)
   const [category, setCategory] = useState<Category>('all')
   const [logs, setLogs] = useState<Log[]>([])
   const [hiddenDomains] = useState<string[]>(() => getHiddenDomains())
@@ -273,6 +277,12 @@ function Home() {
   const inputRef = useRef<HTMLInputElement>(null)
   const today = localDateStr(new Date())
   const isToday = date === today
+  const listRef = useFlipList<HTMLElement>([logs, category, date, expandedId])
+
+  const goDay = (delta: number) => {
+    setSlide(delta < 0 ? 'back' : 'forward')
+    setDate((d) => shiftDate(d, delta))
+  }
 
   const refresh = useCallback(async (d: string) => {
     try {
@@ -353,13 +363,15 @@ function Home() {
           created.forEach((x) => next.add(x.id))
           return next
         })
+        // Outlasts the 520ms decode sweep in styles.css - at 500ms the overlay
+        // unmounted a frame before the wipe finished.
         setTimeout(() => {
           setJustParsed((s) => {
             const next = new Set(s)
             createdIds.forEach((x) => next.delete(x))
             return next
           })
-        }, 500)
+        }, 620)
         // A command writes no logs row but does change ones already on
         // screen (a deleted entry, a rescheduled sidequest), so re-read the
         // day rather than leaving a stale list.
@@ -394,6 +406,46 @@ function Home() {
   const [recState, setRecState] = useState<'idle' | 'recording' | 'transcribing' | 'denied'>('idle')
   const recorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
+  const barsRef = useRef<HTMLSpanElement>(null)
+  const audioRef = useRef<{ ctx: AudioContext; raf: number } | null>(null)
+
+  // The five bars are driven from the real microphone level, written to CSS
+  // custom properties on the button rather than to React state - this ticks at
+  // 60fps and re-rendering Home (and the whole timeline under it) that often
+  // would be absurd.
+  const startMeter = (stream: MediaStream) => {
+    const ctx = new AudioContext()
+    const analyser = ctx.createAnalyser()
+    analyser.fftSize = 64
+    analyser.smoothingTimeConstant = 0.75
+    ctx.createMediaStreamSource(stream).connect(analyser)
+    const data = new Uint8Array(analyser.frequencyBinCount)
+    const bucket = Math.floor(data.length / MIC_BARS)
+
+    const tick = () => {
+      analyser.getByteFrequencyData(data)
+      const el = barsRef.current
+      if (el) {
+        for (let i = 0; i < MIC_BARS; i++) {
+          let sum = 0
+          for (let j = i * bucket; j < (i + 1) * bucket; j++) sum += data[j]
+          const level = Math.min(1, sum / bucket / 140)
+          el.style.setProperty(`--l${i}`, (0.12 + level * 0.88).toFixed(3))
+        }
+      }
+      state.raf = requestAnimationFrame(tick)
+    }
+    const state = { ctx, raf: requestAnimationFrame(tick) }
+    audioRef.current = state
+  }
+
+  const stopMeter = () => {
+    const a = audioRef.current
+    if (!a) return
+    cancelAnimationFrame(a.raf)
+    void a.ctx.close()
+    audioRef.current = null
+  }
 
   const startRecording = async () => {
     if (recState !== 'idle') return
@@ -404,6 +456,7 @@ function Home() {
       chunksRef.current = []
       recorder.ondataavailable = (e) => chunksRef.current.push(e.data)
       recorder.onstop = async () => {
+        stopMeter()
         stream.getTracks().forEach((t) => t.stop())
         const blob = new Blob(chunksRef.current, { type: mime })
         if (blob.size < 1000) {
@@ -424,6 +477,7 @@ function Home() {
       }
       recorder.start()
       recorderRef.current = recorder
+      startMeter(stream)
       setRecState('recording')
     } catch {
       setRecState('denied')
@@ -492,11 +546,19 @@ function Home() {
             onPointerLeave={stopRecording}
             aria-label="hold to record"
           >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
-              <rect x="9" y="3" width="6" height="11" rx="3" />
-              <path d="M5 11a7 7 0 0 0 14 0" />
-              <line x1="12" y1="18" x2="12" y2="21" />
-            </svg>
+            {recState === 'recording' ? (
+              <span className="mic-bars" ref={barsRef}>
+                {Array.from({ length: MIC_BARS }, (_, i) => (
+                  <span key={i} className="mic-bar" />
+                ))}
+              </span>
+            ) : (
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
+                <rect x="9" y="3" width="6" height="11" rx="3" />
+                <path d="M5 11a7 7 0 0 0 14 0" />
+                <line x1="12" y1="18" x2="12" y2="21" />
+              </svg>
+            )}
           </button>
           <button
             className="send-btn"
@@ -516,16 +578,11 @@ function Home() {
 
       <div className="dateline">
         <div className="datenav">
-          <button className="chev" onClick={() => setDate(shiftDate(date, -1))} aria-label="previous day">
+          <button className="chev" onClick={() => goDay(-1)} aria-label="previous day">
             &lsaquo;
           </button>
           <span className="datelabel">{dateLabel(date)}</span>
-          <button
-            className="chev"
-            onClick={() => setDate(shiftDate(date, 1))}
-            disabled={isToday}
-            aria-label="next day"
-          >
+          <button className="chev" onClick={() => goDay(1)} disabled={isToday} aria-label="next day">
             &rsaquo;
           </button>
         </div>
@@ -545,7 +602,7 @@ function Home() {
         </span>
       </div>
 
-      <main className="list">
+      <main className={`list ${slide ? `slide-${slide}` : ''}`} key={date} ref={listRef}>
         {notice && <div className="notice">{notice}</div>}
         {isToday &&
           pendings.map((p) => (

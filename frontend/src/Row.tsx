@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { deleteLog, patchTask, updateLog } from './api'
 import { dueLabel } from './dates'
 import { Expand } from './Expand'
+import { collapseAndRemove } from './motion'
 import type {
   AlbumData,
   CadenceData,
@@ -255,11 +256,13 @@ function rightSide(log: Log, onRate: (log: Log) => void): React.ReactNode {
 }
 
 export function Row({ log, justParsed, expanded, onToggle, onChange, onDelete, onRate }: RowProps) {
+  const wrapRef = useRef<HTMLDivElement>(null)
+
   const quickDelete = async (e: React.MouseEvent) => {
     e.stopPropagation()
     try {
       await deleteLog(log.id)
-      onDelete(log.id)
+      collapseAndRemove(wrapRef.current, () => onDelete(log.id))
       // a task-type entry cascades to deleting the real task server-side;
       // nudge the tasks panel to pick that up right away if it's open
       window.dispatchEvent(new Event('life-log-created'))
@@ -269,7 +272,7 @@ export function Row({ log, justParsed, expanded, onToggle, onChange, onDelete, o
   }
 
   return (
-    <div className={`row-wrap ${expanded ? 'open' : ''}`}>
+    <div className={`row-wrap ${expanded ? 'open' : ''}`} ref={wrapRef} data-flip-id={log.id}>
       <div className={`row ${justParsed ? 'morph' : ''}`} onClick={onToggle}>
         <span className="row-time">{rowTime(log)}</span>
         <span className={`badge ${badge(log).kind}`}>{badge(log).label}</span>
@@ -278,6 +281,15 @@ export function Row({ log, justParsed, expanded, onToggle, onChange, onDelete, o
         <button className="delete-btn" onClick={quickDelete} aria-label="delete entry">
           ✕
         </button>
+        {/* The sentence you typed, sitting on top of the parsed row and wiped
+            away left to right so the structured version is revealed behind it.
+            Purely decorative, and only mounted for the half second it runs. */}
+        {justParsed && (
+          <span className="row-decode" aria-hidden="true">
+            <span className="row-decode-raw">{log.raw_input}</span>
+            <span className="row-decode-beam" />
+          </span>
+        )}
       </div>
       <Expand open={expanded}>
         <Editor log={log} onChange={onChange} onDelete={onDelete} onRate={onRate} />

@@ -374,7 +374,34 @@ header {
   border-bottom: 1px solid var(--line);
 }
 
+.list {
+  overflow-x: clip;
+}
+
+.list.slide-back {
+  animation: slide-from-left 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.list.slide-forward {
+  animation: slide-from-right 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes slide-from-left {
+  from {
+    opacity: 0;
+    transform: translateX(-26px);
+  }
+}
+
+@keyframes slide-from-right {
+  from {
+    opacity: 0;
+    transform: translateX(26px);
+  }
+}
+
 .row {
+  position: relative;
   display: flex;
   align-items: baseline;
   gap: 14px;
@@ -542,6 +569,42 @@ header {
 
 .mic-btn:active {
   transform: scale(0.86);
+}
+
+.mic-bars {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 15px;
+}
+
+.mic-bar {
+  width: 2px;
+  height: 100%;
+  border-radius: 1px;
+  background: currentColor;
+  transform: scaleY(0.12);
+  transition: transform 70ms linear;
+}
+
+.mic-bar:nth-child(1) {
+  transform: scaleY(var(--l0, 0.12));
+}
+
+.mic-bar:nth-child(2) {
+  transform: scaleY(var(--l1, 0.12));
+}
+
+.mic-bar:nth-child(3) {
+  transform: scaleY(var(--l2, 0.12));
+}
+
+.mic-bar:nth-child(4) {
+  transform: scaleY(var(--l3, 0.12));
+}
+
+.mic-bar:nth-child(5) {
+  transform: scaleY(var(--l4, 0.12));
 }
 
 .mic-btn.recording {
@@ -889,19 +952,52 @@ header {
   color: var(--ink);
 }
 
-.row.morph .row-main,
-.row.morph .row-right {
-  animation: morph-in 280ms ease both;
+/* The sentence you typed is wiped left to right, revealing the parsed row
+   behind it. The overlay is clipped from its left edge, so the beam riding at
+   the clip boundary is the last thing visible before it goes. */
+.row-decode {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  animation: decode-wipe 520ms cubic-bezier(0.35, 0, 0.2, 1) both;
 }
 
-@keyframes morph-in {
+@keyframes decode-wipe {
   from {
-    opacity: 0.2;
-    filter: blur(5px);
+    clip-path: inset(0 0 0 0);
   }
   to {
-    opacity: 1;
-    filter: blur(0);
+    clip-path: inset(0 0 0 100%);
+  }
+}
+
+.row-decode-raw {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  background: var(--bg);
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.row-decode-beam {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 10px 1px var(--accent);
+  animation: decode-beam 520ms cubic-bezier(0.35, 0, 0.2, 1) both;
+}
+
+@keyframes decode-beam {
+  from {
+    left: 0;
+  }
+  to {
+    left: 100%;
   }
 }
 
@@ -3045,4 +3141,20 @@ header > .brand {
 
 .sleep-bars.with-goal {
   position: relative;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row-decode,
+  .list.slide-back,
+  .list.slide-forward {
+    animation: none;
+  }
+
+  .row-decode {
+    display: none;
+  }
+
+  .mic-bar {
+    transition: none;
+  }
 }
