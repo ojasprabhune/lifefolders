@@ -1787,6 +1787,26 @@ header > .brand {
   color: var(--paper);
 }
 
+.checkpoint-pill.add {
+  color: var(--faint);
+  padding: 4px 9px;
+}
+
+.checkpoint-pill.add:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.checkpoint-date-remove {
+  color: var(--faint);
+  font-size: 11px;
+  padding: 0 2px;
+}
+
+.checkpoint-date-remove:hover {
+  color: var(--accent);
+}
+
 .checkpoint-pill-input {
   width: 38px;
   font-family: inherit;

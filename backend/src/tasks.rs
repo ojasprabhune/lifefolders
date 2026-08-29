@@ -690,6 +690,68 @@ pub async fn delete_task(
 }
 
 #[derive(Debug, Deserialize)]
+pub struct NewCheckpoint {
+    pub offset_days: i32,
+}
+
+pub async fn create_checkpoint(
+    State(state): State<AppState>,
+    Path(task_id): Path<Uuid>,
+    Json(body): Json<NewCheckpoint>,
+) -> Result<Json<Checkpoint>, AppError> {
+    if !(1..=90).contains(&body.offset_days) {
+        return Err(AppError::BadRequest("offset must be 1-90 days".into()));
+    }
+    let task: Option<(String, Option<NaiveDate>)> =
+        sqlx::query_as("SELECT title, due_date FROM tasks WHERE id = $1")
+            .bind(task_id)
+            .fetch_optional(&state.pool)
+            .await?;
+    let Some((title, due)) = task else { return Err(AppError::NotFound) };
+    let Some(due) = due else {
+        return Err(AppError::BadRequest("task has no due date to count back from".into()));
+    };
+    let taken: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM task_checkpoints WHERE task_id = $1 AND offset_days = $2",
+    )
+    .bind(task_id)
+    .bind(body.offset_days)
+    .fetch_one(&state.pool)
+    .await?;
+    if taken > 0 {
+        return Err(AppError::BadRequest(format!("already a {}d checkpoint", body.offset_days)));
+    }
+
+    let cp: Checkpoint = sqlx::query_as(
+        "INSERT INTO task_checkpoints (task_id, offset_days, due_date) VALUES ($1, $2, $3) \
+         RETURNING id, task_id, offset_days, due_date, status",
+    )
+    .bind(task_id)
+    .bind(body.offset_days)
+    .bind(due - Duration::days(body.offset_days as i64))
+    .fetch_one(&state.pool)
+    .await?;
+    spawn_checkpoint_sync(&state, cp.id, &title, cp.offset_days, cp.due_date);
+    Ok(Json(cp))
+}
+
+pub async fn delete_checkpoint(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<StatusCode, AppError> {
+    let gone = sqlx::query("DELETE FROM task_checkpoints WHERE id = $1")
+        .bind(id)
+        .execute(&state.pool)
+        .await?
+        .rows_affected();
+    if gone == 0 {
+        return Err(AppError::NotFound);
+    }
+    spawn_checkpoint_delete(&state, id);
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Debug, Deserialize)]
 pub struct PatchCheckpoint {
     pub status: Option<String>,
     pub offset_days: Option<i32>,

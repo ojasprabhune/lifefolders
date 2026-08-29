@@ -193,7 +193,11 @@ async fn main() -> anyhow::Result<()> {
             "/api/tasks/{id}",
             axum::routing::patch(tasks::patch_task).delete(tasks::delete_task),
         )
-        .route("/api/task-checkpoints/{id}", axum::routing::patch(tasks::patch_checkpoint))
+        .route("/api/tasks/{id}/checkpoints", post(tasks::create_checkpoint))
+        .route(
+            "/api/task-checkpoints/{id}",
+            axum::routing::patch(tasks::patch_checkpoint).delete(tasks::delete_checkpoint),
+        )
         .route("/api/cadences", get(cadences::list_cadences).post(cadences::create_cadence))
         .route(
             "/api/cadences/{id}",

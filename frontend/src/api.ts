@@ -398,6 +398,23 @@ export async function deleteTask(id: string): Promise<void> {
   await check(res)
 }
 
+export async function createCheckpoint(taskId: string, offsetDays: number): Promise<TaskCheckpoint> {
+  const res = await fetch(`${API}/api/tasks/${taskId}/checkpoints`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ offset_days: offsetDays }),
+  })
+  return (await check(res)).json()
+}
+
+export async function deleteCheckpoint(id: string): Promise<void> {
+  const res = await fetch(`${API}/api/task-checkpoints/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  })
+  await check(res)
+}
+
 export async function patchCheckpoint(
   id: string,
   patch: { status?: 'todo' | 'done'; offset_days?: number },

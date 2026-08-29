@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  createCheckpoint,
+  deleteCheckpoint,
   deleteFocusSession,
   deleteTask,
   listTaskFocusSessions,
@@ -318,6 +320,45 @@ function DueStrip({
   )
 }
 
+function AddCheckpointPill({ taskId, onRefresh }: { taskId: string; onRefresh: () => void }) {
+  const [draft, setDraft] = useState<string | null>(null)
+
+  const commit = async () => {
+    const offset = Number(draft)
+    setDraft(null)
+    if (!Number.isInteger(offset) || offset < 1 || offset > 90) return
+    await createCheckpoint(taskId, offset).catch(() => {})
+    onRefresh()
+  }
+
+  if (draft !== null) {
+    return (
+      <input
+        className="checkpoint-pill-input"
+        autoFocus
+        placeholder="d"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value.replace(/\D/g, '').slice(0, 2))}
+        onBlur={() => void commit()}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur()
+          if (e.key === 'Escape') setDraft(null)
+        }}
+      />
+    )
+  }
+
+  return (
+    <button
+      className="checkpoint-pill add"
+      title="add a study reminder"
+      onClick={() => setDraft('')}
+    >
+      +
+    </button>
+  )
+}
+
 function CheckpointPill({
   cp,
   onToggle,
@@ -496,7 +537,7 @@ function TaskRow({
           {task.effort_minutes && <div className="task-effort">{task.effort_minutes} min</div>}
           {lastNote && <div className="task-note">{lastNote}</div>}
         </div>
-        {task.is_exam && task.checkpoints.length > 0 && (
+        {task.is_exam && task.due_date && (
           <div className="checkpoints">
             {task.checkpoints.map((cp) => (
               <CheckpointPill
@@ -506,6 +547,7 @@ function TaskRow({
                 onRefresh={onRefresh}
               />
             ))}
+            <AddCheckpointPill taskId={task.id} onRefresh={onRefresh} />
           </div>
         )}
         <a className="task-focus" href={`#/focus?task=${task.id}`} aria-label="clarity session for this sidequest">
@@ -559,6 +601,13 @@ function TaskRow({
                       {cp.status === 'done' ? dayLabel(cp.due_date) : dueLabel(cp.due_date)}
                     </span>
                     {cp.status === 'done' && <span>✓</span>}
+                    <button
+                      className="checkpoint-date-remove"
+                      title="remove this reminder"
+                      onClick={() => void deleteCheckpoint(cp.id).catch(() => {}).then(onRefresh)}
+                    >
+                      ✕
+                    </button>
                   </div>
                 )
               })}
