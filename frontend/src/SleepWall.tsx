@@ -140,7 +140,7 @@ function Panel({
   )
 }
 
-const COUNT_MS = 900
+const COUNT_MS = 650
 
 // Keyed on the value alone, with the formatter in a ref: `format` used to be a
 // fresh closure every render and sat in the dep array, so every parent render

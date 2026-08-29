@@ -277,7 +277,7 @@ function Home() {
   const inputRef = useRef<HTMLInputElement>(null)
   const today = localDateStr(new Date())
   const isToday = date === today
-  const listRef = useFlipList<HTMLElement>([logs, category, date, expandedId])
+  const { ref: listRef, capture: captureRows } = useFlipList<HTMLElement>()
 
   const goDay = (delta: number) => {
     setSlide(delta < 0 ? 'back' : 'forward')
@@ -363,15 +363,15 @@ function Home() {
           created.forEach((x) => next.add(x.id))
           return next
         })
-        // Outlasts the 520ms decode sweep in styles.css - at 500ms the overlay
-        // unmounted a frame before the wipe finished.
+        // Outlasts the decode sweep in styles.css - if this fires first the
+        // overlay unmounts mid-wipe.
         setTimeout(() => {
           setJustParsed((s) => {
             const next = new Set(s)
             createdIds.forEach((x) => next.delete(x))
             return next
           })
-        }, 620)
+        }, 470)
         // A command writes no logs row but does change ones already on
         // screen (a deleted entry, a rescheduled sidequest), so re-read the
         // day rather than leaving a stale list.
@@ -591,7 +591,10 @@ function Home() {
             <button
               key={f.value}
               className={`filter ${category === f.value ? 'active' : ''}`}
-              onClick={() => setCategory(f.value)}
+              onClick={() => {
+                captureRows()
+                setCategory(f.value)
+              }}
             >
               {f.label}
             </button>

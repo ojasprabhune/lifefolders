@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 
-const CLOSE_MS = 220
+const CLOSE_MS = 170
 
 // The old technique (grid-template-rows: 0fr/1fr toggled by a class) opens
 // fine but Safari doesn't reliably animate the collapse direction - it just

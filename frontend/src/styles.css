@@ -379,24 +379,32 @@ header {
 }
 
 .list.slide-back {
-  animation: slide-from-left 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation: slide-from-left 220ms cubic-bezier(0.33, 1, 0.68, 1) both;
 }
 
 .list.slide-forward {
-  animation: slide-from-right 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation: slide-from-right 220ms cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+
+/* The whole day arrives as one block. Without this every row also replays its
+   own entrance underneath the slide, which reads as the list wobbling rather
+   than moving. */
+.list.slide-back .row,
+.list.slide-forward .row {
+  animation: none;
 }
 
 @keyframes slide-from-left {
   from {
     opacity: 0;
-    transform: translateX(-26px);
+    transform: translateX(-42px);
   }
 }
 
 @keyframes slide-from-right {
   from {
     opacity: 0;
-    transform: translateX(26px);
+    transform: translateX(42px);
   }
 }
 
@@ -407,7 +415,7 @@ header {
   gap: 14px;
   padding: 15px 0;
   cursor: pointer;
-  animation: row-in 200ms ease both;
+  animation: row-in 150ms ease both;
 }
 
 @keyframes row-in {
@@ -505,7 +513,7 @@ header {
   margin-bottom: 10px;
   font-size: 13px;
   color: var(--muted);
-  animation: row-in 200ms ease both;
+  animation: row-in 150ms ease both;
 }
 
 .backend-notice-dot {
@@ -584,7 +592,7 @@ header {
   border-radius: 1px;
   background: currentColor;
   transform: scaleY(0.12);
-  transition: transform 70ms linear;
+  transition: transform 55ms linear;
 }
 
 .mic-bar:nth-child(1) {
@@ -860,7 +868,7 @@ header {
   border-bottom: 1px solid var(--line);
   color: var(--muted);
   font-size: 15px;
-  animation: row-in 200ms ease both;
+  animation: row-in 150ms ease both;
 }
 
 .workout-breakdown {
@@ -959,7 +967,7 @@ header {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  animation: decode-wipe 520ms cubic-bezier(0.35, 0, 0.2, 1) both;
+  animation: decode-wipe 380ms cubic-bezier(0.35, 0, 0.2, 1) both;
 }
 
 @keyframes decode-wipe {
@@ -989,7 +997,7 @@ header {
   width: 2px;
   background: var(--accent);
   box-shadow: 0 0 10px 1px var(--accent);
-  animation: decode-beam 520ms cubic-bezier(0.35, 0, 0.2, 1) both;
+  animation: decode-beam 380ms cubic-bezier(0.35, 0, 0.2, 1) both;
 }
 
 @keyframes decode-beam {
@@ -1003,7 +1011,7 @@ header {
 
 .expand {
   overflow: hidden;
-  transition: max-height 220ms ease;
+  transition: max-height 170ms ease;
 }
 
 .expand-inner {
@@ -1327,7 +1335,7 @@ header > .brand {
   border-radius: 10px;
   font-size: 14px;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.25);
-  animation: row-in 200ms ease both;
+  animation: row-in 150ms ease both;
   max-width: calc(100% - 32px);
 }
 
@@ -1361,7 +1369,7 @@ header > .brand {
   border-radius: 10px;
   font-size: 14px;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.25);
-  animation: row-in 200ms ease both;
+  animation: row-in 150ms ease both;
   max-width: calc(100% - 32px);
   cursor: pointer;
 }
@@ -2739,42 +2747,42 @@ header > .brand {
 }
 
 .sleep-panel {
-  animation: sleep-rise 560ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  animation-delay: calc(var(--i, 0) * 55ms);
+  animation: sleep-rise 400ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(var(--i, 0) * 38ms);
 }
 
 .sleep-raster-bar {
-  animation: sleep-grow-x 480ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  animation-delay: calc(260ms + var(--i, 0) * 16ms);
+  animation: sleep-grow-x 340ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(190ms + var(--i, 0) * 10ms);
 }
 
 .sleep-vbar {
-  animation: sleep-grow-y 560ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  animation-delay: calc(380ms + var(--i, 0) * 45ms);
+  animation: sleep-grow-y 400ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(270ms + var(--i, 0) * 30ms);
 }
 
 .sleep-cell {
-  animation: sleep-pop 380ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  animation-delay: calc(320ms + var(--i, 0) * 5ms);
+  animation: sleep-pop 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(230ms + var(--i, 0) * 3ms);
 }
 
 .sleep-dot {
-  animation: sleep-fade 300ms ease-out both;
-  animation-delay: calc(680ms + var(--i, 0) * 12ms);
+  animation: sleep-fade 220ms ease-out both;
+  animation-delay: calc(470ms + var(--i, 0) * 8ms);
 }
 
 /* pathLength on the <path> normalises its length to 1, so one dash of 1 is
    the whole line and the offset sweeps it on regardless of the shape. */
 .sleep-draw {
   stroke-dasharray: 1;
-  animation: sleep-draw 1100ms ease-in-out both;
-  animation-delay: 240ms;
+  animation: sleep-draw 780ms ease-in-out both;
+  animation-delay: 170ms;
 }
 
 .sleep-ring-fill {
   stroke-dasharray: var(--dash) 100;
-  animation: sleep-ring 1000ms ease-in-out both;
-  animation-delay: 200ms;
+  animation: sleep-ring 700ms ease-in-out both;
+  animation-delay: 150ms;
 }
 
 @media (prefers-reduced-motion: reduce) {

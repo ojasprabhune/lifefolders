@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from 'react'
+import { useCallback, useLayoutEffect, useRef } from 'react'
 
 export function prefersReducedMotion(): boolean {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -22,53 +22,62 @@ export function collapseAndRemove(el: HTMLElement | null, remove: () => void) {
       { height: `${height}px`, opacity: 1 },
       { height: '0px', opacity: 0 },
     ],
-    { duration: 220, easing: 'cubic-bezier(0.4, 0, 1, 1)' },
+    // `fill: forwards` matters: without it the row springs back to full height
+    // for the frame between the animation finishing and React unmounting it.
+    { duration: 160, easing: 'cubic-bezier(0.4, 0, 1, 1)', fill: 'forwards' },
   )
   anim.onfinish = remove
   anim.oncancel = remove
 }
 
 /**
- * FLIP for a list whose children carry `data-flip-id`. Records where every row
- * sat last render and, when one has moved, starts it from its old position and
- * lets it glide to the new one - so filtering the timeline reflows instead of
- * jumping.
+ * FLIP for a list whose children carry `data-flip-id`.
  *
- * The animation runs on transform only, after layout has already settled, so
- * nothing here can shift anything else on the page.
+ * Positions are captured by the caller, in the handler that is about to
+ * reorder the list, rather than remembered from the previous render. An
+ * earlier version kept a map across renders and it was wrong: expanding a row
+ * changes layout through a CSS transition, which re-runs no effect, so the map
+ * silently went stale and the next change yanked every row back to where they
+ * sat before the expand. Capturing on demand also means expanding, deleting
+ * and changing day - none of which want a FLIP - simply never trigger one.
  */
-export function useFlipList<T extends HTMLElement>(deps: unknown[]) {
+export function useFlipList<T extends HTMLElement>() {
   const ref = useRef<T>(null)
-  const positions = useRef(new Map<string, number>())
+  const pending = useRef<Map<string, number> | null>(null)
 
-  // Deps matter here. Measuring on every render would mean a forced layout on
-  // every keystroke in the entry box, since typing re-renders the whole page;
-  // this only measures when something that can actually move a row changed.
+  const capture = useCallback(() => {
+    const root = ref.current
+    if (!root || prefersReducedMotion()) return
+    const map = new Map<string, number>()
+    root.querySelectorAll<HTMLElement>('[data-flip-id]').forEach((row) => {
+      if (row.dataset.flipId) map.set(row.dataset.flipId, row.offsetTop)
+    })
+    pending.current = map
+  }, [])
+
+  // Cheap when nothing was captured: it reads no layout at all, which matters
+  // because typing in the entry box re-renders this whole page.
   useLayoutEffect(() => {
     const root = ref.current
-    if (!root) return
+    const before = pending.current
+    if (!root || !before) return
+    pending.current = null
+
     const rows = Array.from(root.querySelectorAll<HTMLElement>('[data-flip-id]'))
-
-    // Read every position first, then animate. Interleaving the two would
-    // invalidate layout between reads and turn one flush into N.
+    // Read every position before starting any animation - interleaving the two
+    // turns one layout flush into N.
     const measured = rows.map((row) => ({ row, id: row.dataset.flipId, top: row.offsetTop }))
-    const next = new Map<string, number>()
-    const animate = !prefersReducedMotion()
-
     for (const { row, id, top } of measured) {
       if (!id) continue
-      next.set(id, top)
-      const previous = positions.current.get(id)
-      if (animate && previous !== undefined && Math.abs(previous - top) > 1) {
+      const previous = before.get(id)
+      if (previous !== undefined && Math.abs(previous - top) > 1) {
         row.animate(
           [{ transform: `translateY(${previous - top}px)` }, { transform: 'none' }],
-          { duration: 280, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' },
+          { duration: 190, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' },
         )
       }
     }
-    positions.current = next
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps)
+  })
 
-  return ref
+  return { ref, capture }
 }
