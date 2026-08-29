@@ -118,15 +118,33 @@ fn format_sleep(min: Option<f64>) -> String {
     }
 }
 
+fn commas(n: i64) -> String {
+    let digits = n.abs().to_string();
+    let grouped: String = digits
+        .as_bytes()
+        .rchunks(3)
+        .rev()
+        .map(|c| std::str::from_utf8(c).unwrap())
+        .collect::<Vec<_>>()
+        .join(",");
+    if n < 0 {
+        format!("-{grouped}")
+    } else {
+        grouped
+    }
+}
+
 fn headline(s: &RecapStats) -> String {
+    // The milestone is a lifetime total, not this week's — say so, or it reads
+    // as a contradiction of the focus-minutes tile right below it.
     if let Some(n) = s.milestone {
-        return format!("You crossed {n} total focus minutes this week");
+        return format!("You passed {} lifetime focus minutes this week", commas(n));
     }
     if let Some((name, days)) = &s.streak {
         return format!("{days}-day {name} streak");
     }
     if s.focus_minutes > 0 {
-        return format!("{} focus minutes this week", s.focus_minutes);
+        return format!("{} focus minutes this week", commas(s.focus_minutes));
     }
     "Here's your week".into()
 }
@@ -144,7 +162,7 @@ fn tile(label: &str, value: &str) -> String {
 
 fn render_html(s: &RecapStats) -> String {
     let mut tiles: Vec<String> = vec![
-        tile("focus minutes", &s.focus_minutes.to_string()),
+        tile("focus minutes", &commas(s.focus_minutes)),
         tile("tasks completed", &s.tasks_completed.to_string()),
         tile("workouts", &s.workouts.to_string()),
         tile("avg sleep", &format_sleep(s.avg_sleep_min)),
