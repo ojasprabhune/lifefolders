@@ -1787,6 +1787,19 @@ header > .brand {
   color: var(--paper);
 }
 
+.checkpoint-pill-input {
+  width: 38px;
+  font-family: inherit;
+  font-size: 11px;
+  text-align: center;
+  padding: 4px 6px;
+  border-radius: 12px;
+  border: 1px solid var(--accent);
+  color: var(--ink);
+  background: transparent;
+  outline: none;
+}
+
 .checkpoint-pill.due {
   background: var(--accent-soft, rgba(228, 64, 42, 0.15));
   border-color: var(--accent);

@@ -398,11 +398,14 @@ export async function deleteTask(id: string): Promise<void> {
   await check(res)
 }
 
-export async function patchCheckpoint(id: string, status: 'todo' | 'done'): Promise<TaskCheckpoint> {
+export async function patchCheckpoint(
+  id: string,
+  patch: { status?: 'todo' | 'done'; offset_days?: number },
+): Promise<TaskCheckpoint> {
   const res = await fetch(`${API}/api/task-checkpoints/${id}`, {
     method: 'PATCH',
     headers: { 'content-type': 'application/json', ...authHeaders() },
-    body: JSON.stringify({ status }),
+    body: JSON.stringify(patch),
   })
   return (await check(res)).json()
 }

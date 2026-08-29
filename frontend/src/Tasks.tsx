@@ -10,7 +10,7 @@ import {
 import { dayLabel, dueLabel } from './dates'
 import { Expand } from './Expand'
 import { Panel, usePanelState } from './Panel'
-import type { FocusSession, TaskWithCheckpoints } from './types'
+import type { FocusSession, TaskCheckpoint, TaskWithCheckpoints } from './types'
 
 const DUE_STRIP_DAYS_BEFORE = 5
 const DUE_STRIP_DAYS_AFTER = 16
@@ -39,7 +39,7 @@ export function Tasks({ open }: { open: boolean }) {
   }
 
   const toggleCheckpoint = async (id: string, status: 'todo' | 'done') => {
-    await patchCheckpoint(id, status).catch(() => {})
+    await patchCheckpoint(id, { status }).catch(() => {})
     refresh()
   }
 
@@ -318,6 +318,69 @@ function DueStrip({
   )
 }
 
+function CheckpointPill({
+  cp,
+  onToggle,
+  onRefresh,
+}: {
+  cp: TaskCheckpoint
+  onToggle: () => void
+  onRefresh: () => void
+}) {
+  const [draft, setDraft] = useState<string | null>(null)
+  // One click toggles and two edit the offset, so the toggle has to wait long
+  // enough to find out which it was - React fires onClick twice before
+  // onDoubleClick, which would otherwise flip the checkpoint and flip it back.
+  const clickTimer = useRef<number | null>(null)
+  useEffect(() => () => window.clearTimeout(clickTimer.current ?? undefined), [])
+
+  const commit = async () => {
+    const offset = Number(draft)
+    setDraft(null)
+    if (!Number.isInteger(offset) || offset < 1 || offset > 90 || offset === cp.offset_days) return
+    await patchCheckpoint(cp.id, { offset_days: offset }).catch(() => {})
+    onRefresh()
+  }
+
+  if (draft !== null) {
+    return (
+      <input
+        className="checkpoint-pill-input"
+        autoFocus
+        value={draft}
+        onFocus={(e) => e.currentTarget.select()}
+        onChange={(e) => setDraft(e.target.value.replace(/\D/g, '').slice(0, 2))}
+        onBlur={() => void commit()}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur()
+          if (e.key === 'Escape') setDraft(null)
+        }}
+      />
+    )
+  }
+
+  return (
+    <button
+      className={`checkpoint-pill ${cp.status} ${cp.status === 'todo' && daysUntil(cp.due_date) <= 0 ? 'due' : ''}`}
+      title="double-click to change how many days out"
+      onClick={() => {
+        if (clickTimer.current !== null) return
+        clickTimer.current = window.setTimeout(() => {
+          clickTimer.current = null
+          onToggle()
+        }, 220)
+      }}
+      onDoubleClick={() => {
+        window.clearTimeout(clickTimer.current ?? undefined)
+        clickTimer.current = null
+        setDraft(String(cp.offset_days))
+      }}
+    >
+      {cp.offset_days}d
+    </button>
+  )
+}
+
 function TaskRow({
   task,
   onCycle,
@@ -436,13 +499,12 @@ function TaskRow({
         {task.is_exam && task.checkpoints.length > 0 && (
           <div className="checkpoints">
             {task.checkpoints.map((cp) => (
-              <button
+              <CheckpointPill
                 key={cp.id}
-                className={`checkpoint-pill ${cp.status} ${cp.status === 'todo' && daysUntil(cp.due_date) <= 0 ? 'due' : ''}`}
-                onClick={() => onCheckpoint(cp.id, cp.status === 'todo' ? 'done' : 'todo')}
-              >
-                {cp.offset_days}d
-              </button>
+                cp={cp}
+                onToggle={() => onCheckpoint(cp.id, cp.status === 'todo' ? 'done' : 'todo')}
+                onRefresh={onRefresh}
+              />
             ))}
           </div>
         )}
@@ -481,22 +543,25 @@ function TaskRow({
           />
           {noteDraft !== (task.note ?? '') && <span className="task-note-hint">unsaved</span>}
         </div>
-        {task.is_exam && task.due_date && (
+        {task.is_exam && task.checkpoints.length > 0 && (
           <div className="task-checkpoint-dates">
-            {[7, 3, 1].map((offset) => {
-              const due = shiftDateStr(task.due_date as string, -offset)
-              const cp = task.checkpoints.find((c) => c.offset_days === offset)
-              const isDue = (cp?.status ?? 'todo') === 'todo' && daysUntil(due) <= 0
-              return (
-                <div key={offset} className={`checkpoint-date-row ${isDue ? 'due' : ''} ${cp?.status ?? ''}`}>
-                  <span className="checkpoint-date-label">{offset}d</span>
-                  <span className="checkpoint-date-value" title={due}>
-                    {cp?.status === 'done' ? dayLabel(due) : dueLabel(due)}
-                  </span>
-                  {cp?.status === 'done' && <span>✓</span>}
-                </div>
-              )
-            })}
+            {/* The checkpoints a task actually has, not the 7/3/1 it was born
+                with: one made after its own mark never exists, and offsets are
+                editable, so a fixed list invents rows that aren't there. */}
+            {[...task.checkpoints]
+              .sort((a, b) => b.offset_days - a.offset_days)
+              .map((cp) => {
+                const isDue = cp.status === 'todo' && daysUntil(cp.due_date) <= 0
+                return (
+                  <div key={cp.id} className={`checkpoint-date-row ${isDue ? 'due' : ''} ${cp.status}`}>
+                    <span className="checkpoint-date-label">{cp.offset_days}d</span>
+                    <span className="checkpoint-date-value" title={cp.due_date}>
+                      {cp.status === 'done' ? dayLabel(cp.due_date) : dueLabel(cp.due_date)}
+                    </span>
+                    {cp.status === 'done' && <span>✓</span>}
+                  </div>
+                )
+              })}
           </div>
         )}
         {sessions !== null && (
@@ -578,8 +643,3 @@ function daysUntil(dateStr: string): number {
   return Math.ceil((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
 }
 
-function shiftDateStr(dateStr: string, days: number): string {
-  const d = new Date(dateStr + 'T00:00')
-  d.setDate(d.getDate() + days)
-  return dateToStr(d)
-}

@@ -691,7 +691,8 @@ pub async fn delete_task(
 
 #[derive(Debug, Deserialize)]
 pub struct PatchCheckpoint {
-    pub status: String,
+    pub status: Option<String>,
+    pub offset_days: Option<i32>,
 }
 
 pub async fn patch_checkpoint(
@@ -699,15 +700,49 @@ pub async fn patch_checkpoint(
     Path(id): Path<Uuid>,
     Json(body): Json<PatchCheckpoint>,
 ) -> Result<Json<Checkpoint>, AppError> {
-    if !matches!(body.status.as_str(), "todo" | "done") {
-        return Err(AppError::BadRequest("bad status".into()));
+    if let Some(status) = body.status.as_deref() {
+        if !matches!(status, "todo" | "done") {
+            return Err(AppError::BadRequest("bad status".into()));
+        }
     }
+
+    // An offset is only meaningful relative to the exam it counts back from,
+    // so moving one moves its date too rather than leaving the two disagreeing.
+    let mut new_due: Option<NaiveDate> = None;
+    if let Some(offset) = body.offset_days {
+        if !(1..=90).contains(&offset) {
+            return Err(AppError::BadRequest("offset must be 1-90 days".into()));
+        }
+        let row: Option<(Option<NaiveDate>, i64)> = sqlx::query_as(
+            "SELECT t.due_date, (SELECT COUNT(*) FROM task_checkpoints o \
+               WHERE o.task_id = c.task_id AND o.id <> c.id AND o.offset_days = $2) \
+             FROM task_checkpoints c JOIN tasks t ON t.id = c.task_id WHERE c.id = $1",
+        )
+        .bind(id)
+        .bind(offset)
+        .fetch_optional(&state.pool)
+        .await?;
+        let Some((task_due, taken)) = row else { return Err(AppError::NotFound) };
+        let Some(task_due) = task_due else {
+            return Err(AppError::BadRequest("task has no due date to count back from".into()));
+        };
+        if taken > 0 {
+            return Err(AppError::BadRequest(format!("already a {offset}d checkpoint")));
+        }
+        new_due = Some(task_due - Duration::days(offset as i64));
+    }
+
     let cp: Option<Checkpoint> = sqlx::query_as(
-        "UPDATE task_checkpoints SET status = $2 WHERE id = $1 \
+        "UPDATE task_checkpoints SET status = COALESCE($2::text, status), \
+           offset_days = COALESCE($3::int, offset_days), \
+           due_date = COALESCE($4::date, due_date) \
+         WHERE id = $1 \
          RETURNING id, task_id, offset_days, due_date, status",
     )
     .bind(id)
     .bind(&body.status)
+    .bind(body.offset_days)
+    .bind(new_due)
     .fetch_optional(&state.pool)
     .await?;
     let Some(cp) = cp else { return Err(AppError::NotFound) };
