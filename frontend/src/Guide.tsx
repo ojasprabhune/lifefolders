@@ -196,6 +196,10 @@ export function Guide() {
           gets a single bar per week instead of seven dots, since that's what the target actually
           is.
         </p>
+        <p>
+          The panel shows one cadence at a time. <em>fullscreen</em> opens every grid at once on
+          its own page, three or four across, scrolling as far as your list goes.
+        </p>
         <ul>
           <li>meditated</li>
           <li>drank water</li>

@@ -200,6 +200,7 @@ async fn main() -> anyhow::Result<()> {
             axum::routing::delete(cadences::archive_cadence).patch(cadences::patch_cadence),
         )
         .route("/api/cadences/{id}/completions", get(cadences::completions))
+        .route("/api/cadence-completions", get(cadences::all_completions))
         .route("/api/daily-notes", get(daily::list))
         .route("/api/daily-notes/{date}", axum::routing::patch(daily::patch))
         .route("/api/focus-sessions", post(focus::create_session))

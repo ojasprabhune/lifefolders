@@ -93,6 +93,8 @@ When adding a new domain, pick this pattern over the recipe only when the intera
 
 Hash-based router (no library): `#/` = home (daily timeline), `#/music` / `#/sleep` / `#/tasks` / etc. = dedicated dashboard pages for complex domains.
 
+`#/cadences/all` is the one route that breaks the panel/page split from both sides: it's a domain page, but rendered full-width like `guide` and `focus` because it exists to show every cadence's heatmap at once, which a half-width panel can't. It reuses the panel's `Heatmap` component verbatim and gets its data from `GET /api/cadence-completions`, a bulk endpoint that stays two queries however many cadences there are — the per-cadence route would have been one round trip each against a backend that sleeps between visits.
+
 `#/search` is a panel like those but is not a domain — it stays out of `DOMAINS` for the same reason `guide` does. It renders results with the shared `Row` component, holding them in local state so an edit made from search saves in place.
 
 The `Home` page renders a daily timeline filtered by date and category. Category filters (a `FILTERS` array of value/label pairs) drive chips in the header.

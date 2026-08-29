@@ -448,6 +448,14 @@ export async function getCadenceCompletions(id: string, days = 90): Promise<Cade
   return (await check(res)).json()
 }
 
+export async function listAllCadenceCompletions(
+  days = 90,
+): Promise<Record<string, CadenceCompletions>> {
+  const params = new URLSearchParams({ days: String(days), tz_offset_min: tz() })
+  const res = await fetch(`${API}/api/cadence-completions?${params}`, { headers: authHeaders() })
+  return (await check(res)).json()
+}
+
 export async function listDailyNotes(days = 7): Promise<DailyNote[]> {
   const params = new URLSearchParams({ days: String(days), tz_offset_min: tz() })
   const res = await fetch(`${API}/api/daily-notes?${params}`, { headers: authHeaders() })

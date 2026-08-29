@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -401,26 +401,58 @@ pub struct Completions {
     pub unit: String,
 }
 
+/// The window every completions query works over. Reaches back a little
+/// further than the requested window so a streak running up to its first day
+/// is measured against real neighbours, not a hard cutoff - a full extra week
+/// (not just a day) so a weekly cadence is safe too, in case the window's
+/// first day lands mid-week.
+fn window(q: &CompletionsQuery) -> (i64, i32, NaiveDate, NaiveDate) {
+    let days = q.days.unwrap_or(90).clamp(1, 400);
+    let offset = q.tz_offset_min.unwrap_or(0);
+    let today = (Utc::now() - Duration::minutes(offset as i64)).date_naive();
+    (days, offset, today, today - Duration::days(days + 8))
+}
+
+fn summarize(
+    cadence: &Cadence,
+    all: BTreeSet<NaiveDate>,
+    days: i64,
+    today: NaiveDate,
+    since: NaiveDate,
+) -> Completions {
+    let schedule = Schedule::of(cadence);
+    let occurrences = schedule.occurrences(since, today);
+    let current_streak = current_run(&occurrences, &all, today);
+    let longest_streak = longest_run(&occurrences, &all, today);
+
+    // Only surface the dates inside the requested window to the client; the
+    // extra days pulled above were just for accurate streak measurement.
+    let start = today - Duration::days(days - 1);
+    Completions {
+        dates: all.into_iter().filter(|d| *d >= start).collect(),
+        due_dates: start
+            .iter_days()
+            .take_while(|d| *d <= today)
+            .filter(|d| schedule.is_due_on(*d))
+            .collect(),
+        current_streak,
+        longest_streak,
+        unit: cadence.interval_unit.clone(),
+    }
+}
+
 pub async fn completions(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
     Query(q): Query<CompletionsQuery>,
 ) -> Result<Json<Completions>, AppError> {
-    let days = q.days.unwrap_or(90).clamp(1, 400);
-    let offset = q.tz_offset_min.unwrap_or(0);
-    let today = (Utc::now() - Duration::minutes(offset as i64)).date_naive();
-    // Fetch a little before the window so a streak running up to the window's
-    // first day is measured against real neighbours, not a hard cutoff. A
-    // full extra week (not just a day) so a weekly cadence's streak is safe
-    // too, in case the window's first day lands mid-week.
-    let since = today - Duration::days(days + 8);
+    let (days, offset, today, since) = window(&q);
 
     let cadence: Cadence =
         sqlx::query_as(&format!("SELECT {CADENCE_COLUMNS} FROM cadences WHERE id = $1"))
             .bind(id)
             .fetch_one(&state.pool)
             .await?;
-    let schedule = Schedule::of(&cadence);
 
     let rows: Vec<(DateTime<Utc>,)> = sqlx::query_as(
         "SELECT created_at FROM logs \
@@ -439,27 +471,45 @@ pub async fn completions(
         .map(|(ts,)| (ts - Duration::minutes(offset as i64)).date_naive())
         .collect();
 
-    let occurrences = schedule.occurrences(since, today);
-    let current_streak = current_run(&occurrences, &all, today);
-    let longest_streak = longest_run(&occurrences, &all, today);
+    Ok(Json(summarize(&cadence, all, days, today, since)))
+}
 
-    // Only surface the dates inside the requested window to the client; the
-    // extra days pulled above were just for accurate streak measurement.
-    let start = today - Duration::days(days - 1);
-    let dates: Vec<NaiveDate> = all.into_iter().filter(|d| *d >= start).collect();
-    let due_dates: Vec<NaiveDate> = start
-        .iter_days()
-        .take_while(|d| *d <= today)
-        .filter(|d| schedule.is_due_on(*d))
-        .collect();
+/// Every active cadence's grid in one request. The wall shows all of them at
+/// once, and asking per cadence made that N round trips against a backend
+/// that sleeps between visits - this stays two queries however many there are.
+pub async fn all_completions(
+    State(state): State<AppState>,
+    Query(q): Query<CompletionsQuery>,
+) -> Result<Json<HashMap<Uuid, Completions>>, AppError> {
+    let (days, offset, today, since) = window(&q);
+    let cadences = active_cadences(&state).await?;
 
-    Ok(Json(Completions {
-        dates,
-        due_dates,
-        current_streak,
-        longest_streak,
-        unit: cadence.interval_unit,
-    }))
+    let rows: Vec<(Option<String>, DateTime<Utc>)> = sqlx::query_as(
+        "SELECT data->>'cadence_id', created_at FROM logs \
+         WHERE parsed_type = 'cadence_completion' AND deleted_at IS NULL \
+         AND created_at >= $1 ORDER BY created_at",
+    )
+    .bind(Utc.from_utc_datetime(&since.and_hms_opt(0, 0, 0).unwrap()))
+    .fetch_all(&state.pool)
+    .await?;
+
+    let mut by_id: HashMap<Uuid, BTreeSet<NaiveDate>> = HashMap::new();
+    for (cadence_id, ts) in rows {
+        let Some(id) = cadence_id.and_then(|s| Uuid::parse_str(&s).ok()) else {
+            continue;
+        };
+        by_id.entry(id).or_default().insert((ts - Duration::minutes(offset as i64)).date_naive());
+    }
+
+    Ok(Json(
+        cadences
+            .into_iter()
+            .map(|c| {
+                let all = by_id.remove(&c.id).unwrap_or_default();
+                (c.id, summarize(&c, all, days, today, since))
+            })
+            .collect(),
+    ))
 }
 
 /// The single strongest live streak across all active cadences, as

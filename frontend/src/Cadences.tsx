@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { archiveCadence, createCadence, getCadenceCompletions, listCadences, patchCadence } from './api'
+import {
+  archiveCadence,
+  createCadence,
+  getCadenceCompletions,
+  listAllCadenceCompletions,
+  listCadences,
+  patchCadence,
+} from './api'
 import { Panel, usePanelState } from './Panel'
 import type { Cadence, CadenceCompletions, CadenceSchedule, IntervalUnit } from './types'
 
@@ -56,6 +63,76 @@ function buildWeeks(): Date[][] {
   return cols
 }
 
+// The GitHub-style grid itself, shared by the panel (one cadence at a time)
+// and the wall (all of them at once).
+function Heatmap({ done, due, byWeek }: { done: Set<string>; due: Set<string>; byWeek: boolean }) {
+  const weeks = useMemo(buildWeeks, [])
+  const today = dateToStr(new Date())
+  return (
+  <div className="cadence-grid">
+    <div className="cadence-months">
+      {weeks.map((col, i) => {
+        const first = col[0]
+        const prevFirst = i > 0 ? weeks[i - 1][0] : null
+        const label =
+          !prevFirst || first.getMonth() !== prevFirst.getMonth()
+            ? MONTHS[first.getMonth()]
+            : ''
+        return (
+          <span key={i} className="cadence-month">
+            {label}
+          </span>
+        )
+      })}
+    </div>
+    <div className="cadence-weeks">
+      {weeks.map((col, i) => {
+        // "Once this week, any day" makes a per-day dot noise -
+        // one cell per week matches the actual target and lines
+        // up with the streak counting weeks.
+        if (byWeek) {
+          const weekStr = dateToStr(col[0])
+          const future = weekStr > today
+          const lit = col.some((d) => done.has(dateToStr(d)))
+          const owed = col.some((d) => due.has(dateToStr(d)))
+          return (
+            <div key={i} className="cadence-week">
+              <div
+                className={`cadence-cell weekly ${
+                  future ? 'future' : lit ? 'done' : owed ? '' : 'off'
+                }`}
+                title={weekStr}
+              />
+            </div>
+          )
+        }
+        return (
+          <div key={i} className="cadence-week">
+            {col.map((d) => {
+              const str = dateToStr(d)
+              const future = str > today
+              const lit = done.has(str)
+              // A day it was never owed on is not a miss, so it
+              // reads as blank rather than as an empty slot.
+              const owed = due.has(str)
+              return (
+                <div
+                  key={str}
+                  className={`cadence-cell ${
+                    future ? 'future' : lit ? 'done' : owed ? '' : 'off'
+                  }`}
+                  title={owed || lit ? str : `${str} · not due`}
+                />
+              )
+            })}
+          </div>
+        )
+      })}
+    </div>
+  </div>
+  )
+}
+
 export function Cadences({ open }: { open: boolean }) {
   const [cadences, setCadences] = useState<Cadence[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -95,8 +172,6 @@ export function Cadences({ open }: { open: boolean }) {
 
   const done = useMemo(() => new Set(completions?.dates ?? []), [completions])
   const due = useMemo(() => new Set(completions?.due_dates ?? []), [completions])
-  const weeks = useMemo(buildWeeks, [])
-  const today = dateToStr(new Date())
   const selected = cadences.find((h) => h.id === selectedId) ?? null
   // One cell per week only when the target really is "once this week, any
   // day" - picking specific weekdays makes the individual days meaningful
@@ -110,6 +185,9 @@ export function Cadences({ open }: { open: boolean }) {
       <header>
         <h1 className="brand">cadence</h1>
         <div className="header-nav">
+          <a className="guide-link" href="#/cadences/all">
+            fullscreen
+          </a>
           <button className="guide-link" onClick={() => setManaging((m) => !m)}>
             {managing ? 'done' : 'manage'}
           </button>
@@ -158,72 +236,76 @@ export function Cadences({ open }: { open: boolean }) {
                 </div>
               </div>
 
-              <div className="cadence-grid">
-                <div className="cadence-months">
-                  {weeks.map((col, i) => {
-                    const first = col[0]
-                    const prevFirst = i > 0 ? weeks[i - 1][0] : null
-                    const label =
-                      !prevFirst || first.getMonth() !== prevFirst.getMonth()
-                        ? MONTHS[first.getMonth()]
-                        : ''
-                    return (
-                      <span key={i} className="cadence-month">
-                        {label}
-                      </span>
-                    )
-                  })}
-                </div>
-                <div className="cadence-weeks">
-                  {weeks.map((col, i) => {
-                    // "Once this week, any day" makes a per-day dot noise -
-                    // one cell per week matches the actual target and lines
-                    // up with the streak counting weeks.
-                    if (byWeek) {
-                      const weekStr = dateToStr(col[0])
-                      const future = weekStr > today
-                      const lit = col.some((d) => done.has(dateToStr(d)))
-                      const owed = col.some((d) => due.has(dateToStr(d)))
-                      return (
-                        <div key={i} className="cadence-week">
-                          <div
-                            className={`cadence-cell weekly ${
-                              future ? 'future' : lit ? 'done' : owed ? '' : 'off'
-                            }`}
-                            title={weekStr}
-                          />
-                        </div>
-                      )
-                    }
-                    return (
-                      <div key={i} className="cadence-week">
-                        {col.map((d) => {
-                          const str = dateToStr(d)
-                          const future = str > today
-                          const lit = done.has(str)
-                          // A day it was never owed on is not a miss, so it
-                          // reads as blank rather than as an empty slot.
-                          const owed = due.has(str)
-                          return (
-                            <div
-                              key={str}
-                              className={`cadence-cell ${
-                                future ? 'future' : lit ? 'done' : owed ? '' : 'off'
-                              }`}
-                              title={owed || lit ? str : `${str} · not due`}
-                            />
-                          )
-                        })}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
+              <Heatmap done={done} due={due} byWeek={byWeek} />
             </div>
           )}
         </>
       )}
     </Panel>
+  )
+}
+
+// Every cadence's grid at once, on its own page rather than in the panel -
+// the panel shows one at a time behind a row of chips, which stops working
+// once there are more cadences than fit in that row.
+export function CadenceWall() {
+  const [cadences, setCadences] = useState<Cadence[]>([])
+  const [completions, setCompletions] = useState<Record<string, CadenceCompletions>>({})
+
+  const load = useCallback(async () => {
+    const [list, all] = await Promise.all([
+      listCadences().catch(() => [] as Cadence[]),
+      listAllCadenceCompletions(WEEKS * 7).catch(() => ({}) as Record<string, CadenceCompletions>),
+    ])
+    setCadences(list)
+    setCompletions(all)
+  }, [])
+
+  useEffect(() => {
+    void load()
+    window.addEventListener('life-log-created', load)
+    return () => window.removeEventListener('life-log-created', load)
+  }, [load])
+
+  return (
+    <div className="app wall">
+      <header>
+        <h1 className="brand">cadence</h1>
+        <div className="header-nav">
+          <a className="guide-link" href="#/cadences">
+            panel
+          </a>
+          <a className="guide-link" href="#/">
+            back
+          </a>
+        </div>
+      </header>
+
+      {cadences.length === 0 && <div className="empty">no cadences yet</div>}
+
+      <div className="cadence-wall">
+        {cadences.map((c) => {
+          const comp = completions[c.id]
+          const byWeek = c.interval_unit === 'week' && c.weekdays.length === 0
+          return (
+            <div key={c.id} className="cadence-tile">
+              <div className="cadence-tile-head">
+                <span className="cadence-tile-name">{c.name.toLowerCase()}</span>
+                <span className="cadence-tile-streak" title="current streak">
+                  {comp?.current_streak ?? 0}
+                </span>
+              </div>
+              <span className="cadence-tile-sched">{scheduleLabel(c)}</span>
+              <Heatmap
+                done={new Set(comp?.dates ?? [])}
+                due={new Set(comp?.due_dates ?? [])}
+                byWeek={byWeek}
+              />
+            </div>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 

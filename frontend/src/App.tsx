@@ -9,7 +9,7 @@ import { Clock } from './Clock'
 import { DailyPlan } from './DailyPlan'
 import { Guide } from './Guide'
 import { Soma } from './Soma'
-import { Cadences } from './Cadences'
+import { CadenceWall, Cadences } from './Cadences'
 import { FocusTimer } from './FocusTimer'
 import { FocusPill } from './FocusPill'
 import { Learning } from './Learning'
@@ -152,12 +152,14 @@ export default function App() {
 
   if (!authed) return <Gate onUnlock={() => setAuthed(true)} />
 
-  // Guide and focus stay full-page swaps - guide isn't a domain, and focus is
-  // a full-screen timer you're meant to leave (the pill covers "away and
-  // back"). Every other dashboard opens as a panel beside Home instead, so
-  // switching to sidequests/music/etc. never loses today's timeline.
+  // Guide, focus and the cadence wall stay full-page swaps - guide isn't a
+  // domain, focus is a full-screen timer you're meant to leave (the pill
+  // covers "away and back"), and the wall is the panel deliberately given the
+  // whole width. Every other dashboard opens as a panel beside Home instead,
+  // so switching to sidequests/music/etc. never loses today's timeline.
   let content: React.ReactNode
-  if (route.startsWith('#/guide')) content = <Guide />
+  if (route.startsWith('#/cadences/all')) content = <CadenceWall />
+  else if (route.startsWith('#/guide')) content = <Guide />
   else if (route.startsWith('#/focus')) content = <FocusTimer />
   else
     content = (
