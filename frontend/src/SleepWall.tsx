@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { animate, createTimeline, stagger, svg } from 'animejs'
 import { getSleepGoalMin, getSleepInsight, listSleep, setSleepGoalMin } from './api'
 import { formatDuration } from './Row'
 import { GOAL_MAX_BOUND, GOAL_MIN_BOUND, GOAL_STEP_MIN } from './Sleep'
@@ -10,7 +9,6 @@ import {
   closedNights,
   computeMetrics,
   consistencyScore,
-  debtSeries,
   histogram,
   localDate,
   longestStreak,
@@ -35,11 +33,15 @@ function prefersReduced(): boolean {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches
 }
 
+/** Stagger index for the CSS keyframes; see `--i` in styles.css. */
+function idx(i: number): React.CSSProperties {
+  return { ['--i' as string]: i }
+}
+
 export function SleepWall() {
   const [nights, setNights] = useState<Log[]>([])
   const [insight, setInsight] = useState<string | null>(null)
   const [goalMin, setGoalMin] = useState(() => getSleepGoalMin())
-  const rootRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     listSleep()
@@ -61,34 +63,6 @@ export function SleepWall() {
 
   const closed = useMemo(() => closedNights(nights), [nights])
   const metrics = useMemo(() => computeMetrics(nights, goalMin), [nights, goalMin])
-
-  // One entrance sequence for the whole page, re-run whenever the numbers
-  // underneath change - a goal nudge redraws every chart, and watching them
-  // all re-settle is how you see what moved.
-  useEffect(() => {
-    const root = rootRef.current
-    if (!root || closed.length === 0) return
-    if (prefersReduced()) {
-      root.classList.remove('pre-anim')
-      return
-    }
-    const pick = (sel: string) => Array.from(root.querySelectorAll(sel))
-    const tl = createTimeline({ defaults: { ease: 'outExpo' } })
-    tl.add(pick('.sleep-panel'), { opacity: [0, 1], y: [14, 0], duration: 620, delay: stagger(55) }, 0)
-      .add(pick('.sleep-raster-bar'), { scaleX: [0, 1], opacity: [0, 1], duration: 520, delay: stagger(16) }, 300)
-      .add(pick('.sleep-vbar'), { scaleY: [0, 1], duration: 620, delay: stagger(35) }, 420)
-      .add(pick('.sleep-cell'), { opacity: [0, 1], scale: [0.4, 1], duration: 380, delay: stagger(4) }, 380)
-      .add(pick('.sleep-dot'), { opacity: [0, 1], scale: [0, 1], duration: 320, delay: stagger(10) }, 700)
-
-    const lines = svg.createDrawable(pick('.sleep-draw'))
-    if (lines.length > 0) {
-      tl.add(lines, { draw: ['0 0', '0 1'], duration: 1200, ease: 'inOutQuad' }, 260)
-    }
-    root.classList.remove('pre-anim')
-    return () => {
-      tl.revert()
-    }
-  }, [closed, goalMin])
 
   const wakeMedian = medianWakeMinute(closed, TYPICAL_NIGHTS)
   const bedMedian = medianBedMinute(closed, TYPICAL_NIGHTS)
@@ -120,9 +94,10 @@ export function SleepWall() {
       {closed.length < 3 ? (
         <div className="empty">log a few more nights and this page fills in</div>
       ) : (
-        <div className="sleep-wall pre-anim" ref={rootRef} key={`${closed.length}-${goalMin}`}>
+        <div className="sleep-wall" key={`${closed.length}-${goalMin}`}>
           <StatStrip closed={closed} metrics={metrics} goalMin={goalMin} />
           <Tonight
+            index={1}
             target={target}
             wakeMedian={wakeMedian}
             bedMedian={bedMedian}
@@ -130,12 +105,11 @@ export function SleepWall() {
             goalMin={goalMin}
             insight={insight}
           />
-          <Calendar closed={closed} goalMin={goalMin} />
-          <Debt closed={closed} goalMin={goalMin} />
-          <Raster closed={closed} goalMin={goalMin} />
-          <Drift closed={closed} />
-          <Weekday closed={closed} goalMin={goalMin} />
-          <Distribution closed={closed} goalMin={goalMin} />
+          <Calendar closed={closed} goalMin={goalMin} index={2} />
+          <Raster closed={closed} goalMin={goalMin} index={3} />
+          <Drift closed={closed} index={4} />
+          <Weekday closed={closed} goalMin={goalMin} index={5} />
+          <Distribution closed={closed} goalMin={goalMin} index={6} />
         </div>
       )}
     </div>
@@ -146,15 +120,17 @@ function Panel({
   title,
   note,
   wide,
+  index = 0,
   children,
 }: {
   title: string
   note?: string
   wide?: boolean
+  index?: number
   children: React.ReactNode
 }) {
   return (
-    <section className={`sleep-panel ${wide ? 'wide' : ''}`}>
+    <section className={`sleep-panel ${wide ? 'wide' : ''}`} style={idx(index)}>
       <div className="sleep-panel-head">
         <h2>{title}</h2>
         {note && <span className="sleep-panel-note">{note}</span>}
@@ -164,24 +140,31 @@ function Panel({
   )
 }
 
+const COUNT_MS = 900
+
+// Keyed on the value alone, with the formatter in a ref: `format` used to be a
+// fresh closure every render and sat in the dep array, so every parent render
+// restarted the count - which is what made the page animate twice on load,
+// once when the nights arrived and again when the coach's blurb did.
 function CountUp({ value, format }: { value: number; format: (v: number) => string }) {
   const ref = useRef<HTMLSpanElement>(null)
+  const formatRef = useRef(format)
+  formatRef.current = format
+
   useEffect(() => {
     const el = ref.current
     if (!el || prefersReduced()) return
-    const proxy = { v: 0 }
-    animate(proxy, {
-      v: value,
-      duration: 1000,
-      ease: 'outExpo',
-      onUpdate: () => {
-        el.textContent = format(proxy.v)
-      },
-      onComplete: () => {
-        el.textContent = format(value)
-      },
-    })
-  }, [value, format])
+    let raf = 0
+    const started = performance.now()
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - started) / COUNT_MS)
+      el.textContent = formatRef.current(value * (1 - Math.pow(1 - t, 4)))
+      if (t < 1) raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [value])
+
   return (
     <span className="sleep-stat-value" ref={ref}>
       {format(value)}
@@ -212,7 +195,7 @@ function StatStrip({
     stats.push({ label: 'consistency', value: score, format: (v) => String(Math.round(v)) })
   }
   return (
-    <section className="sleep-panel wide sleep-strip">
+    <section className="sleep-panel wide sleep-strip" style={idx(0)}>
       {stats.map((s) => (
         <div key={s.label} className="sleep-stat">
           <CountUp value={s.value} format={s.format} />
@@ -224,9 +207,9 @@ function StatStrip({
 }
 
 const RING_R = 76
-const RING_C = 2 * Math.PI * RING_R
 
 function Tonight({
+  index,
   target,
   wakeMedian,
   bedMedian,
@@ -234,6 +217,7 @@ function Tonight({
   goalMin,
   insight,
 }: {
+  index: number
   target: number | null
   wakeMedian: number | null
   bedMedian: number | null
@@ -242,19 +226,6 @@ function Tonight({
   insight: string | null
 }) {
   const pct = avg7 !== null ? Math.min(1, avg7 / goalMin) : 0
-  const offset = RING_C * (1 - pct)
-  const ringRef = useRef<SVGCircleElement>(null)
-
-  useEffect(() => {
-    const el = ringRef.current
-    if (!el || prefersReduced()) return
-    animate(el, {
-      strokeDashoffset: [RING_C, offset],
-      duration: 1200,
-      delay: 220,
-      ease: 'inOutQuad',
-    })
-  }, [offset])
 
   // How much earlier than usual tonight's ask is. Bedtimes wrap midnight, so
   // the comparison happens in the 6pm-origin frame, same as everywhere else.
@@ -264,7 +235,7 @@ function Tonight({
       : null
 
   return (
-    <Panel title="tonight" note="ring: last 7 nights against goal">
+    <Panel title="tonight" note="ring: last 7 nights against goal" index={index}>
       <div className="sleep-ring-wrap">
         <svg viewBox="0 0 180 180" className="sleep-ring">
           <circle cx="90" cy="90" r={RING_R} className="sleep-ring-track" />
@@ -273,9 +244,8 @@ function Tonight({
             cy="90"
             r={RING_R}
             className="sleep-ring-fill"
-            ref={ringRef}
-            strokeDasharray={RING_C}
-            strokeDashoffset={offset}
+            pathLength={100}
+            style={{ ['--dash' as string]: (pct * 100).toFixed(2) }}
           />
         </svg>
         <div className="sleep-ring-center">
@@ -303,34 +273,6 @@ function Tonight({
   )
 }
 
-function Debt({ closed, goalMin }: { closed: SleepData[]; goalMin: number }) {
-  const series = debtSeries(closed, goalMin)
-  const W = 1180
-  const H = 260
-  const pad = 16
-  const span = Math.max(60, ...series.map((p) => Math.abs(p.cum)))
-  const x = (i: number) => pad + (i * (W - 2 * pad)) / Math.max(1, series.length - 1)
-  const y = (v: number) => H / 2 - (v / span) * (H / 2 - pad)
-  const line = series.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i)},${y(p.cum)}`).join(' ')
-  const area = `${line} L${x(series.length - 1)},${H / 2} L${x(0)},${H / 2} Z`
-  const total = series[series.length - 1]?.cum ?? 0
-
-  return (
-    <Panel title="sleep debt" note={`${closed.length} nights against a ${formatDuration(goalMin)} goal`} wide>
-      <div className={`sleep-debt-total ${total < 0 ? 'behind' : 'ahead'}`}>
-        {total < 0
-          ? `${formatDuration(Math.abs(Math.round(total)))} in the hole`
-          : `${formatDuration(Math.round(total))} ahead`}
-      </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="sleep-chart" preserveAspectRatio="none">
-        <line x1={pad} y1={H / 2} x2={W - pad} y2={H / 2} className="sleep-axis" />
-        <path d={area} className={`sleep-debt-area ${total < 0 ? 'behind' : 'ahead'}`} />
-        <path d={line} className={`sleep-debt-line sleep-draw ${total < 0 ? 'behind' : 'ahead'}`} />
-      </svg>
-    </Panel>
-  )
-}
-
 // Clock-time gridlines, every two hours across the 6pm-to-noon window.
 const RASTER_TICKS = [0, 2, 4, 6, 8, 10, 12, 14, 16].map((h) => ({
   h,
@@ -338,7 +280,7 @@ const RASTER_TICKS = [0, 2, 4, 6, 8, 10, 12, 14, 16].map((h) => ({
   label: clockLabel((18 * 60 + h * 60) % 1440),
 }))
 
-function Raster({ closed, goalMin }: { closed: SleepData[]; goalMin: number }) {
+function Raster({ closed, goalMin, index }: { closed: SleepData[]; goalMin: number; index: number }) {
   const rows = closed.filter((d) => d.sleep_start !== null).slice(0, RASTER_NIGHTS)
   if (rows.length < 3) return null
 
@@ -347,6 +289,7 @@ function Raster({ closed, goalMin }: { closed: SleepData[]; goalMin: number }) {
       title="when you actually sleep"
       note="6pm to noon — each row is one night"
       wide
+      index={index}
     >
       <div className="sleep-raster">
         <div className="sleep-raster-ticks">
@@ -356,7 +299,7 @@ function Raster({ closed, goalMin }: { closed: SleepData[]; goalMin: number }) {
             </span>
           ))}
         </div>
-        {rows.map((d) => {
+        {rows.map((d, row) => {
           const start = nightMinute(d.sleep_start as string)
           const width = Math.min(d.duration_min ?? 0, NIGHT_SPAN_MIN - start)
           return (
@@ -373,6 +316,7 @@ function Raster({ closed, goalMin }: { closed: SleepData[]; goalMin: number }) {
                   style={{
                     left: `${(start / NIGHT_SPAN_MIN) * 100}%`,
                     width: `${Math.max(1, (width / NIGHT_SPAN_MIN) * 100)}%`,
+                    ['--i' as string]: row,
                   }}
                   title={`${d.night_date}: ${timeShort(d.sleep_start)} to ${timeShort(d.sleep_end)}`}
                 />
@@ -392,7 +336,7 @@ function rolling(values: (number | null)[], window: number): (number | null)[] {
   })
 }
 
-function Drift({ closed }: { closed: SleepData[] }) {
+function Drift({ closed, index }: { closed: SleepData[]; index: number }) {
   const rows = [...closed]
     .filter((d) => d.sleep_start !== null && d.sleep_end !== null)
     .slice(0, DRIFT_NIGHTS)
@@ -427,7 +371,7 @@ function Drift({ closed }: { closed: SleepData[] }) {
   }
 
   return (
-    <Panel title="bedtime & wake drift" note={`last ${rows.length} nights, ${DRIFT_SMOOTH}-night trend`} wide>
+    <Panel title="bedtime & wake drift" note={`last ${rows.length} nights, ${DRIFT_SMOOTH}-night trend`} wide index={index}>
       <svg viewBox={`0 0 ${W} ${H}`} className="sleep-chart tall">
         {ticks.map((t) => (
           <g key={t.h}>
@@ -437,13 +381,21 @@ function Drift({ closed }: { closed: SleepData[] }) {
             </text>
           </g>
         ))}
-        <path d={path(rolling(beds, DRIFT_SMOOTH))} className="sleep-line bed sleep-draw" />
-        <path d={path(rolling(wakes, DRIFT_SMOOTH))} className="sleep-line wake sleep-draw" />
+        <path
+          d={path(rolling(beds, DRIFT_SMOOTH))}
+          pathLength={1}
+          className="sleep-line bed sleep-draw"
+        />
+        <path
+          d={path(rolling(wakes, DRIFT_SMOOTH))}
+          pathLength={1}
+          className="sleep-line wake sleep-draw"
+        />
         {beds.map((v, i) => (
-          <circle key={`b${i}`} cx={x(i)} cy={y(v)} r="2.5" className="sleep-dot bed" />
+          <circle key={`b${i}`} cx={x(i)} cy={y(v)} r="2.5" className="sleep-dot bed" style={idx(i)} />
         ))}
         {wakes.map((v, i) => (
-          <circle key={`w${i}`} cx={x(i)} cy={y(v)} r="2.5" className="sleep-dot wake" />
+          <circle key={`w${i}`} cx={x(i)} cy={y(v)} r="2.5" className="sleep-dot wake" style={idx(i)} />
         ))}
       </svg>
       <div className="sleep-legend">
@@ -454,13 +406,13 @@ function Drift({ closed }: { closed: SleepData[] }) {
   )
 }
 
-function Weekday({ closed, goalMin }: { closed: SleepData[]; goalMin: number }) {
+function Weekday({ closed, goalMin, index }: { closed: SleepData[]; goalMin: number; index: number }) {
   const days = byWeekday(closed)
   if (days.some((d) => d.count === 0)) return null
   const max = Math.max(goalMin, ...days.map((d) => d.avg ?? 0))
 
   return (
-    <Panel title="by weekday" note="average per day, and how many nights it stands on">
+    <Panel title="by weekday" note="average per day, and how many nights it stands on" index={index}>
       <div className="sleep-bars with-goal">
         <div
           className="sleep-goal-line"
@@ -471,7 +423,7 @@ function Weekday({ closed, goalMin }: { closed: SleepData[]; goalMin: number }) 
             <div className="sleep-bar-track">
               <div
                 className={`sleep-vbar ${(d.avg ?? 0) >= goalMin ? 'hit' : ''}`}
-                style={{ height: `${((d.avg ?? 0) / max) * 100}%` }}
+                style={{ height: `${((d.avg ?? 0) / max) * 100}%`, ['--i' as string]: i }}
                 title={`${SHORT_DAY_NAMES[i]}: ${formatDuration(Math.round(d.avg ?? 0))} over ${d.count} night${d.count === 1 ? '' : 's'}`}
               />
             </div>
@@ -485,20 +437,20 @@ function Weekday({ closed, goalMin }: { closed: SleepData[]; goalMin: number }) 
   )
 }
 
-function Distribution({ closed, goalMin }: { closed: SleepData[]; goalMin: number }) {
+function Distribution({ closed, goalMin, index }: { closed: SleepData[]; goalMin: number; index: number }) {
   const buckets = histogram(closed, HISTOGRAM_BUCKET_MIN)
   if (closed.length < 8 || buckets.length < 2) return null
   const max = Math.max(...buckets.map((b) => b.count))
 
   return (
-    <Panel title="how your nights cluster" note={`${HISTOGRAM_BUCKET_MIN / 60}-hour buckets`}>
+    <Panel title="how your nights cluster" note={`${HISTOGRAM_BUCKET_MIN / 60}-hour buckets`} index={index}>
       <div className="sleep-bars">
-        {buckets.map((b) => (
+        {buckets.map((b, i) => (
           <div key={b.from} className="sleep-bar-col">
             <div className="sleep-bar-track">
               <div
                 className={`sleep-vbar ${b.from >= goalMin ? 'hit' : ''}`}
-                style={{ height: `${(b.count / max) * 100}%` }}
+                style={{ height: `${(b.count / max) * 100}%`, ['--i' as string]: i }}
                 title={`${b.count} night${b.count === 1 ? '' : 's'} between ${formatDuration(b.from)} and ${formatDuration(b.from + HISTOGRAM_BUCKET_MIN)}`}
               />
             </div>
@@ -511,7 +463,7 @@ function Distribution({ closed, goalMin }: { closed: SleepData[]; goalMin: numbe
   )
 }
 
-function Calendar({ closed, goalMin }: { closed: SleepData[]; goalMin: number }) {
+function Calendar({ closed, goalMin, index }: { closed: SleepData[]; goalMin: number; index: number }) {
   const byDate = new Map(closed.map((d) => [d.night_date, d.duration_min ?? 0]))
   const today = new Date()
   today.setHours(0, 0, 0, 0)
@@ -541,7 +493,7 @@ function Calendar({ closed, goalMin }: { closed: SleepData[]; goalMin: number })
   }
 
   return (
-    <Panel title="every night" note={`shaded by how close to your ${formatDuration(goalMin)} goal`}>
+    <Panel title="every night" note={`shaded by how close to your ${formatDuration(goalMin)} goal`} index={index}>
       <div className="sleep-cal">
         <div className="sleep-cal-week heads">
           {dayHeads.map((h, i) => (
@@ -560,6 +512,7 @@ function Calendar({ closed, goalMin }: { closed: SleepData[]; goalMin: number })
               return (
                 <div
                   key={str}
+                  style={idx(w * 7 + d)}
                   className={`sleep-cell ${str > todayStr ? 'future' : level(mins)}`}
                   title={mins === undefined ? `${str} · nothing logged` : `${str}: ${formatDuration(mins)}`}
                 />

@@ -2590,18 +2590,103 @@ header > .brand {
   }
 }
 
-/* The state every animated element is painted in for one frame before the
-   entrance timeline takes over. Anime writes inline styles, which win over
-   these, so the class is left in place rather than removed mid-flight. */
-.sleep-wall.pre-anim .sleep-panel,
-.sleep-wall.pre-anim .sleep-raster-bar,
-.sleep-wall.pre-anim .sleep-cell,
-.sleep-wall.pre-anim .sleep-dot {
-  opacity: 0;
+/* Entrance. All of it is CSS, staggered off an --i index each element sets
+   inline, so a re-render can't restart it - which is exactly what the old
+   JS-timeline version did every time a fetch resolved. Only transform and
+   opacity animate, so none of it touches layout. */
+@keyframes sleep-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
 }
 
-.sleep-wall.pre-anim .sleep-vbar {
-  transform: scaleY(0);
+@keyframes sleep-grow-x {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes sleep-grow-y {
+  from {
+    transform: scaleY(0);
+  }
+}
+
+@keyframes sleep-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+}
+
+@keyframes sleep-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes sleep-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+}
+
+@keyframes sleep-ring {
+  from {
+    stroke-dasharray: 0 100;
+  }
+}
+
+.sleep-panel {
+  animation: sleep-rise 560ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(var(--i, 0) * 55ms);
+}
+
+.sleep-raster-bar {
+  animation: sleep-grow-x 480ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(260ms + var(--i, 0) * 16ms);
+}
+
+.sleep-vbar {
+  animation: sleep-grow-y 560ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(380ms + var(--i, 0) * 45ms);
+}
+
+.sleep-cell {
+  animation: sleep-pop 380ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(320ms + var(--i, 0) * 5ms);
+}
+
+.sleep-dot {
+  animation: sleep-fade 300ms ease-out both;
+  animation-delay: calc(680ms + var(--i, 0) * 12ms);
+}
+
+/* pathLength on the <path> normalises its length to 1, so one dash of 1 is
+   the whole line and the offset sweeps it on regardless of the shape. */
+.sleep-draw {
+  stroke-dasharray: 1;
+  animation: sleep-draw 1100ms ease-in-out both;
+  animation-delay: 240ms;
+}
+
+.sleep-ring-fill {
+  stroke-dasharray: var(--dash) 100;
+  animation: sleep-ring 1000ms ease-in-out both;
+  animation-delay: 200ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sleep-wall .sleep-panel,
+  .sleep-wall .sleep-raster-bar,
+  .sleep-wall .sleep-vbar,
+  .sleep-wall .sleep-cell,
+  .sleep-wall .sleep-dot,
+  .sleep-wall .sleep-draw,
+  .sleep-wall .sleep-ring-fill {
+    animation: none;
+  }
 }
 
 .sleep-panel-head {
@@ -2677,6 +2762,14 @@ header > .brand {
 .sleep-ring-fill {
   stroke: var(--sleep);
   stroke-linecap: round;
+}
+
+.sleep-raster-bar {
+  transform-origin: left center;
+}
+
+.sleep-vbar {
+  transform-origin: bottom center;
 }
 
 .sleep-ring-center {
@@ -2792,45 +2885,6 @@ header > .brand {
 .sleep-axis-label {
   fill: var(--faint);
   font-size: 9px;
-}
-
-.sleep-debt-total {
-  font-family: 'mencken-std-text', serif;
-  font-size: 26px;
-  margin-bottom: 10px;
-}
-
-.sleep-debt-total.behind {
-  color: var(--accent);
-}
-
-.sleep-debt-total.ahead {
-  color: var(--food);
-}
-
-.sleep-debt-area {
-  opacity: 0.16;
-}
-
-.sleep-debt-area.behind {
-  fill: var(--accent);
-}
-
-.sleep-debt-area.ahead {
-  fill: var(--food);
-}
-
-.sleep-debt-line {
-  fill: none;
-  stroke-width: 2;
-}
-
-.sleep-debt-line.behind {
-  stroke: var(--accent);
-}
-
-.sleep-debt-line.ahead {
-  stroke: var(--food);
 }
 
 .sleep-line {

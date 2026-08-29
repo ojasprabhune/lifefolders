@@ -156,8 +156,8 @@ export function Guide() {
         <p>
           <em>fullscreen</em> opens the whole picture on its own page: the bedtime to aim
           for tonight, a row per night showing when you were actually asleep, how far your
-          bedtime and wake time have drifted, your running sleep debt, and which weekdays
-          you give up first. Panels appear as you log enough nights to make them mean
+          bedtime and wake time have drifted, which weekdays you give up first, and how
+          your nights cluster. Panels appear as you log enough nights to make them mean
           something.
         </p>
         <ul>
