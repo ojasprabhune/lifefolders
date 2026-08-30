@@ -3,6 +3,7 @@ import { rankList } from './api'
 import { Panel, usePanelState } from './Panel'
 import { RateModal, rateProps } from './RateModal'
 import type { AlbumGroups, Log, PlaceCategory, PlaceData, Tier } from './types'
+import { Quip } from './Quip'
 
 const CATEGORIES: PlaceCategory[] = ['coffee', 'restaurant', 'bar', 'dessert', 'other']
 const TIER_ORDER: Tier[] = ['loved', 'fine', 'disliked']
@@ -40,7 +41,10 @@ export function Places({ open }: { open: boolean }) {
   return (
     <Panel closing={closing}>
       <header>
-        <h1 className="brand">places</h1>
+        <h1 className="brand">
+          places
+          <Quip domain="places" />
+        </h1>
         <a className="guide-link" href="#/">
           back
         </a>

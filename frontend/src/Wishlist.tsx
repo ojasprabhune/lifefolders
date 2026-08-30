@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { addWishlistItem, archiveWishlistItem, listWishlist, patchWishlistItem } from './api'
 import { Panel, usePanelState } from './Panel'
 import type { WishlistItem, WishlistKind } from './types'
+import { Quip } from './Quip'
 
 const KINDS: WishlistKind[] = ['album', 'song', 'place', 'trip', 'learning', 'other']
 
@@ -86,7 +87,10 @@ export function Wishlist({ open }: { open: boolean }) {
   return (
     <Panel closing={closing}>
       <header>
-        <h1 className="brand">wishlist</h1>
+        <h1 className="brand">
+          wishlist
+          <Quip domain="wishlist" />
+        </h1>
         <a className="guide-link" href="#/">
           back
         </a>

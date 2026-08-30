@@ -213,6 +213,17 @@ header {
   letter-spacing: -0.01em;
 }
 
+.panel-quip {
+  display: block;
+  font-family: 'neue-haas-grotesk-display', sans-serif;
+  font-style: normal;
+  font-weight: 500;
+  font-size: 13px;
+  line-height: 1.2;
+  color: var(--faint);
+  margin-top: 6px;
+}
+
 .brand-sub {
   display: block;
   font-size: 21px;

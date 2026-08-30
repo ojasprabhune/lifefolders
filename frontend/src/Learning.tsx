@@ -11,6 +11,7 @@ import {
 } from './api'
 import { Panel, usePanelState } from './Panel'
 import type { FieldDetail, FieldSummary, ProposedTopic, Resource, Topic } from './types'
+import { Quip } from './Quip'
 
 export function Learning({ route, open }: { route: string; open: boolean }) {
   const { mounted, closing } = usePanelState(open)
@@ -35,7 +36,10 @@ function FieldList() {
   return (
     <>
       <header>
-        <h1 className="brand">learning</h1>
+        <h1 className="brand">
+          learning
+          <Quip domain="learning" />
+        </h1>
         <a className="guide-link" href="#/">
           back
         </a>

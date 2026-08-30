@@ -5,6 +5,7 @@ import { Panel, usePanelState } from './Panel'
 import { formatDuration } from './Row'
 import { computeMetrics, dayName, formatSigned, shortDay, timeShort } from './sleepStats'
 import type { Log, SleepData } from './types'
+import { Quip } from './Quip'
 
 export const GOAL_STEP_MIN = 30
 export const GOAL_MIN_BOUND = 240 // 4h
@@ -44,7 +45,10 @@ export function Sleep({ open }: { open: boolean }) {
   return (
     <Panel closing={closing}>
       <header>
-        <h1 className="brand">solace</h1>
+        <h1 className="brand">
+          solace
+          <Quip domain="sleep" />
+        </h1>
         <div className="header-nav">
           <a className="guide-link" href="#/sleep/all">
             fullscreen

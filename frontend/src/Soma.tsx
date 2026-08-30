@@ -4,6 +4,7 @@ import { Expand } from './Expand'
 import { Panel, usePanelState } from './Panel'
 import { WorkoutBreakdown, workoutSummary, workoutVolume } from './Row'
 import type { Log, WeightData, WorkoutData } from './types'
+import { Quip } from './Quip'
 
 export function Soma({ open }: { open: boolean }) {
   const [workouts, setWorkouts] = useState<Log[]>([])
@@ -22,7 +23,10 @@ export function Soma({ open }: { open: boolean }) {
   return (
     <Panel closing={closing}>
       <header>
-        <h1 className="brand">soma</h1>
+        <h1 className="brand">
+          soma
+          <Quip domain="soma" />
+        </h1>
         <a className="guide-link" href="#/">
           back
         </a>

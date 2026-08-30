@@ -14,6 +14,7 @@ import { Expand } from './Expand'
 import { strikeOut, useFlipList } from './motion'
 import { Panel, usePanelState } from './Panel'
 import type { FocusSession, TaskCheckpoint, TaskWithCheckpoints } from './types'
+import { Quip } from './Quip'
 
 const DUE_STRIP_DAYS_BEFORE = 5
 const DUE_STRIP_DAYS_AFTER = 16
@@ -179,7 +180,10 @@ export function Tasks({ open }: { open: boolean }) {
   return (
     <Panel closing={closing}>
       <header>
-        <h1 className="brand">sidequests</h1>
+        <h1 className="brand">
+          sidequests
+          <Quip domain="tasks" />
+        </h1>
         <div className="header-nav">
           <button
             className={`guide-link today-filter-btn ${todayOnly ? 'active' : ''}`}

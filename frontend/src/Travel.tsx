@@ -3,6 +3,7 @@ import { rankList } from './api'
 import { Panel, usePanelState } from './Panel'
 import { RateModal, rateProps } from './RateModal'
 import type { AlbumGroups, Log, Tier, TripData } from './types'
+import { Quip } from './Quip'
 
 const TIER_ORDER: Tier[] = ['loved', 'fine', 'disliked']
 
@@ -32,7 +33,10 @@ export function Travel({ open }: { open: boolean }) {
   return (
     <Panel closing={closing}>
       <header>
-        <h1 className="brand">travel</h1>
+        <h1 className="brand">
+          travel
+          <Quip domain="travel" />
+        </h1>
         <a className="guide-link" href="#/">
           back
         </a>

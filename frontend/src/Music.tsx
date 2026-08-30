@@ -3,6 +3,7 @@ import { listAlbums, listSongs, updateLog } from './api'
 import { Panel, usePanelState } from './Panel'
 import { RateModal, rateProps } from './RateModal'
 import type { AlbumData, AlbumGroups, Log, SongData, Tier } from './types'
+import { Quip } from './Quip'
 
 const TIER_ORDER: Tier[] = ['loved', 'fine', 'disliked']
 
@@ -41,7 +42,10 @@ export function Music({ open }: { open: boolean }) {
   return (
     <Panel closing={closing}>
       <header>
-        <h1 className="brand">music</h1>
+        <h1 className="brand">
+          music
+          <Quip domain="music" />
+        </h1>
         <a className="guide-link" href="#/">
           back
         </a>

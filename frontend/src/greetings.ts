@@ -119,6 +119,21 @@ const LATE_NIGHT = [
   "put it down and rest",
   "the bed is right there",
   "nothing good happens after 1am",
+  "the internet will still be here tomorrow",
+  "you're not thinking clearly right now",
+  "whatever it is, it can wait",
+  "close the laptop",
+  "tomorrow-you is begging",
+  "this is the third 'one more'",
+  "your bed, unused, is right there",
+  "sleep debt has interest",
+  "midnight ideas are usually bad",
+  "log it and go",
+  "you always regret this at 7am",
+  "quit scrolling, ojas",
+  "the day is over. let it be.",
+  "goodnight means goodnight",
+  "this is when the bad decisions live",
 ]
 
 const HISTORY_KEY = 'lf-greeting-history'
@@ -153,6 +168,119 @@ export function pickGreeting(now = new Date()): string {
     localStorage.setItem(HISTORY_KEY, JSON.stringify([pick, ...history].slice(0, HISTORY_MAX)))
   } catch {
     // Private mode, full quota - a repeat is not worth failing over.
+  }
+  return pick
+}
+
+// Per-domain lines under each panel title. Same idea as the entry greeting,
+// same reason for living in the browser rather than coming from a model.
+const QUIPS: Record<string, string[]> = {
+  tasks: [
+    'locked in right?',
+    "what's actually due?",
+    "you said you'd do these",
+    'future you is watching',
+    'pick one. just one.',
+    "the list doesn't shrink itself",
+    'start with the ugly one',
+    "you're closer than it looks",
+    "quests don't clear themselves",
+    'deadlines are suggestions, right?',
+    'one down beats none started',
+    'stop reading, start doing',
+    'half of these are five minutes',
+    'the hard one first, coward',
+  ],
+  soma: [
+    "where's the lean bulk?",
+    'the gym is still there',
+    'protein? be honest.',
+    'you skipped legs again',
+    "gains don't log themselves",
+    'one set beats zero',
+    'go outside and move',
+    "your body called, it's bored",
+    "the bar isn't heavy today",
+    'rest days are not rest weeks',
+  ],
+  cadence: [
+    'drink some water. now.',
+    'did you make the bed?',
+    'streaks break quietly',
+    'consistency beats intensity, allegedly',
+    'you were doing so well',
+    'small things, every day',
+    "don't break it today",
+    'the chain is watching',
+    'yesterday you: disappointed',
+    'brush your teeth, champ',
+    'showing up is the whole trick',
+    'a bad day still counts',
+    'prove me wrong today',
+    'two days off is a pattern',
+  ],
+  music: [
+    "what's on repeat?",
+    'still that one album?',
+    'found anything good?',
+    'rate something, coward',
+    'your taste is a work in progress',
+    'silence is also a choice',
+    'put something on',
+  ],
+  places: [
+    'been anywhere new?',
+    'the world is bigger than your room',
+    'go somewhere with a door',
+    'the same three spots, huh',
+    'new coffee shop? no?',
+  ],
+  travel: [
+    'where to next?',
+    'the map is mostly empty',
+    'book something, eventually',
+    'wanderlust is not a plan',
+  ],
+  learning: [
+    'learned anything today?',
+    "the pdf won't read itself",
+    'curiosity, but scheduled',
+    'one chapter. that is it.',
+    'you bookmarked it. now read it.',
+  ],
+  sleep: [
+    "how'd last night treat you?",
+    'sleep is not optional',
+    'the bed misses you',
+    "you can't out-caffeine this",
+    'eight hours is a rumor, apparently',
+    'the ring does not lie',
+  ],
+  wishlist: [
+    'still want it?',
+    'wanting is free',
+    'cross one off already',
+    'the list is patient, you are not',
+  ],
+}
+
+export function pickQuip(domain: string): string {
+  const pool = QUIPS[domain] ?? []
+  if (pool.length === 0) return ''
+  const key = `lf-quip-${domain}`
+  const last = (() => {
+    try {
+      return localStorage.getItem(key) ?? ''
+    } catch {
+      return ''
+    }
+  })()
+  const fresh = pool.filter((q) => q !== last)
+  const pick = fresh[Math.floor(Math.random() * fresh.length)]
+  try {
+    localStorage.setItem(key, pick)
+  } catch {
+    // see pickGreeting
   }
   return pick
 }

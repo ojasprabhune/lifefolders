@@ -9,6 +9,7 @@ import {
 } from './api'
 import { Panel, usePanelState } from './Panel'
 import type { Cadence, CadenceCompletions, CadenceSchedule, IntervalUnit } from './types'
+import { Quip } from './Quip'
 
 const WEEKS = 14
 const DAY_INITIALS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
@@ -183,7 +184,10 @@ export function Cadences({ open }: { open: boolean }) {
   return (
     <Panel closing={closing}>
       <header>
-        <h1 className="brand">cadence</h1>
+        <h1 className="brand">
+          cadence
+          <Quip domain="cadence" />
+        </h1>
         <div className="header-nav">
           <a className="guide-link" href="#/cadences/all">
             fullscreen
@@ -270,7 +274,10 @@ export function CadenceWall() {
   return (
     <div className="app wall">
       <header>
-        <h1 className="brand">cadence</h1>
+        <h1 className="brand">
+          cadence
+          <Quip domain="cadence" />
+        </h1>
         <div className="header-nav">
           <a className="guide-link" href="#/cadences">
             panel
