@@ -81,3 +81,55 @@ export function useFlipList<T extends HTMLElement>() {
 
   return { ref, capture }
 }
+
+/**
+ * The "done" sweep: the row holds still while a line draws through its title
+ * (pure CSS, keyed off a class on the wrapper), then collapses away so the
+ * rows below slide up. Same measured-height reasoning as collapseAndRemove -
+ * `auto` isn't animatable and the height depends on the content.
+ */
+export function strikeOut(el: HTMLElement | null, done: () => void) {
+  if (!el || prefersReducedMotion()) {
+    done()
+    return
+  }
+  const height = el.getBoundingClientRect().height
+  el.style.overflow = 'hidden'
+  const anim = el.animate(
+    [
+      { height: `${height}px`, opacity: 1, offset: 0 },
+      { height: `${height}px`, opacity: 0.45, offset: 0.62 },
+      { height: '0px', opacity: 0, offset: 1 },
+    ],
+    { duration: 440, easing: 'ease-in-out', fill: 'forwards' },
+  )
+  anim.onfinish = done
+  anim.oncancel = done
+}
+
+/**
+ * Flash an element when the text inside it actually changes, and only then -
+ * an edit that didn't touch this field shouldn't light it up. Compares
+ * rendered text rather than props because the caller renders a summary, not
+ * the underlying fields. Silent on first mount: arriving isn't a change.
+ */
+export function useTextFlash<T extends HTMLElement>(enabled = true) {
+  const ref = useRef<T>(null)
+  const previous = useRef<string | null>(null)
+
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const text = el.textContent ?? ''
+    const before = previous.current
+    previous.current = text
+    if (before === null || before === text || !enabled || prefersReducedMotion()) return
+    el.classList.remove('field-flash')
+    // Forcing a reflow is the documented way to restart a CSS animation that
+    // is already on the element - without it a second edit doesn't replay.
+    void el.offsetWidth
+    el.classList.add('field-flash')
+  })
+
+  return ref
+}

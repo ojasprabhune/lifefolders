@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { deleteLog, patchTask, updateLog } from './api'
 import { dueLabel } from './dates'
 import { Expand } from './Expand'
-import { collapseAndRemove } from './motion'
+import { collapseAndRemove, useTextFlash } from './motion'
 import type {
   AlbumData,
   CadenceData,
@@ -25,6 +25,7 @@ import type {
 interface RowProps {
   log: Log
   justParsed: boolean
+  restored: boolean
   expanded: boolean
   onToggle: () => void
   onChange: (log: Log) => void
@@ -255,8 +256,22 @@ function rightSide(log: Log, onRate: (log: Log) => void): React.ReactNode {
   }
 }
 
-export function Row({ log, justParsed, expanded, onToggle, onChange, onDelete, onRate }: RowProps) {
+export function Row({
+  log,
+  justParsed,
+  restored,
+  expanded,
+  onToggle,
+  onChange,
+  onDelete,
+  onRate,
+}: RowProps) {
   const wrapRef = useRef<HTMLDivElement>(null)
+  // Only the piece that actually changed lights up. The collapsed row shows a
+  // summary rather than individual fields, so these are the two things an edit
+  // can visibly alter - the description and the number on the right.
+  const mainRef = useTextFlash<HTMLSpanElement>(!justParsed)
+  const rightRef = useTextFlash<HTMLSpanElement>(!justParsed)
 
   const quickDelete = async (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -272,12 +287,20 @@ export function Row({ log, justParsed, expanded, onToggle, onChange, onDelete, o
   }
 
   return (
-    <div className={`row-wrap ${expanded ? 'open' : ''}`} ref={wrapRef} data-flip-id={log.id}>
+    <div
+      className={`row-wrap ${expanded ? 'open' : ''} ${restored ? 'restored' : ''}`}
+      ref={wrapRef}
+      data-flip-id={log.id}
+    >
       <div className={`row ${justParsed ? 'morph' : ''}`} onClick={onToggle}>
         <span className="row-time">{rowTime(log)}</span>
         <span className={`badge ${badge(log).kind}`}>{badge(log).label}</span>
-        <span className="row-main">{summary(log)}</span>
-        <span className="row-right">{rightSide(log, onRate)}</span>
+        <span className="row-main" ref={mainRef}>
+          {summary(log)}
+        </span>
+        <span className="row-right" ref={rightRef}>
+          {rightSide(log, onRate)}
+        </span>
         <button className="delete-btn" onClick={quickDelete} aria-label="delete entry">
           ✕
         </button>

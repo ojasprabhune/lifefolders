@@ -248,8 +248,13 @@ function Gate({ onUnlock }: { onUnlock: () => void }) {
 
 function Home() {
   const [date, setDate] = useState(() => localDateStr(new Date()))
-  const [slide, setSlide] = useState<'back' | 'forward' | null>(null)
-  const [shownDate, setShownDate] = useState(() => localDateStr(new Date()))
+  // What the list is actually showing, and which way it got there. Both have
+  // to change in the same commit as the rows themselves - see `refresh`.
+  const [view, setView] = useState<{ date: string; slide: 'back' | 'forward' | null }>(() => ({
+    date: localDateStr(new Date()),
+    slide: null,
+  }))
+  const pendingSlide = useRef<'back' | 'forward' | null>(null)
   const [category, setCategory] = useState<Category>('all')
   const [logs, setLogs] = useState<Log[]>([])
   const [hiddenDomains] = useState<string[]>(() => getHiddenDomains())
@@ -271,6 +276,12 @@ function Home() {
   )
   const [pendings, setPendings] = useState<PendingLog[]>([])
   const [justParsed, setJustParsed] = useState<Set<string>>(new Set())
+  const [restored, setRestored] = useState<Set<string>>(new Set())
+  // Read by the undo handler, which is bound once and would otherwise close
+  // over whatever the list held when it was installed. `refresh` writes it
+  // directly as well, because undo reads it the moment its refresh resolves -
+  // before this effect has had a chance to run.
+  const logsRef = useRef<Log[]>([])
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [rateAlbum, setRateAlbum] = useState<Log | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -281,19 +292,26 @@ function Home() {
   const { ref: listRef, capture: captureRows } = useFlipList<HTMLElement>()
 
   const goDay = (delta: number) => {
-    setSlide(delta < 0 ? 'back' : 'forward')
+    pendingSlide.current = delta < 0 ? 'back' : 'forward'
     setDate((d) => shiftDate(d, delta))
   }
 
-  // The slide is keyed to the day whose entries are actually mounted, not the
-  // one that was requested. Keying it to `date` ran the animation the instant
-  // the arrow was clicked, while the current day's rows were still on screen -
-  // so those slid in and were then swapped for the new ones, unanimated, the
-  // moment the fetch landed.
+  // The direction class and the remount key both have to land in the same
+  // commit as the new rows. Two earlier versions got this wrong: keying the
+  // slide to `date` ran the animation on the day you were leaving, and holding
+  // the direction in its own state restarted the animation in place the moment
+  // you reversed direction, because the class changed on an already-mounted
+  // list without a remount to go with it.
   const refresh = useCallback(async (d: string) => {
     try {
-      setLogs(await listLogs(d, 'all'))
-      setShownDate(d)
+      const rows = await listLogs(d, 'all')
+      const slide = pendingSlide.current
+      pendingSlide.current = null
+      logsRef.current = rows
+      setLogs(rows)
+      // A same-day refresh (undo, a command) keeps the object identical, so
+      // nothing about the list's animation state changes underneath it.
+      setView((v) => (v.date === d && slide === null ? v : { date: d, slide }))
     } catch {
       // a failed fetch leaves the previous list; logging still works
     }
@@ -302,6 +320,10 @@ function Home() {
   useEffect(() => {
     void refresh(date)
   }, [date, refresh])
+
+  useEffect(() => {
+    logsRef.current = logs
+  }, [logs])
 
   const flash = (message: string) => {
     setNotice(message)
@@ -319,10 +341,19 @@ function Home() {
         return
       }
       e.preventDefault()
+      const before = new Set(logsRef.current.map((l) => l.id))
       undoLast()
-        .then(() => {
+        .then(async () => {
           flash('undone')
-          void refresh(date)
+          await refresh(date)
+          // An undone edit already announces itself - the row's summary
+          // changes and Row flashes the field that moved. This is for the
+          // other case, where undo put a whole row back that wasn't there.
+          const back = logsRef.current.filter((l) => !before.has(l.id)).map((l) => l.id)
+          if (back.length > 0) {
+            setRestored(new Set(back))
+            setTimeout(() => setRestored(new Set()), 560)
+          }
           window.dispatchEvent(new Event('life-log-created'))
         })
         .catch(() => flash('nothing to undo'))
@@ -612,7 +643,7 @@ function Home() {
         </span>
       </div>
 
-      <main className={`list ${slide ? `slide-${slide}` : ''}`} key={shownDate} ref={listRef}>
+      <main className={`list ${view.slide ? `slide-${view.slide}` : ''}`} key={view.date} ref={listRef}>
         {notice && <div className="notice">{notice}</div>}
         {isToday &&
           pendings.map((p) => (
@@ -650,6 +681,7 @@ function Home() {
             key={log.id}
             log={log}
             justParsed={justParsed.has(log.id)}
+            restored={restored.has(log.id)}
             expanded={expandedId === log.id}
             onToggle={() => setExpandedId(expandedId === log.id ? null : log.id)}
             onChange={(updated) =>

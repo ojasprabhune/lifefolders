@@ -11,20 +11,87 @@ import {
 } from './api'
 import { dayLabel, dueLabel } from './dates'
 import { Expand } from './Expand'
+import { strikeOut, useFlipList } from './motion'
 import { Panel, usePanelState } from './Panel'
 import type { FocusSession, TaskCheckpoint, TaskWithCheckpoints } from './types'
 
 const DUE_STRIP_DAYS_BEFORE = 5
 const DUE_STRIP_DAYS_AFTER = 16
+// Long enough for the odometer roll and the glide that follows it to finish
+// before the marker is cleared and the row re-renders plainly.
+const CHANGE_MS = 700
+
+// What visibly happened to a sidequest, worked out by diffing the list against
+// the one before it rather than reported by each caller. Everything that can
+// change a task goes through the same refresh - a typed entry, a slash
+// command, a drag between sections, the inline editor - so diffing here is the
+// only place that catches all of them.
+export type TaskChange =
+  | { kind: 'done' }
+  | { kind: 'reschedule'; from: string | null }
+  | { kind: 'recategorize' }
+  | { kind: 'note' }
+
+function diffTask(before: TaskWithCheckpoints, after: TaskWithCheckpoints): TaskChange | null {
+  if (before.status !== 'done' && after.status === 'done') return { kind: 'done' }
+  if (before.due_date !== after.due_date) return { kind: 'reschedule', from: before.due_date }
+  if (before.is_exam !== after.is_exam || before.category !== after.category) {
+    return { kind: 'recategorize' }
+  }
+  if ((before.note ?? '') !== (after.note ?? '')) return { kind: 'note' }
+  return null
+}
 
 export function Tasks({ open }: { open: boolean }) {
   const [tasks, setTasks] = useState<TaskWithCheckpoints[]>([])
   const [todayOnly, setTodayOnly] = useState(false)
   const { mounted, closing } = usePanelState(open)
+  const previous = useRef<Map<string, TaskWithCheckpoints>>(new Map())
+  const [changes, setChanges] = useState<Map<string, TaskChange>>(new Map())
+  // A task marked done leaves the open list immediately, which would yank the
+  // row out from under its own strike-through. Its pre-done copy is held here
+  // so it keeps rendering in place until the sweep has finished.
+  const [leaving, setLeaving] = useState<TaskWithCheckpoints[]>([])
+  const { ref: listRef, capture: captureRows } = useFlipList<HTMLElement>()
+
+  const apply = useCallback(
+    (next: TaskWithCheckpoints[]) => {
+      const before = previous.current
+      const found = new Map<string, TaskChange>()
+      for (const t of next) {
+        const was = before.get(t.id)
+        const change = was && diffTask(was, t)
+        if (change) found.set(t.id, change)
+      }
+      previous.current = new Map(next.map((t) => [t.id, t]))
+      // Captured before the state change, while the old layout is still on
+      // screen - a reschedule or a recategorize moves the row to a new place
+      // in the sort, and the glide needs where it used to be.
+      const moves = [...found.values()].some((c) => c.kind === 'reschedule' || c.kind === 'recategorize')
+      if (moves) captureRows()
+      setLeaving(
+        [...found.entries()]
+          .filter(([, c]) => c.kind === 'done')
+          .map(([id]) => before.get(id))
+          .flatMap((t) => (t ? [{ ...t, status: 'not_started' as const }] : [])),
+      )
+      setTasks(next)
+      if (found.size > 0) setChanges(found)
+    },
+    [captureRows],
+  )
+
+  // One timer for the whole batch: the markers only drive entrance animations,
+  // so clearing them together can't interrupt anything mid-flight.
+  useEffect(() => {
+    if (changes.size === 0) return
+    const t = setTimeout(() => setChanges(new Map()), CHANGE_MS)
+    return () => clearTimeout(t)
+  }, [changes])
 
   const refresh = useCallback(() => {
-    listTasks().then(setTasks).catch(() => {})
-  }, [])
+    listTasks().then(apply).catch(() => {})
+  }, [apply])
 
   useEffect(() => {
     if (!mounted) return
@@ -64,7 +131,11 @@ export function Tasks({ open }: { open: boolean }) {
 
   const [dragOver, setDragOver] = useState<string | null>(null)
 
-  const openTasks = tasks.filter((t) => t.status !== 'done')
+  const openTasks = useMemo(() => {
+    const out = tasks.filter((t) => t.status !== 'done')
+    for (const t of leaving) if (!out.some((x) => x.id === t.id)) out.push(t)
+    return out
+  }, [tasks, leaving])
   const grouped = useMemo(() => groupByCategory(openTasks), [openTasks])
   // "today's plate" is the task's own due date or one of its spaced-review
   // checkpoints (7d/3d/1d out from an exam) coming due - not just tasks due
@@ -121,7 +192,7 @@ export function Tasks({ open }: { open: boolean }) {
 
       <DueStrip days={dayCounts} todayIndex={DUE_STRIP_DAYS_BEFORE} />
 
-      <main className="list">
+      <main className="list" ref={listRef}>
         {todayOnly ? (
           <>
             {overdue.length > 0 && (
@@ -135,6 +206,8 @@ export function Tasks({ open }: { open: boolean }) {
                     onCheckpoint={toggleCheckpoint}
                     onDelete={() => void remove(t.id)}
                     onRefresh={refresh}
+                    change={changes.get(t.id) ?? null}
+                    onLeft={() => setLeaving((l) => l.filter((x) => x.id !== t.id))}
                   />
                 ))}
               </section>
@@ -149,6 +222,8 @@ export function Tasks({ open }: { open: boolean }) {
                   onCheckpoint={toggleCheckpoint}
                   onDelete={() => void remove(t.id)}
                   onRefresh={refresh}
+                  change={changes.get(t.id) ?? null}
+                  onLeft={() => setLeaving((l) => l.filter((x) => x.id !== t.id))}
                 />
               ))}
               {dueToday.length === 0 && <div className="empty">nothing due today</div>}
@@ -180,6 +255,8 @@ export function Tasks({ open }: { open: boolean }) {
                   onCheckpoint={toggleCheckpoint}
                   onDelete={() => void remove(t.id)}
                   onRefresh={refresh}
+                  change={changes.get(t.id) ?? null}
+                  onLeft={() => setLeaving((l) => l.filter((x) => x.id !== t.id))}
                 />
               ))}
             </section>
@@ -428,12 +505,16 @@ function TaskRow({
   onCheckpoint,
   onDelete,
   onRefresh,
+  change,
+  onLeft,
 }: {
   task: TaskWithCheckpoints
   onCycle: () => void
   onCheckpoint: (id: string, status: 'todo' | 'done') => void
   onDelete: () => void
   onRefresh: () => void
+  change: TaskChange | null
+  onLeft: () => void
 }) {
   const isOverdue = task.due_date && task.due_date < dateToStr(new Date())
   const isSoon = !isOverdue && task.due_date && daysUntil(task.due_date) <= 2
@@ -448,6 +529,17 @@ function TaskRow({
   const ghostRef = useRef<HTMLElement | null>(null)
   const [noteDraft, setNoteDraft] = useState(task.note ?? '')
   const [titleDraft, setTitleDraft] = useState(task.title)
+  const wrapRef = useRef<HTMLDivElement>(null)
+
+  // The strike-through is CSS on the title; the collapse that follows it has
+  // to be measured, so it runs from here.
+  useEffect(() => {
+    if (change?.kind !== 'done') return
+    strikeOut(wrapRef.current, onLeft)
+    // onLeft is a fresh closure every render and re-running this would restart
+    // the sweep; the marker changing is the only thing that should trigger it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [change])
 
   // Re-sync when the task changes underneath (a typed entry appended a line,
   // or the same note was edited from the timeline row), but never while it's
@@ -489,7 +581,11 @@ function TaskRow({
   }
 
   return (
-    <div className={`task-row-wrap ${expanded ? 'open' : ''}`}>
+    <div
+      className={`task-row-wrap ${expanded ? 'open' : ''} ${change ? `did-${change.kind}` : ''}`}
+      ref={wrapRef}
+      data-flip-id={task.id}
+    >
       <div
         className={`task-row ${dragging ? 'dragging' : ''}`}
         draggable
@@ -530,12 +626,26 @@ function TaskRow({
               className={`task-due ${isOverdue ? 'overdue' : isSoon ? 'soon' : ''}`}
               title={task.due_date}
             >
-              {dueLabel(task.due_date)}
-              {task.due_time && ` · ${formatDueTime(task.due_time)}`}
+              {/* Both dates are on screen at once mid-roll, the old one
+                  leaving upward and the new one arriving from below, so the
+                  clip has to come from the wrapper rather than either span. */}
+              <span className="task-due-now">
+                {dueLabel(task.due_date)}
+                {task.due_time && ` · ${formatDueTime(task.due_time)}`}
+              </span>
+              {change?.kind === 'reschedule' && change.from && (
+                <span className="task-due-was" aria-hidden="true">
+                  {dueLabel(change.from)}
+                </span>
+              )}
             </div>
           )}
           {task.effort_minutes && <div className="task-effort">{task.effort_minutes} min</div>}
-          {lastNote && <div className="task-note">{lastNote}</div>}
+          {lastNote && (
+            <div className="task-note">
+              <span>{lastNote}</span>
+            </div>
+          )}
         </div>
         {task.is_exam && task.due_date && (
           <div className="checkpoints">

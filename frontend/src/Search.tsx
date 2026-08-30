@@ -105,6 +105,7 @@ export function Search({ open }: { open: boolean }) {
             <h2 className="section-title">{dateLabel(date)}</h2>
             {logs.map((log) => (
               <Row
+                restored={false}
                 key={log.id}
                 log={log}
                 justParsed={false}

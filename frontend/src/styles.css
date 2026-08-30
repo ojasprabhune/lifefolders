@@ -1732,6 +1732,171 @@ header > .brand {
   margin-top: 2px;
 }
 
+/* --- what just happened to a sidequest -------------------------------------
+   Every one of these is triggered by a `did-*` class the panel puts on the row
+   after diffing the list against the one before it, so a change made by a
+   typed entry, a slash command, a drag or the inline editor all land the same
+   way. Base values are the finished state, so reduced motion needs nothing
+   beyond turning the animations off. */
+
+/* Reschedule: the old date rolls up and out while the new one arrives from
+   underneath. Both spans occupy the same line, so the leaving one is taken out
+   of flow rather than pushing the row taller for the duration. */
+.task-due {
+  position: relative;
+  overflow: hidden;
+}
+
+.did-reschedule .task-due-now {
+  display: inline-block;
+  animation: due-roll-in 320ms cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+
+.task-due-was {
+  position: absolute;
+  inset: 0;
+  color: var(--muted);
+  animation: due-roll-out 320ms cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+
+@keyframes due-roll-in {
+  from {
+    transform: translateY(105%);
+    opacity: 0;
+  }
+}
+
+@keyframes due-roll-out {
+  to {
+    transform: translateY(-105%);
+    opacity: 0;
+  }
+}
+
+/* Recategorize: no badge on an open row to stamp, so the row marks itself with
+   an accent edge that wipes down and fades while the FLIP glide carries it to
+   its new section. */
+.did-recategorize {
+  position: relative;
+}
+
+.did-recategorize::before {
+  content: '';
+  position: absolute;
+  left: -10px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+  transform-origin: top;
+  animation: edge-wipe 460ms cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+
+@keyframes edge-wipe {
+  0% {
+    transform: scaleY(0);
+    opacity: 1;
+  }
+  45% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scaleY(1);
+    opacity: 0;
+  }
+}
+
+/* A new or edited note opens downward with the text sliding up into it, so the
+   line reads as arriving rather than the row silently getting taller. */
+.task-note {
+  overflow: hidden;
+}
+
+.did-note .task-note {
+  animation: note-unroll 260ms cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+
+.did-note .task-note > span {
+  display: inline-block;
+  animation: note-slide 260ms cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+
+@keyframes note-unroll {
+  from {
+    max-height: 0;
+    margin-top: 0;
+  }
+  to {
+    max-height: 40px;
+    margin-top: 2px;
+  }
+}
+
+@keyframes note-slide {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+}
+
+/* Done: a line draws itself through the title and the row fades back to muted
+   before it collapses away. The collapse itself is measured in JS (strikeOut)
+   because the row's height depends on its content. */
+.did-done .task-title {
+  position: relative;
+  color: var(--muted);
+  transition: color 260ms ease;
+}
+
+.did-done .task-title::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: currentColor;
+  transform-origin: left;
+  animation: strike-draw 260ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+@keyframes strike-draw {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* An edit that landed on a field you can see. Deliberately a wash rather than
+   a move: the row is already in its right place and shoving it would read as a
+   second, unrelated change. */
+.field-flash {
+  animation: field-flash 520ms ease-out;
+}
+
+@keyframes field-flash {
+  0% {
+    color: var(--accent);
+  }
+  55% {
+    color: var(--accent);
+  }
+}
+
+/* Undo, when what it put back was a whole row rather than a field. */
+.row-wrap.restored {
+  animation: restored 520ms ease-out;
+}
+
+@keyframes restored {
+  from {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+  }
+}
+
 .resolved-section {
   margin-top: 28px;
 }
@@ -3187,8 +3352,22 @@ header > .brand {
 @media (prefers-reduced-motion: reduce) {
   .row-decode,
   .list.slide-back,
-  .list.slide-forward {
+  .list.slide-forward,
+  .did-reschedule .task-due-now,
+  .task-due-was,
+  .did-recategorize::before,
+  .did-note .task-note,
+  .did-note .task-note > span,
+  .did-done .task-title::after,
+  .field-flash,
+  .row-wrap.restored {
     animation: none;
+  }
+
+  .task-due-was,
+  .did-recategorize::before,
+  .did-done .task-title::after {
+    display: none;
   }
 
   .row-decode {
