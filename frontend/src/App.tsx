@@ -231,7 +231,10 @@ function Gate({ onUnlock }: { onUnlock: () => void }) {
   return (
     <div className="app">
       <header>
-        <h1 className="brand">life</h1>
+        <h1 className="brand">
+          life
+          <span className="brand-sub">folders</span>
+        </h1>
       </header>
       <input
         className="entry-input"
@@ -538,7 +541,10 @@ function Home() {
   return (
     <div className="app">
       <header>
-        <h1 className="brand">life</h1>
+        <h1 className="brand">
+          life
+          <span className="brand-sub">folders</span>
+        </h1>
         <nav className="header-nav">
           {DOMAINS.filter((d) => d.navHref && !hiddenDomains.includes(d.id)).map((d) => (
             <a key={d.id} className="guide-link" href={d.navHref}>
