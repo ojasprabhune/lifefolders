@@ -1645,14 +1645,21 @@ header > .brand {
   border-left: 3px solid var(--line);
   align-items: flex-start;
   cursor: grab;
+  transition: opacity 220ms ease;
 }
 
 .task-row:active {
   cursor: grabbing;
 }
 
+/* Picking the row up should read instantly, so the faded state takes no
+   transition. Putting it down is the other way round: `dragend` only fires
+   once the browser has finished snapping its drag image back, so by then the
+   source row has been sitting there faded and jumping it to full opacity looks
+   like a glitch. Easing it back is what makes the drop land. */
 .task-row.dragging {
   opacity: 0.4;
+  transition: none;
 }
 
 .task-section {
@@ -3396,7 +3403,8 @@ header > .brand {
     display: none;
   }
 
-  .mic-bar {
+  .mic-bar,
+  .task-row {
     transition: none;
   }
 }
