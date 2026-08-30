@@ -45,7 +45,9 @@ function diffTask(before: TaskWithCheckpoints, after: TaskWithCheckpoints): Task
 
 export function Tasks({ open }: { open: boolean }) {
   const [tasks, setTasks] = useState<TaskWithCheckpoints[]>([])
-  const [todayOnly, setTodayOnly] = useState(false)
+  // Which day the list is pinned to (a yyyy-mm-dd), or null for everything
+  // grouped by category. The today button is just this set to today.
+  const [selected, setSelected] = useState<string | null>(null)
   const { mounted, closing } = usePanelState(open)
   const previous = useRef<Map<string, TaskWithCheckpoints>>(new Map())
   const [changes, setChanges] = useState<Map<string, TaskChange>>(new Map())
@@ -144,25 +146,29 @@ export function Tasks({ open }: { open: boolean }) {
     })
   }, [tasks, leaving])
   const grouped = useMemo(() => groupByCategory(openTasks), [openTasks])
+  const todayStr = dateToStr(new Date())
   // "today's plate" is the task's own due date or one of its spaced-review
   // checkpoints (7d/3d/1d out from an exam) coming due - not just tasks due
   // today themselves. Anything with such a date already behind us is overdue
   // and belongs on the same screen: a deadline you missed is still today's
   // problem, and hiding it here was the only place it could go unnoticed.
-  const { overdue, dueToday } = useMemo(() => {
+  const { overdue, dueOnDay } = useMemo(() => {
     const today = dateToStr(new Date())
+    const day = selected ?? today
     const late: TaskWithCheckpoints[] = []
-    const now: TaskWithCheckpoints[] = []
+    const on: TaskWithCheckpoints[] = []
     for (const t of openTasks) {
       const dates = plateDates(t)
-      if (dates.includes(today)) now.push(t)
-      else if (dates.some((d) => d < today)) late.push(t)
+      if (dates.includes(day)) on.push(t)
+      // Overdue hangs off today only. On a day you picked from the strip it
+      // would be a list of things that have nothing to do with that day.
+      else if (day === today && dates.some((d) => d < today)) late.push(t)
     }
     return {
       overdue: late.sort((a, b) => oldestPlateDate(a).localeCompare(oldestPlateDate(b))),
-      dueToday: now.sort((a, b) => (a.due_time ?? '99:99').localeCompare(b.due_time ?? '99:99')),
+      dueOnDay: on.sort((a, b) => (a.due_time ?? '99:99').localeCompare(b.due_time ?? '99:99')),
     }
-  }, [openTasks])
+  }, [openTasks, selected])
   const dayCounts = useMemo(
     () => buildDayCounts(openTasks, DUE_STRIP_DAYS_BEFORE, DUE_STRIP_DAYS_AFTER),
     [openTasks],
@@ -186,8 +192,8 @@ export function Tasks({ open }: { open: boolean }) {
         </h1>
         <div className="header-nav">
           <button
-            className={`guide-link today-filter-btn ${todayOnly ? 'active' : ''}`}
-            onClick={() => setTodayOnly((v) => !v)}
+            className={`guide-link today-filter-btn ${selected === todayStr ? 'active' : ''}`}
+            onClick={() => setSelected((d) => (d === todayStr ? null : todayStr))}
           >
             today
           </button>
@@ -200,10 +206,15 @@ export function Tasks({ open }: { open: boolean }) {
         </div>
       </header>
 
-      <DueStrip days={dayCounts} todayIndex={DUE_STRIP_DAYS_BEFORE} />
+      <DueStrip
+        days={dayCounts}
+        todayIndex={DUE_STRIP_DAYS_BEFORE}
+        selected={selected}
+        onSelect={(date) => setSelected((d) => (d === date ? null : date))}
+      />
 
       <main className="list" ref={listRef}>
-        {todayOnly ? (
+        {selected ? (
           <>
             {overdue.length > 0 && (
               <section className="music-section task-section">
@@ -223,8 +234,8 @@ export function Tasks({ open }: { open: boolean }) {
               </section>
             )}
             <section className="music-section task-section">
-              <h2 className="section-title">due today</h2>
-              {dueToday.map((t) => (
+              <h2 className="section-title">due {dueLabel(selected)}</h2>
+              {dueOnDay.map((t) => (
                 <TaskRow
                   key={t.id}
                   task={t}
@@ -236,7 +247,9 @@ export function Tasks({ open }: { open: boolean }) {
                   onLeft={() => setLeaving((l) => l.filter((x) => x.id !== t.id))}
                 />
               ))}
-              {dueToday.length === 0 && <div className="empty">nothing due today</div>}
+              {dueOnDay.length === 0 && (
+                <div className="empty">nothing due {dueLabel(selected)}</div>
+              )}
             </section>
           </>
         ) : (
@@ -272,9 +285,9 @@ export function Tasks({ open }: { open: boolean }) {
             </section>
           ))
         )}
-        {!todayOnly && openTasks.length === 0 && <div className="empty">nothing due</div>}
+        {!selected && openTasks.length === 0 && <div className="empty">nothing due</div>}
 
-        {!todayOnly && resolvedTasks.length > 0 && (
+        {!selected && resolvedTasks.length > 0 && (
           <details className="resolved-section">
             <summary className="section-title">resolved ({resolvedTasks.length})</summary>
             <div className="resolved-list">
@@ -375,12 +388,16 @@ function formatDueTime(timeStr: string): string {
 function DueStrip({
   days,
   todayIndex,
+  selected,
+  onSelect,
 }: {
   days: { date: string; count: number }[]
   todayIndex: number
+  selected: string | null
+  onSelect: (date: string) => void
 }) {
   const max = Math.max(1, ...days.map((d) => d.count))
-  const todayRef = useRef<HTMLDivElement>(null)
+  const todayRef = useRef<HTMLButtonElement>(null)
 
   // The strip spans a couple weeks each side of today so it scrolls left
   // (past) and right (future), but should still open with today in view
@@ -392,16 +409,18 @@ function DueStrip({
   return (
     <div className="due-strip">
       {days.map((d, i) => (
-        <div
+        <button
           key={d.date}
           ref={i === todayIndex ? todayRef : undefined}
-          className={`due-col ${i === todayIndex ? 'today' : ''}`}
+          className={`due-col ${i === todayIndex ? 'today' : ''} ${d.date === selected ? 'selected' : ''}`}
+          title={d.date}
+          onClick={() => onSelect(d.date)}
         >
           <span className="due-count">{d.count || ''}</span>
           <div className="due-bar" style={{ height: `${(d.count / max) * 100}%` }} />
           <span className="due-label">{shortDayLabel(d.date)}</span>
           <span className="due-date">{dayOfMonth(d.date)}</span>
-        </div>
+        </button>
       ))}
     </div>
   )

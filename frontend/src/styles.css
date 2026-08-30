@@ -1794,6 +1794,23 @@ header > .brand {
   font-weight: 600;
 }
 
+.due-col:hover .due-label,
+.due-col:hover .due-date {
+  color: var(--ink);
+}
+
+.due-col.selected {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-radius: 6px;
+}
+
+.due-col.selected .due-label,
+.due-col.selected .due-date,
+.due-col.selected .due-count {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .due-count {
   font-size: 12px;
   font-weight: 600;
