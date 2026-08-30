@@ -16,6 +16,7 @@ import { FocusTimer } from './FocusTimer'
 import { FocusPill } from './FocusPill'
 import { Learning } from './Learning'
 import { Music } from './Music'
+import { pickGreeting } from './greetings'
 import { usePanelState } from './Panel'
 import { Places } from './Places'
 import { RateModal, rateProps } from './RateModal'
@@ -289,6 +290,7 @@ function Home() {
   const [rateAlbum, setRateAlbum] = useState<Log | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [text, setText] = useState('')
+  const [greeting, setGreeting] = useState(pickGreeting)
   const inputRef = useRef<HTMLInputElement>(null)
   const today = localDateStr(new Date())
   const isToday = date === today
@@ -437,6 +439,7 @@ function Home() {
     const value = text.trim()
     if (!value) return
     setText('')
+    setGreeting(pickGreeting())
     void submit(value)
   }
 
@@ -574,7 +577,7 @@ function Home() {
                 ? 'transcribing...'
                 : recState === 'denied'
                   ? 'microphone access denied'
-                  : 'write anything...'
+                  : greeting
           }
           autoFocus
           enterKeyHint="send"
