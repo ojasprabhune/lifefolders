@@ -30,6 +30,16 @@ async fn write_history(
     task: &Task,
     action: &str,
 ) -> Result<Log, AppError> {
+    write_history_from(state, raw, task, action, None).await
+}
+
+async fn write_history_from(
+    state: &AppState,
+    raw: &str,
+    task: &Task,
+    action: &str,
+    previous_due_date: Option<NaiveDate>,
+) -> Result<Log, AppError> {
     let data = TaskData {
         task_id: task.id,
         title: task.title.clone(),
@@ -40,6 +50,7 @@ async fn write_history(
         is_exam: task.is_exam,
         action: action.to_string(),
         note: None,
+        previous_due_date,
     };
     Ok(sqlx::query_as(
         "INSERT INTO logs (raw_input, parsed_type, data) VALUES ($1, 'task', $2) \
@@ -157,7 +168,10 @@ pub async fn apply(
                     patch.due_time = Some(t.format("%H:%M").to_string());
                 }
                 let (updated, _) = tasks::update_task(state, existing, &patch).await?;
-                logs.push(write_history(state, raw, &updated, "rescheduled").await?);
+                logs.push(
+                    write_history_from(state, raw, &updated, "rescheduled", existing.due_date)
+                        .await?,
+                );
             }
             undo::record(state, Effect::TasksUpdated(snapshots));
 
@@ -186,7 +200,8 @@ pub async fn apply(
             patch.clear_due_date = true;
             let (updated, _) = tasks::update_task(state, &existing, &patch).await?;
             undo::record(state, Effect::TasksUpdated(vec![snapshot]));
-            let log = write_history(state, raw, &updated, "rescheduled").await?;
+            let log =
+                write_history_from(state, raw, &updated, "rescheduled", existing.due_date).await?;
             Ok(undoable(format!("cleared the due date on {}", existing.title), vec![log]))
         }
 

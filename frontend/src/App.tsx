@@ -401,15 +401,15 @@ function Home() {
           created.forEach((x) => next.add(x.id))
           return next
         })
-        // Outlasts the decode sweep in styles.css - if this fires first the
-        // overlay unmounts mid-wipe.
+        // Outlasts the longest reveal in styles.css (the completion strike at
+        // 620ms) - if this fires first the row loses its markup mid-animation.
         setTimeout(() => {
           setJustParsed((s) => {
             const next = new Set(s)
             createdIds.forEach((x) => next.delete(x))
             return next
           })
-        }, 470)
+        }, 700)
         // A command writes no logs row but does change ones already on
         // screen (a deleted entry, a rescheduled sidequest), so re-read the
         // day rather than leaving a stale list.

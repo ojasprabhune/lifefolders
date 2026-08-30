@@ -94,7 +94,7 @@ export function learningSummary(data: LearningData): string {
   return prefix + parts.join(', ')
 }
 
-function summary(log: Log): string {
+function summary(log: Log): React.ReactNode {
   switch (log.parsed_type) {
     case 'nutrition':
       return (log.data as NutritionData).food_name
@@ -133,7 +133,20 @@ function summary(log: Log): string {
       const dueTime = t.due_time ? ` ${timeOf(`2000-01-01T${t.due_time}`)}` : ''
       const due = t.due_date ? `, due ${dueLabel(t.due_date)}${dueTime}` : ''
       if (t.action === 'status') return `${t.status === 'done' ? 'completed' : t.status === 'in_progress' ? 'started' : 'updated'}: ${t.title}`
-      if (t.action === 'rescheduled') return `rescheduled: ${t.title}${due}`
+      if (t.action === 'rescheduled') {
+        // The row says what the date moved *from* when the entry recorded it -
+        // rows written before that was stored, and a cleared due date, still
+        // just say where it landed.
+        if (t.previous_due_date && t.due_date) {
+          return (
+            <>
+              {`rescheduled: ${t.title}, ${dueLabel(t.previous_due_date)} → `}
+              <span className="row-roll">{`${dueLabel(t.due_date)}${dueTime}`}</span>
+            </>
+          )
+        }
+        return `rescheduled: ${t.title}${due}`
+      }
       if (t.action === 'moved') return `moved: ${t.title} → ${t.is_exam ? 'exam' : t.category}`
       if (t.action === 'deleted') return `deleted: ${t.title}`
       if (t.action === 'note') return t.note ? `${t.title}: ${t.note}` : `updated: ${t.title}`
@@ -256,6 +269,53 @@ function rightSide(log: Log, onRate: (log: Log) => void): React.ReactNode {
   }
 }
 
+/**
+ * How an entry announces itself when it first lands. One per domain, plus one
+ * per kind of thing that can happen to a sidequest, so what arrived is legible
+ * before you've read it. `decode` - the sentence you typed being wiped away to
+ * reveal the parsed row - stays the default: it's the one that describes
+ * parsing itself, so anything without a better story keeps it.
+ */
+type Reveal = 'decode' | 'count' | 'stamp' | 'settle' | 'strike' | 'roll'
+
+const DOMAIN_REVEAL: Partial<Record<Log['parsed_type'], Reveal>> = {
+  nutrition: 'count',
+  weight: 'count',
+  sleep: 'count',
+  focus_session: 'count',
+  workout: 'count',
+  person: 'settle',
+  album: 'stamp',
+  song: 'stamp',
+  place: 'stamp',
+  trip: 'stamp',
+  cadence_completion: 'stamp',
+}
+
+function revealOf(log: Log): Reveal {
+  if (log.parsed_type === 'task') {
+    const t = log.data as TaskData
+    if (t.action === 'status') return t.status === 'done' ? 'strike' : 'decode'
+    if (t.action === 'rescheduled') return t.previous_due_date ? 'roll' : 'decode'
+    if (t.action === 'moved') return 'stamp'
+    if (t.action === 'created') return 'settle'
+    return 'decode'
+  }
+  return DOMAIN_REVEAL[log.parsed_type] ?? 'decode'
+}
+
+// A scatter big enough to read as scattering, deterministic so it doesn't
+// jump when the row re-renders mid-animation.
+function scatter(i: number): React.CSSProperties {
+  const a = Math.sin(i * 12.9898) * 43758.5453
+  const b = Math.sin(i * 78.233) * 12345.6789
+  return {
+    ['--i' as string]: i,
+    ['--dx' as string]: `${((a - Math.floor(a)) * 2 - 1) * 14}px`,
+    ['--dy' as string]: `${((b - Math.floor(b)) * 2 - 1) * 12}px`,
+  }
+}
+
 export function Row({
   log,
   justParsed,
@@ -286,20 +346,46 @@ export function Row({
     }
   }
 
+  const reveal = justParsed ? revealOf(log) : null
+  const text = summary(log)
+  // Only the settle needs the summary split into characters, and only when
+  // it's plain text - some summaries are markup, and a long one is a lot of
+  // spans for an effect you'd barely see anyway.
+  const settling = reveal === 'settle' && typeof text === 'string' && text.length <= 64
+
   return (
     <div
       className={`row-wrap ${expanded ? 'open' : ''} ${restored ? 'restored' : ''}`}
       ref={wrapRef}
       data-flip-id={log.id}
     >
-      <div className={`row ${justParsed ? 'morph' : ''}`} onClick={onToggle}>
+      <div className={`row ${reveal ? `reveal-${reveal}` : ''}`} onClick={onToggle}>
         <span className="row-time">{rowTime(log)}</span>
         <span className={`badge ${badge(log).kind}`}>{badge(log).label}</span>
         <span className="row-main" ref={mainRef}>
-          {summary(log)}
+          {settling ? (
+            [...(text as string)].map((ch, i) => (
+              <span key={i} className="row-char" style={scatter(i)}>
+                {ch}
+              </span>
+            ))
+          ) : reveal === 'strike' ? (
+            // Wrapped so the line is as wide as the words. `.row-main` is the
+            // flex-grow cell, so drawing across it struck through a foot of
+            // empty space to the right of the text.
+            <span className="row-struck">{text}</span>
+          ) : (
+            text
+          )}
         </span>
         <span className="row-right" ref={rightRef}>
-          {rightSide(log, onRate)}
+          {/* Wrapped only for the count reveal: the right side is usually a
+              bare number, and there has to be an element to slide. */}
+          {reveal === 'count' ? (
+            <span className="row-rise">{rightSide(log, onRate)}</span>
+          ) : (
+            rightSide(log, onRate)
+          )}
         </span>
         <button className="delete-btn" onClick={quickDelete} aria-label="delete entry">
           ✕
@@ -307,7 +393,7 @@ export function Row({
         {/* The sentence you typed, sitting on top of the parsed row and wiped
             away left to right so the structured version is revealed behind it.
             Purely decorative, and only mounted for the half second it runs. */}
-        {justParsed && (
+        {reveal === 'decode' && (
           <span className="row-decode" aria-hidden="true">
             <span className="row-decode-raw">{log.raw_input}</span>
             <span className="row-decode-beam" />

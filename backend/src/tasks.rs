@@ -482,7 +482,7 @@ pub async fn apply(state: &AppState, raw: &str, mut req: TaskRequest) -> Result<
     let open = open_tasks(state).await?;
     let matched = best_match(&open, &req.title).cloned();
 
-    let (task, action) = match matched {
+    let (task, action, previous_due_date) = match matched {
         Some(existing)
             if req.status.is_some()
                 || req.due_date.is_some()
@@ -492,14 +492,16 @@ pub async fn apply(state: &AppState, raw: &str, mut req: TaskRequest) -> Result<
                 || req.is_exam.is_some() =>
         {
             let snapshot = existing.clone();
+            let was_due = existing.due_date;
             let (task, action) = update_task(state, &existing, &req).await?;
             undo::record(state, Effect::TasksUpdated(vec![snapshot]));
-            (task, action)
+            let moved_date = action == "rescheduled" && was_due != task.due_date;
+            (task, action, moved_date.then_some(was_due).flatten())
         }
         _ => {
             let task = create_task(state, &req).await?;
             undo::record(state, Effect::TaskCreated(task.id));
-            (task, "created".to_string())
+            (task, "created".to_string(), None)
         }
     };
 
@@ -513,6 +515,7 @@ pub async fn apply(state: &AppState, raw: &str, mut req: TaskRequest) -> Result<
         is_exam: task.is_exam,
         action,
         note: req.note,
+        previous_due_date,
     };
 
     let log: Log = sqlx::query_as(

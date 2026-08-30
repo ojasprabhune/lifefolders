@@ -129,6 +129,9 @@ export interface TaskData {
   is_exam: boolean
   action: 'created' | 'status' | 'rescheduled' | 'note' | 'moved' | 'deleted'
   note: string | null
+  // Only written on a reschedule, and only since that was added - older rows
+  // and every other action leave it out entirely.
+  previous_due_date?: string | null
 }
 
 export interface Task {

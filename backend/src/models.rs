@@ -175,6 +175,12 @@ pub struct TaskData {
     pub is_exam: bool,
     pub action: String,
     pub note: Option<String>,
+    // Only set on a reschedule, so the timeline row can say what the date
+    // moved *from* rather than only where it landed. Skipped when absent so
+    // rows written before this existed and rows for every other action stay
+    // the shape they already were.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous_due_date: Option<chrono::NaiveDate>,
 }
 
 #[derive(Debug)]
