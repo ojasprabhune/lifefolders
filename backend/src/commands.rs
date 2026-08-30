@@ -51,6 +51,7 @@ async fn write_history_from(
         action: action.to_string(),
         note: None,
         previous_due_date,
+        previous_title: None,
     };
     Ok(sqlx::query_as(
         "INSERT INTO logs (raw_input, parsed_type, data) VALUES ($1, 'task', $2) \

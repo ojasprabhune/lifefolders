@@ -181,6 +181,9 @@ pub struct TaskData {
     // the shape they already were.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub previous_due_date: Option<chrono::NaiveDate>,
+    // Same idea for a rename, and set only on one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous_title: Option<String>,
 }
 
 #[derive(Debug)]
@@ -306,5 +309,67 @@ impl Parsed {
             Parsed::Trip(t) => serde_json::to_value(t).unwrap(),
             Parsed::Weight(w) => serde_json::to_value(w).unwrap(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TaskData;
+    use uuid::Uuid;
+
+    fn base() -> TaskData {
+        TaskData {
+            task_id: Uuid::nil(),
+            title: "study for the math quiz".into(),
+            category: "homework".into(),
+            due_date: None,
+            due_time: None,
+            status: "not_started".into(),
+            is_exam: false,
+            action: "created".into(),
+            note: None,
+            previous_due_date: None,
+            previous_title: None,
+        }
+    }
+
+    // The frontend reads the absence of these two to decide whether a row can
+    // say what it changed *from*, so they have to stay absent rather than
+    // serialize as null - a null would still be falsy today, but the point is
+    // that rows written before they existed and rows for every other action
+    // are byte-identical to what they were.
+    #[test]
+    fn previous_fields_are_omitted_when_unset() {
+        let json = serde_json::to_value(base()).unwrap();
+        assert!(json.get("previous_due_date").is_none());
+        assert!(json.get("previous_title").is_none());
+        assert_eq!(json["action"], "created");
+    }
+
+    #[test]
+    fn a_rename_carries_the_old_title_and_nothing_else_extra() {
+        let data = TaskData {
+            action: "renamed".into(),
+            previous_title: Some("study for math quiz".into()),
+            ..base()
+        };
+        let json = serde_json::to_value(data).unwrap();
+        assert_eq!(json["previous_title"], "study for math quiz");
+        assert_eq!(json["title"], "study for the math quiz");
+        assert!(json.get("previous_due_date").is_none());
+    }
+
+    #[test]
+    fn a_reschedule_carries_the_old_date() {
+        let data = TaskData {
+            action: "rescheduled".into(),
+            previous_due_date: Some("2026-08-31".parse().unwrap()),
+            due_date: Some("2026-09-04".parse().unwrap()),
+            ..base()
+        };
+        let json = serde_json::to_value(data).unwrap();
+        assert_eq!(json["previous_due_date"], "2026-08-31");
+        assert_eq!(json["due_date"], "2026-09-04");
+        assert!(json.get("previous_title").is_none());
     }
 }

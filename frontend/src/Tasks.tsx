@@ -599,6 +599,9 @@ function TaskRow({
     if (next === task.title) return
     await patchTask(task.id, { title: next }).catch(() => {})
     onRefresh()
+    // A rename is the one panel edit that writes a timeline row, so the day's
+    // list has to go and fetch it.
+    window.dispatchEvent(new Event('life-timeline-stale'))
   }
 
   const toggle = () => {

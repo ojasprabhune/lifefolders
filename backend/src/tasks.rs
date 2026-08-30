@@ -516,6 +516,7 @@ pub async fn apply(state: &AppState, raw: &str, mut req: TaskRequest) -> Result<
         action,
         note: req.note,
         previous_due_date,
+        previous_title: None,
     };
 
     let log: Log = sqlx::query_as(
@@ -628,6 +629,7 @@ pub async fn patch_task(
     // The title is baked into the calendar event summaries - the task's own
     // and each pending checkpoint's ("study: X (7d out)") - so a rename has to
     // push them again. update_task already synced, but with the old name.
+    let mut renamed_log: Option<Uuid> = None;
     if new_title.is_some_and(|t| t != existing.title) {
         spawn_calendar_sync(&state, &task);
         let pending: Vec<Checkpoint> = sqlx::query_as(
@@ -640,9 +642,41 @@ pub async fn patch_task(
         for cp in pending {
             spawn_checkpoint_sync(&state, cp.id, &task.title, cp.offset_days, cp.due_date);
         }
+
+        // The one edit made from this handler that earns a place in the day's
+        // timeline. The others it can apply - a due date, a status, a category,
+        // a note - are either already logged when they come through an entry,
+        // or are tweaks you make several of in a row and would only clutter it.
+        let data = TaskData {
+            task_id: task.id,
+            title: task.title.clone(),
+            category: task.category.clone(),
+            due_date: task.due_date,
+            due_time: task.due_time,
+            status: task.status.clone(),
+            is_exam: task.is_exam,
+            action: "renamed".to_string(),
+            note: None,
+            previous_due_date: None,
+            previous_title: Some(existing.title.clone()),
+        };
+        let log: Log = sqlx::query_as(
+            "INSERT INTO logs (raw_input, parsed_type, data) VALUES ($1, 'task', $2) \
+             RETURNING id, created_at, raw_input, parsed_type, data",
+        )
+        .bind(format!("renamed {} to {}", existing.title, task.title))
+        .bind(serde_json::to_value(&data).unwrap())
+        .fetch_one(&state.pool)
+        .await?;
+        renamed_log = Some(log.id);
     }
 
     undo::record(&state, Effect::TasksUpdated(vec![snapshot]));
+    // Recorded after the task snapshot so undo replays them in reverse and the
+    // timeline row goes before the title is put back.
+    if let Some(log_id) = renamed_log {
+        undo::record(&state, Effect::LogsCreated(vec![log_id]));
+    }
     Ok(Json(task))
 }
 

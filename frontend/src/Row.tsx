@@ -147,6 +147,14 @@ function summary(log: Log): React.ReactNode {
         }
         return `rescheduled: ${t.title}${due}`
       }
+      if (t.action === 'renamed' && t.previous_title) {
+        return (
+          <>
+            {`renamed: ${t.previous_title} → `}
+            <span className="row-roll">{t.title}</span>
+          </>
+        )
+      }
       if (t.action === 'moved') return `moved: ${t.title} → ${t.is_exam ? 'exam' : t.category}`
       if (t.action === 'deleted') return `deleted: ${t.title}`
       if (t.action === 'note') return t.note ? `${t.title}: ${t.note}` : `updated: ${t.title}`
@@ -297,6 +305,8 @@ function revealOf(log: Log): Reveal {
     const t = log.data as TaskData
     if (t.action === 'status') return t.status === 'done' ? 'strike' : 'decode'
     if (t.action === 'rescheduled') return t.previous_due_date ? 'roll' : 'decode'
+    // Same shape as a reschedule: one field changed, so only that field moves.
+    if (t.action === 'renamed') return t.previous_title ? 'roll' : 'decode'
     if (t.action === 'moved') return 'stamp'
     if (t.action === 'created') return 'settle'
     return 'decode'

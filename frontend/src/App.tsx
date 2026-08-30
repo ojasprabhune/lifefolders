@@ -281,6 +281,7 @@ function Home() {
   const [pendings, setPendings] = useState<PendingLog[]>([])
   const [justParsed, setJustParsed] = useState<Set<string>>(new Set())
   const [restored, setRestored] = useState<Set<string>>(new Set())
+  const justParsedTimer = useRef<number | null>(null)
   // Read by the undo handler, which is bound once and would otherwise close
   // over whatever the list held when it was installed. `refresh` writes it
   // directly as well, because undo reads it the moment its refresh resolves -
@@ -329,6 +330,37 @@ function Home() {
   useEffect(() => {
     logsRef.current = logs
   }, [logs])
+
+  // Give a set of rows their arrival animation. The window has to outlast the
+  // longest reveal in styles.css (the completion strike at 620ms) - if it
+  // fires first the row loses its markup mid-animation.
+  const flashParsed = useCallback((ids: string[]) => {
+    if (ids.length === 0) return
+    setJustParsed((s) => new Set([...s, ...ids]))
+    window.clearTimeout(justParsedTimer.current ?? undefined)
+    justParsedTimer.current = window.setTimeout(() => {
+      setJustParsed((s) => {
+        const next = new Set(s)
+        ids.forEach((id) => next.delete(id))
+        return next
+      })
+    }, 700)
+  }, [])
+
+  // Something outside the timeline wrote a row - renaming a sidequest in its
+  // panel is the only one today. Home deliberately doesn't listen to the
+  // broader `life-log-created`: it applies its own writes locally, and
+  // refetching on each of those would add a round trip per entry to a backend
+  // that sleeps between visits.
+  useEffect(() => {
+    const onStale = async () => {
+      const before = new Set(logsRef.current.map((l) => l.id))
+      await refresh(date)
+      flashParsed(logsRef.current.filter((l) => !before.has(l.id)).map((l) => l.id))
+    }
+    window.addEventListener('life-timeline-stale', onStale)
+    return () => window.removeEventListener('life-timeline-stale', onStale)
+  }, [date, refresh, flashParsed])
 
   const flash = (message: string) => {
     setNotice(message)
@@ -401,20 +433,7 @@ function Home() {
           adoptFocusSession(focus_session)
           window.location.hash = '#/focus'
         }
-        setJustParsed((s) => {
-          const next = new Set(s)
-          created.forEach((x) => next.add(x.id))
-          return next
-        })
-        // Outlasts the longest reveal in styles.css (the completion strike at
-        // 620ms) - if this fires first the row loses its markup mid-animation.
-        setTimeout(() => {
-          setJustParsed((s) => {
-            const next = new Set(s)
-            createdIds.forEach((x) => next.delete(x))
-            return next
-          })
-        }, 700)
+        flashParsed(created.map((x) => x.id))
         // A command writes no logs row but does change ones already on
         // screen (a deleted entry, a rescheduled sidequest), so re-read the
         // day rather than leaving a stale list.

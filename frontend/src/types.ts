@@ -127,11 +127,12 @@ export interface TaskData {
   due_time: string | null
   status: 'not_started' | 'in_progress' | 'done'
   is_exam: boolean
-  action: 'created' | 'status' | 'rescheduled' | 'note' | 'moved' | 'deleted'
+  action: 'created' | 'status' | 'rescheduled' | 'note' | 'moved' | 'deleted' | 'renamed'
   note: string | null
-  // Only written on a reschedule, and only since that was added - older rows
-  // and every other action leave it out entirely.
+  // Each written on one action only, and only since they were added - older
+  // rows and every other action leave them out entirely.
   previous_due_date?: string | null
+  previous_title?: string | null
 }
 
 export interface Task {
