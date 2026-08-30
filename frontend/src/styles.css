@@ -374,7 +374,11 @@ header {
   border-bottom: 1px solid var(--line);
 }
 
-.list {
+/* Only the day timeline, which slides sideways. Left on every `.list` this
+   also clipped the sidequest panel's, where a drag-over outline sits 4px
+   outside the section and an accent edge sits outside the row - both came out
+   with their sides sliced off. */
+.day-list {
   overflow-x: clip;
 }
 
@@ -1783,13 +1787,18 @@ header > .brand {
 .did-recategorize::before {
   content: '';
   position: absolute;
-  left: -10px;
+  left: -8px;
   top: 0;
   bottom: 0;
-  width: 2px;
+  width: 3px;
+  border-radius: 2px;
   background: var(--accent);
   transform-origin: top;
-  animation: edge-wipe 460ms cubic-bezier(0.33, 1, 0.68, 1) both;
+  animation: edge-wipe 620ms cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+
+.did-recategorize {
+  animation: edge-wash 620ms ease-out both;
 }
 
 @keyframes edge-wipe {
@@ -1797,13 +1806,22 @@ header > .brand {
     transform: scaleY(0);
     opacity: 1;
   }
-  45% {
+  40% {
     transform: scaleY(1);
     opacity: 1;
   }
   100% {
     transform: scaleY(1);
     opacity: 0;
+  }
+}
+
+@keyframes edge-wash {
+  0% {
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+  40% {
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
   }
 }
 
@@ -1846,7 +1864,7 @@ header > .brand {
 .did-done .task-title {
   position: relative;
   color: var(--muted);
-  transition: color 260ms ease;
+  transition: color 620ms ease;
 }
 
 .did-done .task-title::after {
@@ -1858,7 +1876,10 @@ header > .brand {
   height: 1px;
   background: currentColor;
   transform-origin: left;
-  animation: strike-draw 260ms cubic-bezier(0.4, 0, 0.2, 1) both;
+  /* Deliberately slower than everything else here. This one is the only
+     animation you are meant to watch rather than just register, and the
+     collapse in strikeOut is timed to start after it lands. */
+  animation: strike-draw 620ms cubic-bezier(0.33, 1, 0.68, 1) both;
 }
 
 @keyframes strike-draw {
@@ -3356,6 +3377,7 @@ header > .brand {
   .did-reschedule .task-due-now,
   .task-due-was,
   .did-recategorize::before,
+  .did-recategorize,
   .did-note .task-note,
   .did-note .task-note > span,
   .did-done .task-title::after,

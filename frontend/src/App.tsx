@@ -643,7 +643,11 @@ function Home() {
         </span>
       </div>
 
-      <main className={`list ${view.slide ? `slide-${view.slide}` : ''}`} key={view.date} ref={listRef}>
+      <main
+        className={`list day-list ${view.slide ? `slide-${view.slide}` : ''}`}
+        key={view.date}
+        ref={listRef}
+      >
         {notice && <div className="notice">{notice}</div>}
         {isToday &&
           pendings.map((p) => (

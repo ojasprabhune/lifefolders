@@ -17,9 +17,9 @@ import type { FocusSession, TaskCheckpoint, TaskWithCheckpoints } from './types'
 
 const DUE_STRIP_DAYS_BEFORE = 5
 const DUE_STRIP_DAYS_AFTER = 16
-// Long enough for the odometer roll and the glide that follows it to finish
-// before the marker is cleared and the row re-renders plainly.
-const CHANGE_MS = 700
+// Has to outlast the longest of these, which is the done sweep at 1100ms -
+// clearing the marker early strips the class mid-animation.
+const CHANGE_MS = 1300
 
 // What visibly happened to a sidequest, worked out by diffing the list against
 // the one before it rather than reported by each caller. Everything that can
@@ -131,10 +131,16 @@ export function Tasks({ open }: { open: boolean }) {
 
   const [dragOver, setDragOver] = useState<string | null>(null)
 
+  // Substituted in place rather than appended: tasks sharing a due date are
+  // ordered by their position in this array, so a held row pushed onto the end
+  // visibly jumped down past its neighbours before it collapsed.
   const openTasks = useMemo(() => {
-    const out = tasks.filter((t) => t.status !== 'done')
-    for (const t of leaving) if (!out.some((x) => x.id === t.id)) out.push(t)
-    return out
+    const held = new Map(leaving.map((t) => [t.id, t]))
+    return tasks.flatMap((t) => {
+      const standIn = held.get(t.id)
+      if (standIn) return [standIn]
+      return t.status !== 'done' ? [t] : []
+    })
   }, [tasks, leaving])
   const grouped = useMemo(() => groupByCategory(openTasks), [openTasks])
   // "today's plate" is the task's own due date or one of its spaced-review

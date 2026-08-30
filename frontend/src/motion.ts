@@ -97,11 +97,15 @@ export function strikeOut(el: HTMLElement | null, done: () => void) {
   el.style.overflow = 'hidden'
   const anim = el.animate(
     [
+      // The line finishes drawing at 620ms, then the struck-out row is held
+      // for a beat before it goes - collapsing it the moment the line lands
+      // means you never actually see the thing you just crossed off.
       { height: `${height}px`, opacity: 1, offset: 0 },
-      { height: `${height}px`, opacity: 0.45, offset: 0.62 },
+      { height: `${height}px`, opacity: 0.5, offset: 0.56 },
+      { height: `${height}px`, opacity: 0.5, offset: 0.68 },
       { height: '0px', opacity: 0, offset: 1 },
     ],
-    { duration: 440, easing: 'ease-in-out', fill: 'forwards' },
+    { duration: 1100, easing: 'ease-in-out', fill: 'forwards' },
   )
   anim.onfinish = done
   anim.oncancel = done
