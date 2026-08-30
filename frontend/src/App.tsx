@@ -290,7 +290,7 @@ function Home() {
   const [rateAlbum, setRateAlbum] = useState<Log | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [text, setText] = useState('')
-  const [greeting, setGreeting] = useState(pickGreeting)
+  const [greeting] = useState(pickGreeting)
   const inputRef = useRef<HTMLInputElement>(null)
   const today = localDateStr(new Date())
   const isToday = date === today
@@ -439,7 +439,6 @@ function Home() {
     const value = text.trim()
     if (!value) return
     setText('')
-    setGreeting(pickGreeting())
     void submit(value)
   }
 

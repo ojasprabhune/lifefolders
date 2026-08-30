@@ -136,10 +136,33 @@ const LATE_NIGHT = [
   "this is when the bad decisions live",
 ]
 
-const HISTORY_KEY = 'lf-greeting-history'
-// Long enough that a phrase doesn't come back for weeks of normal use, short
-// enough that it can never eat a whole bucket and leave nothing to pick from.
-const HISTORY_MAX = 40
+// The line only changes when the day rolls into a new slot, so opening and
+// closing a panel all afternoon shows the same one - a phrase that rerolls on
+// every visit burns through the whole pool in a day and stops feeling written.
+const SLOT_HOURS = [5, 11, 17, 23]
+
+function slotNumber(now: Date): number {
+  const day = Math.floor(
+    new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 86400000,
+  )
+  const past = SLOT_HOURS.filter((h) => now.getHours() >= h).length
+  return day * (SLOT_HOURS.length + 1) + past
+}
+
+function hash(s: string): number {
+  let h = 2166136261
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return h >>> 0
+}
+
+// A stride coprime with every pool length walks the whole pool before
+// repeating, which plain modulo arithmetic on the slot number would not.
+function fromSlot(pool: string[], seed: string, now: Date): string {
+  return pool[(slotNumber(now) * 13 + hash(seed)) % pool.length]
+}
 
 function bucket(hour: number): string[] {
   if (hour >= 23 || hour < 5) return LATE_NIGHT
@@ -149,27 +172,8 @@ function bucket(hour: number): string[] {
   return EVENING
 }
 
-function readHistory(): string[] {
-  try {
-    const raw = localStorage.getItem(HISTORY_KEY)
-    return raw ? (JSON.parse(raw) as string[]) : []
-  } catch {
-    return []
-  }
-}
-
 export function pickGreeting(now = new Date()): string {
-  const pool = [...bucket(now.getHours()), ...ANY]
-  const history = readHistory()
-  const fresh = pool.filter((p) => !history.includes(p))
-  const from = fresh.length > 0 ? fresh : pool
-  const pick = from[Math.floor(Math.random() * from.length)]
-  try {
-    localStorage.setItem(HISTORY_KEY, JSON.stringify([pick, ...history].slice(0, HISTORY_MAX)))
-  } catch {
-    // Private mode, full quota - a repeat is not worth failing over.
-  }
-  return pick
+  return fromSlot([...bucket(now.getHours()), ...ANY], 'entry', now)
 }
 
 // Per-domain lines under each panel title. Same idea as the entry greeting,
@@ -264,23 +268,8 @@ const QUIPS: Record<string, string[]> = {
   ],
 }
 
-export function pickQuip(domain: string): string {
+export function pickQuip(domain: string, now = new Date()): string {
   const pool = QUIPS[domain] ?? []
   if (pool.length === 0) return ''
-  const key = `lf-quip-${domain}`
-  const last = (() => {
-    try {
-      return localStorage.getItem(key) ?? ''
-    } catch {
-      return ''
-    }
-  })()
-  const fresh = pool.filter((q) => q !== last)
-  const pick = fresh[Math.floor(Math.random() * fresh.length)]
-  try {
-    localStorage.setItem(key, pick)
-  } catch {
-    // see pickGreeting
-  }
-  return pick
+  return fromSlot(pool, domain, now)
 }
