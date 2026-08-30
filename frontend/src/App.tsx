@@ -232,7 +232,7 @@ function Gate({ onUnlock }: { onUnlock: () => void }) {
     <div className="app">
       <header>
         <h1 className="brand">
-          life
+          l<span className="brand-i">i</span>fe
           <span className="brand-sub">folders</span>
         </h1>
       </header>
@@ -542,7 +542,7 @@ function Home() {
     <div className="app">
       <header>
         <h1 className="brand">
-          life
+          l<span className="brand-i">i</span>fe
           <span className="brand-sub">folders</span>
         </h1>
         <nav className="header-nav">
