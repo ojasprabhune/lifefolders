@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Drawer, leftFor } from './Drawer'
+import { Drawer } from './Drawer'
 
 // A bead of ink with weight. Fling it and it keeps going, bounces off the
 // window and slows down; hit an edge hard enough and it leaves a splat that
@@ -36,9 +36,14 @@ const DROP_HOMES: { prefix: string; x: number; y: number }[] = [
 
 type Splat = { id: number; x: number; y: number; rot: number; scale: number }
 
-function InkDrop({ route }: { route: string }) {
+function InkDrop({
+  route,
+  boxRef,
+}: {
+  route: string
+  boxRef: React.RefObject<HTMLDivElement | null>
+}) {
   const ref = useRef<HTMLDivElement>(null)
-  const boxRef = useRef<HTMLDivElement>(null)
   const padRef = useRef<HTMLDivElement>(null)
   const [splats, setSplats] = useState<Splat[]>([])
   const st = useRef({
@@ -266,7 +271,6 @@ function InkDrop({ route }: { route: string }) {
 
   return (
     <>
-      <div className="ball-box" ref={boxRef} style={{ left: `calc(${leftFor(route)}% - 158px)` }} />
       <div className="paddle" ref={padRef} />
       {splats.map((s) => (
         <span
@@ -329,11 +333,60 @@ function InkDrop({ route }: { route: string }) {
   )
 }
 
+// The shelf, bottom left, standing just above the clock - and in the same
+// place whether the clock is shown or not, so it never moves under you. The
+// books are the badge colours off the timeline. The drawer is the cabinet
+// below the plank: shut, it sits exactly behind the face, and only its pull
+// shows past the right edge.
+const BOOKS: { domain: string; h: number; w: number; lean?: number }[] = [
+  { domain: 'music', h: 31, w: 7 },
+  { domain: 'task', h: 26, w: 6 },
+  { domain: 'food', h: 33, w: 8 },
+  { domain: 'gym', h: 24, w: 5 },
+  { domain: 'trip', h: 29, w: 7 },
+  { domain: 'learning', h: 25, w: 6, lean: -14 },
+]
+
+function Shelf({ route, boxRef }: { route: string; boxRef: React.RefObject<HTMLDivElement | null> }) {
+  return (
+    <div className="shelf">
+      <div className="shelf-top">
+        {BOOKS.map((b, i) => (
+          <span
+            key={i}
+            className={`book${b.lean ? ' leaning' : ''}`}
+            style={{
+              ['--c' as string]: `var(--${b.domain})`,
+              height: `${b.h}px`,
+              width: `${b.w}px`,
+              ['--lean' as string]: `${b.lean ?? 0}deg`,
+            }}
+          />
+        ))}
+        <span className="plant">
+          <i className="leaf a" />
+          <i className="leaf b" />
+          <i className="leaf c" />
+          <i className="pot" />
+        </span>
+        <span className="shelf-gap" />
+        <div className="ball-box" ref={boxRef} />
+      </div>
+      <div className="shelf-plank" />
+      <div className="shelf-case">
+        <Drawer route={route} />
+        <div className="shelf-face" />
+      </div>
+    </div>
+  )
+}
+
 export function Fidgets({ route }: { route: string }) {
+  const boxRef = useRef<HTMLDivElement>(null)
   return (
     <>
-      <Drawer route={route} />
-      <InkDrop route={route} />
+      <Shelf route={route} boxRef={boxRef} />
+      <InkDrop route={route} boxRef={boxRef} />
     </>
   )
 }

@@ -4199,49 +4199,183 @@ header > .brand {
   cursor: pointer;
 }
 
-/* The drawer. A tab on the bottom edge that you pull upward, sitting at a
-   different spot along that edge on every page (SPOTS in Drawer.tsx) so
-   finding it is part of it. Only the wrapper moves: the tab and the body are
-   stacked and slide as a pair, which is why the body needs no position of its
-   own and why the travel is exactly the body's height. The bezier overshoots
-   a little - a drawer that stops dead feels stuck. */
-.fidget {
+/* The shelf. Bottom left, standing just above the clock - and pinned to the
+   same offset whether the clock is shown or not, so it never shifts under you
+   when that preference changes. Everything on it is drawn the way the rest of
+   the app is: a hairline in --line, a fill in --bg, and the badge palette for
+   the only real colour. */
+.shelf {
   position: fixed;
-  bottom: 0;
-  z-index: 30;
+  left: 20px;
+  bottom: calc(max(20px, env(safe-area-inset-bottom, 0px) + 12px) + 60px);
+  width: 230px;
+  z-index: 22;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.shelf-top {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  /* half the body, so the left percentage centres the drawer rather than
-     starting it. */
-  margin-left: -110px;
-  transform: translateY(var(--travel));
+  align-items: flex-end;
+  gap: 2px;
+  padding: 0 9px;
+}
+
+.shelf-gap {
+  flex: 1;
+}
+
+/* Books stand on the plank, so they are sized from the bottom up. The leaning
+   one tips onto its neighbour and needs the overlap to look like it is
+   resting rather than floating. */
+.book {
+  flex: none;
+  background: var(--c);
+  border-radius: 1.5px 1.5px 0 0;
+  box-shadow: inset -1.5px 0 0 rgba(0, 0, 0, 0.22);
+}
+
+.book.leaning {
+  transform: rotate(var(--lean));
+  transform-origin: 100% 100%;
+  margin-left: -2px;
+}
+
+.plant {
+  position: relative;
+  flex: none;
+  width: 17px;
+  height: 27px;
+  margin-left: 7px;
+}
+
+.pot {
+  position: absolute;
+  left: 2px;
+  bottom: 0;
+  width: 13px;
+  height: 10px;
+  background: var(--wishlist);
+  clip-path: polygon(0 0, 100% 0, 84% 100%, 16% 100%);
+}
+
+.leaf {
+  position: absolute;
+  width: 9px;
+  height: 11px;
+  border-radius: 50% 50% 50% 0;
+  background: var(--cadence);
+}
+
+.leaf.a {
+  left: 4px;
+  bottom: 9px;
+  transform: rotate(-8deg);
+}
+
+.leaf.b {
+  left: 0;
+  bottom: 12px;
+  transform: rotate(-58deg) scale(0.82);
+  background: color-mix(in srgb, var(--cadence) 78%, var(--ink));
+}
+
+.leaf.c {
+  left: 8px;
+  bottom: 13px;
+  transform: rotate(46deg) scale(0.86);
+  background: color-mix(in srgb, var(--cadence) 86%, var(--bg));
+}
+
+.shelf-plank {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.22);
+}
+
+/* The cabinet under the plank. The face is opaque and painted over the drawer,
+   which is how a shut drawer is hidden without clipping the open one: shut, it
+   sits entirely behind the face; open, entirely to the right of it. */
+.shelf-case {
+  position: relative;
+  height: 54px;
+}
+
+.shelf-face {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border: 1px solid var(--line);
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  background: var(--bg);
+}
+
+/* The drawer itself: body then pull, sliding right out of the case. A drag
+   beats these with an inline transform and hands back on release. */
+.fidget {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  align-items: stretch;
+  transform: translateX(0);
   transition: transform 320ms cubic-bezier(0.2, 1.25, 0.35, 1);
 }
 
-/* A drag beats these with an inline transform, then hands back on release. */
 .fidget.pulled,
 .fidget.leaking {
-  transform: translateY(0);
+  transform: translateX(var(--travel));
 }
 
-/* The leak is the whole joke, so it has to be slow enough that you notice it
-   only once it is already half out. Shutting is not slow: the base transition
-   above takes it back, and a transition interrupted mid-flight starts from
-   wherever it had got to, which is exactly the snatch we want. */
+/* The leak has to be slow enough that you notice it only once it is already
+   half out. Shutting is not slow: the base transition above takes it back, and
+   a transition interrupted mid-flight starts from wherever it had got to,
+   which is exactly the snatch we want. */
 .fidget.leaking {
   transition: transform var(--leak) linear;
 }
 
+.fidget-body {
+  width: var(--travel);
+  height: 54px;
+  display: flex;
+  align-items: center;
+  padding: 7px 11px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-top: none;
+  border-radius: 0 0 5px 5px;
+  background: var(--bg);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
+}
+
+.fidget-line {
+  margin: 0;
+  font-family: 'mencken-std-text', serif;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--ink);
+}
+
+.fidget-line.dim {
+  color: var(--faint);
+}
+
+/* The pull. It is the only part of a shut drawer you can see, so it sits past
+   the right edge of the face. */
 .fidget-tab {
   flex: none;
+  align-self: center;
   position: relative;
-  width: 62px;
-  height: 17px;
+  width: 15px;
+  height: 26px;
   padding: 0;
   border: 1px solid var(--line);
-  border-bottom: none;
-  border-radius: 7px 7px 0 0;
+  border-left: none;
+  border-radius: 0 5px 5px 0;
   background: var(--bg);
   cursor: grab;
   touch-action: none;
@@ -4256,24 +4390,24 @@ header > .brand {
 .fidget-tab::before {
   content: '';
   position: absolute;
-  top: 4px;
-  bottom: 4px;
+  top: 6px;
+  bottom: 6px;
   left: 50%;
-  width: 15px;
+  width: 5px;
   transform: translateX(-50%);
-  background: repeating-linear-gradient(to right, var(--faint) 0 1px, transparent 1px 6px);
+  background: repeating-linear-gradient(to right, var(--faint) 0 1px, transparent 1px 3px);
 }
 
-/* Wear. Nothing says how many times you have pulled it - the tab just stops
-   looking new: a nick bitten out of the top edge, then the grip rubbed
-   smooth, then the thing is simply red. */
+/* Wear. Nothing says how many times you have pulled it - the pull just stops
+   looking new: a nick out of its edge, then the grip rubbed smooth, then the
+   thing is simply red. */
 .fidget-tab.wear-1::after,
 .fidget-tab.wear-2::after,
 .fidget-tab.wear-3::after {
   content: '';
   position: absolute;
   top: -3px;
-  left: 12px;
+  right: 4px;
   width: 5px;
   height: 5px;
   border-radius: 50%;
@@ -4291,49 +4425,19 @@ header > .brand {
 }
 
 .fidget-tab.wear-3::before {
-  background: repeating-linear-gradient(to right, var(--paper) 0 1px, transparent 1px 6px);
+  background: repeating-linear-gradient(to right, var(--paper) 0 1px, transparent 1px 3px);
   opacity: 0.55;
 }
 
-.fidget-body {
-  width: 220px;
-  height: var(--travel);
-  display: flex;
-  align-items: center;
-  padding: 14px 17px;
-  background: var(--bg);
-  border: 1px solid var(--line);
-  border-bottom: none;
-  border-radius: 11px 11px 0 0;
-  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.2);
-}
-
-.fidget-line {
-  margin: 0;
-  font-family: 'mencken-std-text', serif;
-  font-size: 15px;
-  line-height: 1.35;
-  color: var(--ink);
-}
-
-.fidget-line.dim {
-  color: var(--faint);
-}
-
-/* A slot in the bottom edge, tucked in beside the drawer, for when you want
-   the drop out of the way. It sits under the drop rather than over it, so a
-   parked one shows inside the box rather than behind it. */
+/* The box the ball goes in, standing open on the plank beside the plant. */
 .ball-box {
-  position: fixed;
-  bottom: 0;
-  width: 34px;
+  flex: none;
+  width: 30px;
   height: 22px;
-  z-index: 22;
   border: 1px solid var(--line);
   border-top: none;
-  border-radius: 0 0 7px 7px;
+  border-radius: 0 0 5px 5px;
   background: var(--bg);
-  user-select: none;
   transition:
     border-color 140ms ease,
     transform 160ms cubic-bezier(0.3, 1.2, 0.4, 1);
@@ -4346,6 +4450,13 @@ header > .brand {
 
 .ball-box.full {
   border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+}
+
+/* Not enough width for a 230px shelf and a drawer pulled out beside it. */
+@media (max-width: 620px) {
+  .shelf {
+    display: none;
+  }
 }
 
 /* The paddle: a bar through the cursor, square to wherever it is going, so a

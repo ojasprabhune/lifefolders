@@ -5,7 +5,8 @@ import type { Category, SleepData } from './types'
 
 // How far the drawer travels, and how much of that you have to pull before
 // letting go commits to open. Short of it, it snaps back.
-const TRAVEL = 132
+// The body's width: shut, it is exactly hidden behind the cabinet face.
+const TRAVEL = 230
 const SNAP = 0.42
 const PULLS_KEY = 'life_drawer_pulls'
 // The leak is meant to be rare enough to be a surprise, so it is a coin the
@@ -17,28 +18,6 @@ const LEAK_CHECK_MS = 30000
 const LEAK_CHANCE = 0.1
 const LEAK_COOLDOWN_MS = 120000
 const LEAK_MS = 18000
-
-// The tab slides along the bottom edge from page to page - finding it is part
-// of it. Nothing sits outside 26%-74%: the clock holds the bottom left corner
-// and the focus pill the bottom right.
-const SPOTS: { prefix: string; left: number }[] = [
-  { prefix: '#/music', left: 62 },
-  { prefix: '#/soma', left: 35 },
-  { prefix: '#/places', left: 71 },
-  { prefix: '#/travel', left: 29 },
-  { prefix: '#/sleep', left: 47 },
-  { prefix: '#/cadences', left: 66 },
-  { prefix: '#/learning', left: 32 },
-  { prefix: '#/tasks', left: 57 },
-  { prefix: '#/search', left: 44 },
-  { prefix: '#/wishlist', left: 69 },
-  { prefix: '#/guide', left: 27 },
-  { prefix: '#/focus', left: 74 },
-]
-
-function leftFor(route: string) {
-  return (SPOTS.find((s) => route.startsWith(s.prefix)) ?? { left: 52 }).left
-}
 
 const ROUTE_CATEGORY: { prefix: string; category: Category; label: string }[] = [
   { prefix: '#/music', category: 'music', label: 'music' },
@@ -100,12 +79,11 @@ type Filling = { kind: 'line'; text: string } | { kind: 'empty' } | { kind: 'wai
 type Mode = 'shut' | 'leaking' | 'pulled'
 
 export function Drawer({ route }: { route: string }) {
-  const left = leftFor(route)
   const [mode, setMode] = useState<Mode>('shut')
   const [filling, setFilling] = useState<Filling>({ kind: 'empty' })
   const [pulls, setPulls] = useState(() => Number(localStorage.getItem(PULLS_KEY) ?? 0))
   const boxRef = useRef<HTMLDivElement>(null)
-  const dragRef = useRef<{ startY: number; from: number; moved: boolean } | null>(null)
+  const dragRef = useRef<{ startX: number; from: number; moved: boolean } | null>(null)
   const lastLine = useRef<string | null>(null)
   const modeRef = useRef<Mode>('shut')
   const inBottom = useRef(false)
@@ -189,14 +167,14 @@ export function Drawer({ route }: { route: string }) {
     fill(n)
   }
 
-  // Where the drawer actually is this frame, which during a leak is neither
-  // open nor shut. Grabbing it has to start from there or it jumps.
+  // How far from open the drawer is this frame - during a leak, neither open
+  // nor shut. Grabbing it has to start from there or it jumps.
   const currentOffset = () => {
     const box = boxRef.current
     if (!box) return TRAVEL
     const t = getComputedStyle(box).transform
-    if (!t || t === 'none') return 0
-    return new DOMMatrixReadOnly(t).m42
+    if (!t || t === 'none') return TRAVEL
+    return TRAVEL - new DOMMatrixReadOnly(t).m41
   }
 
   // The drag writes the transform straight to the box and turns the transition
@@ -206,11 +184,11 @@ export function Drawer({ route }: { route: string }) {
     if (e.button !== 0) return
     e.preventDefault()
     e.currentTarget.setPointerCapture(e.pointerId)
-    dragRef.current = { startY: e.clientY, from: currentOffset(), moved: false }
+    dragRef.current = { startX: e.clientX, from: currentOffset(), moved: false }
   }
 
-  const offsetFor = (d: { startY: number; from: number }, clientY: number) => {
-    const pulled = d.startY - clientY
+  const offsetFor = (d: { startX: number; from: number }, clientX: number) => {
+    const pulled = clientX - d.startX
     // Rubber band: the further you pull, the less you get, so the drawer
     // stiffens toward the end of its travel instead of stopping dead.
     const give = TRAVEL * (1 - Math.exp(-Math.abs(pulled) / TRAVEL)) * Math.sign(pulled)
@@ -222,11 +200,11 @@ export function Drawer({ route }: { route: string }) {
     const box = boxRef.current
     if (!d || !box) return
     if (!d.moved) {
-      if (Math.abs(e.clientY - d.startY) < 4) return
+      if (Math.abs(e.clientX - d.startX) < 4) return
       d.moved = true
       box.style.transition = 'none'
     }
-    box.style.transform = `translateY(${offsetFor(d, e.clientY)}px)`
+    box.style.transform = `translateX(${TRAVEL - offsetFor(d, e.clientX)}px)`
   }
 
   const onUp = (e: React.PointerEvent) => {
@@ -240,7 +218,7 @@ export function Drawer({ route }: { route: string }) {
       commit(!open)
       return
     }
-    commit(offsetFor(d, e.clientY) < TRAVEL * (1 - SNAP))
+    commit(offsetFor(d, e.clientX) < TRAVEL * (1 - SNAP))
   }
 
   const wear = pulls >= 100 ? 3 : pulls >= 50 ? 2 : pulls >= 10 ? 1 : 0
@@ -248,21 +226,9 @@ export function Drawer({ route }: { route: string }) {
   return (
     <div
       className={`fidget ${mode}`}
-      style={{
-        left: `${left}%`,
-        ['--travel' as string]: `${TRAVEL}px`,
-        ['--leak' as string]: `${LEAK_MS}ms`,
-      }}
+      style={{ ['--travel' as string]: `${TRAVEL}px`, ['--leak' as string]: `${LEAK_MS}ms` }}
       ref={boxRef}
     >
-      <button
-        className={`fidget-tab wear-${wear}`}
-        aria-label={open ? 'close the drawer' : 'open the drawer'}
-        onPointerDown={onDown}
-        onPointerMove={onMove}
-        onPointerUp={onUp}
-        onPointerCancel={onUp}
-      />
       <div className="fidget-body">
         {filling.kind === 'line' ? (
           <p className="fidget-line">{filling.text}</p>
@@ -272,8 +238,14 @@ export function Drawer({ route }: { route: string }) {
           <p className="fidget-line dim">…</p>
         )}
       </div>
+      <button
+        className={`fidget-tab wear-${wear}`}
+        aria-label={open ? 'close the drawer' : 'open the drawer'}
+        onPointerDown={onDown}
+        onPointerMove={onMove}
+        onPointerUp={onUp}
+        onPointerCancel={onUp}
+      />
     </div>
   )
 }
-
-export { leftFor }
