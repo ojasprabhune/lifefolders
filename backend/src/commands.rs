@@ -63,6 +63,11 @@ async fn write_history_from(
     .await?)
 }
 
+// Stated as data rather than baked into the prompt, so moving a meal is an
+// edit here rather than a reworded instruction the model may or may not honour.
+const MEAL_BREAKS: [(&str, &str, &str); 2] =
+    [("12:30pm", "1:30pm", "lunch"), ("8:30pm", "9:00pm", "dinner")];
+
 fn pretty_date(d: NaiveDate) -> String {
     d.format("%a %b %-d").to_string()
 }
@@ -366,6 +371,10 @@ pub async fn apply(
             }
             for t in &now_due {
                 brief.push_str(&line(t));
+            }
+            brief.push_str("\nKEEP FREE:\n");
+            for (from, to, what) in MEAL_BREAKS {
+                brief.push_str(&format!("- {from} to {to} ({what})\n"));
             }
             brief.push_str("\nNOT DUE YET - only if everything above is placed:\n");
             if later.is_empty() {
