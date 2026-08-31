@@ -841,11 +841,15 @@ The blocks are in order and each one's length is its minutes. Do not write clock
 worked out from the order. \
 Plan the DUE TODAY OR ALREADY LATE group first, giving each sidequest exactly the number of \
 minutes it says it takes. Never shorten one to make the day fit. Use the sidequest's title \
-verbatim as the label. \
+verbatim as the label. An entry marked [study session] is a spaced revision slot for an exam \
+coming up - it is real work for today and belongs in the plan like any other, labelled exactly as \
+it is written. \
 Do not add meals or breaks of your own - the app puts those in afterwards, at fixed times. \
+Every entry in the DUE TODAY OR ALREADY LATE group must appear in the plan, even if that runs the \
+day past the finish-by time. Do not drop one to make the day fit and do not shorten one - the app \
+works out the overflow and asks the user what to move. \
 Only reach into the NOT DUE YET group once everything above it is placed and there is room left \
-before the finish-by time. If the work does not fit, stop - leaving it long is better than \
-shrinking it, and the app tells the user what overflowed.";
+before the finish-by time; that group is the only one you may leave out.";
 
 pub async fn plan_blocks(
     http: &reqwest::Client,

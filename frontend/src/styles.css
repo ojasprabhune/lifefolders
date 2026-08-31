@@ -3653,6 +3653,12 @@ header > .brand {
   .planner-block,
   .planner-block::before,
   .planner-list,
+  .planner-body.closing .planner-block,
+  .planner-body.closing .planner-block::before,
+  .planner-body.closing .planner-list,
+  .planner-body.closing .planner-bounds,
+  .planner-body.closing .planner-add-end,
+  .planner-body.closing .planner-overflow,
   .did-recategorize::before,
   .did-recategorize,
   .did-undone .task-title,
@@ -3805,6 +3811,62 @@ header > .brand {
   from {
     opacity: 0;
     transform: translateY(-9px);
+  }
+}
+
+/* Closing is the opening run backwards: the last line leaves first and goes
+   back up behind the one above it. `--r` is the reverse index, so the delays
+   mirror the opening ones.
+
+   These are separate keyframes rather than the same ones with
+   `animation-direction: reverse`, which does nothing here - the opening
+   animation has already finished, and only a change of animation-NAME makes
+   the browser run one again. */
+.planner-body.closing .planner-block {
+  animation: block-lift 240ms cubic-bezier(0.33, 1, 0.68, 1) both;
+  animation-delay: calc(min(var(--r, 0), 12) * 38ms);
+}
+
+@keyframes block-lift {
+  to {
+    opacity: 0;
+    transform: translateY(-9px);
+  }
+}
+
+.planner-body.closing .planner-block::before {
+  animation: dot-lift 240ms ease-in both;
+  animation-delay: calc(min(var(--r, 0), 12) * 38ms);
+}
+
+@keyframes dot-lift {
+  to {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+}
+
+.planner-body.closing .planner-list {
+  animation: spine-undraw 320ms ease-in both;
+}
+
+@keyframes spine-undraw {
+  to {
+    clip-path: inset(0 0 100% 0);
+  }
+}
+
+/* Everything else in the section goes at once - it isn't part of the cascade
+   and staggering it too would read as the panel falling apart. */
+.planner-body.closing .planner-bounds,
+.planner-body.closing .planner-add-end,
+.planner-body.closing .planner-overflow {
+  animation: planner-fade 160ms ease both;
+}
+
+@keyframes planner-fade {
+  to {
+    opacity: 0;
   }
 }
 

@@ -11,6 +11,9 @@ use crate::{focus, groq, sleep, AppState};
 
 const DEFAULT_BREAK_MIN: i32 = 30;
 const NO_ESTIMATE_MIN: i32 = 30;
+/// A spaced-review session with no estimate of its own. Shorter than a default
+/// task block on purpose - a 1d-out review is a run-through, not the work.
+const REVIEW_MIN: i32 = 30;
 
 /// Meals the generated plan leaves free. Data rather than prose in the prompt,
 /// so moving one is an edit here.
@@ -165,12 +168,16 @@ fn choose_push(mut candidates: Vec<Candidate>, today: NaiveDate, overflow: i32) 
     if candidates.is_empty() || overflow <= 0 {
         return None;
     }
+    // Exam revision is the last thing to go, ahead of even the deadline test:
+    // a study block for tomorrow's quiz is not a spare hour just because the
+    // quiz isn't today. Each filter is guarded so it can never empty the list.
+    if candidates.iter().any(|c| !c.is_exam) {
+        candidates.retain(|c| !c.is_exam);
+    }
     let deferrable: Vec<Candidate> =
         candidates.iter().filter(|c| c.due_date.is_none_or(|d| d > today)).cloned().collect();
     if !deferrable.is_empty() {
         candidates = deferrable;
-    } else if candidates.iter().any(|c| !c.is_exam) {
-        candidates.retain(|c| !c.is_exam);
     }
     candidates
         .iter()
@@ -508,7 +515,8 @@ pub(crate) async fn regenerate(
 
     let open = tasks::open_tasks(state).await?;
     let spent = focus::minutes_by_task(state, 14).await?;
-    let brief = build_brief(&open, &spent, date, row.starts_at, row.ends_at, offset);
+    let reviews = due_reviews(state, date).await?;
+    let brief = build_brief(&open, &reviews, &spent, date, row.starts_at, row.ends_at);
     let Some(drafted) = groq::plan_blocks(&state.http, &state.groq_key, &brief).await else {
         return Err(AppError::BadRequest("couldn't put a plan together right now".into()));
     };
@@ -522,8 +530,12 @@ pub(crate) async fn regenerate(
         let label = clean_label(&b.label);
         // The model names sidequests by title; resolving here rather than
         // trusting it with uuids is the same bargain the rest of the app makes.
+        // "study for psych mcq test" has to resolve to the exam, so the block
+        // can still be started and ticked - best_match works on titles, so the
+        // prefix comes off first.
+        let hay = label.strip_prefix("study for ").unwrap_or(&label);
         let task_id = (b.kind == "task")
-            .then(|| tasks::best_match(&open, &label).map(|t| t.id))
+            .then(|| tasks::best_match(&open, hay).map(|t| t.id))
             .flatten();
         sqlx::query(
             "INSERT INTO plan_blocks (plan_date, position, kind, task_id, label, minutes) \
@@ -603,15 +615,62 @@ fn clean_label(label: &str) -> String {
     }
 }
 
+/// A spaced-review reminder that has come due: the 7d/3d/1d study sessions an
+/// exam generates. These are real work for today and were being ignored
+/// entirely - the plan only ever looked at a task's own due date, so the study
+/// session for Tuesday's quiz never appeared on Sunday.
+#[derive(Debug, Clone)]
+pub struct DueReview {
+    pub title: String,
+    pub offset_days: i32,
+    pub effort_minutes: Option<i32>,
+}
+
+impl DueReview {
+    fn label(&self) -> String {
+        format!("study for {}", self.title)
+    }
+}
+
+async fn due_reviews(state: &AppState, date: NaiveDate) -> Result<Vec<DueReview>, AppError> {
+    let rows: Vec<(String, i32, Option<i32>)> = sqlx::query_as(
+        "SELECT t.title, c.offset_days, t.effort_minutes \
+         FROM task_checkpoints c JOIN tasks t ON t.id = c.task_id \
+         WHERE c.status = 'todo' AND c.due_date <= $1 \
+           AND t.archived_at IS NULL AND t.status <> 'done' \
+         ORDER BY c.due_date, c.offset_days DESC",
+    )
+    .bind(date)
+    .fetch_all(&state.pool)
+    .await?;
+    // One session per exam. Two reminders can be due at once - an overdue 3d
+    // and today's 1d - but they are the same revision, and two identical
+    // blocks in an evening reads as a bug rather than as a plan. The query
+    // orders by due date then widest offset, so the first row per exam is the
+    // one that has been waiting longest.
+    let mut seen: Vec<String> = Vec::new();
+    Ok(rows
+        .into_iter()
+        .filter(|(title, ..)| {
+            let fresh = !seen.contains(title);
+            if fresh {
+                seen.push(title.clone());
+            }
+            fresh
+        })
+        .map(|(title, offset_days, effort_minutes)| DueReview { title, offset_days, effort_minutes })
+        .collect())
+}
+
 fn build_brief(
     open: &[Task],
+    reviews: &[DueReview],
     spent: &[(Uuid, i64, i64, chrono::DateTime<Utc>)],
     date: NaiveDate,
     starts_at: NaiveTime,
     ends_at: Option<NaiveTime>,
-    offset: i32,
 ) -> String {
-    let today = local_today(offset);
+    let today = date;
     let line = |t: &Task| {
         let due = match t.due_date {
             Some(d) if d == today => "due today".to_string(),
@@ -638,8 +697,19 @@ fn build_brief(
         brief.push_str(&format!("It has to be finished by {}.\n", end.format("%H:%M")));
     }
     brief.push_str("\nDUE TODAY OR ALREADY LATE - plan these:\n");
-    if now_due.is_empty() {
+    if now_due.is_empty() && reviews.is_empty() {
         brief.push_str("(nothing)\n");
+    }
+    // Study sessions go at the top of the group, not the bottom. They are the
+    // most time-sensitive thing in it - the exam is in a day or two - and
+    // being last is what got them dropped when the day overflowed.
+    for r in reviews {
+        brief.push_str(&format!(
+            "- {} [study session] due today, {} days before the exam, {} minutes\n",
+            r.label(),
+            r.offset_days,
+            r.effort_minutes.unwrap_or(REVIEW_MIN)
+        ));
     }
     for t in &now_due {
         brief.push_str(&line(t));
@@ -706,6 +776,21 @@ mod tests {
         );
         // 90 clears 68; 180 also would, but emptying the evening is not the ask.
         assert_eq!(picked.unwrap().label, "lit paragraph");
+    }
+
+    #[test]
+    fn revision_for_tomorrows_exam_outranks_homework_due_today() {
+        let picked = super::choose_push(
+            vec![
+                cand("csp unit 1 quiz", Some("2026-08-31"), true, 60),
+                cand("physics ps4", Some("2026-08-30"), false, 30),
+            ],
+            today(),
+            20,
+        );
+        // The quiz isn't due today, which would normally make it the free win -
+        // but not studying for tomorrow's exam is not a free win.
+        assert_eq!(picked.unwrap().label, "physics ps4");
     }
 
     #[test]

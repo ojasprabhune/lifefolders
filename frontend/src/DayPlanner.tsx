@@ -49,6 +49,10 @@ export function DayPlanner({
   const [plan, setPlan] = useState<DayPlan | null>(null)
   const [busy, setBusy] = useState(false)
   const [open, setOpen] = useState(true)
+  // Kept mounted while it closes so the cascade can run backwards - last line
+  // out first, back up behind the one above it. Unmounting on the click would
+  // just make it vanish.
+  const [closing, setClosing] = useState(false)
   const [adding, setAdding] = useState<string | null>(null)
   // Re-renders once a minute so the "now" marker moves without a refresh.
   const [, setTick] = useState(0)
@@ -62,6 +66,23 @@ export function DayPlanner({
   useEffect(() => {
     getDayPlan(date).then(setPlan).catch(() => {})
   }, [date])
+
+  // Has to match the keyframes: one block's duration plus the capped stagger,
+  // and then a little slack - unmounting on the exact frame the last block
+  // finishes clips it whenever the timer drifts.
+  const closeMs = (n: number) => 240 + Math.min(Math.max(n - 1, 0), 12) * 38 + 60
+
+  const toggle = () => {
+    if (!open) {
+      setOpen(true)
+      return
+    }
+    setClosing(true)
+    setTimeout(() => {
+      setClosing(false)
+      setOpen(false)
+    }, closeMs(plan?.blocks.length ?? 0))
+  }
 
   const run = useCallback(
     async (work: () => Promise<DayPlan>) => {
@@ -85,7 +106,7 @@ export function DayPlanner({
     <section className="planner">
       {/* The title is the control, the same way `resolved` is - no separate
           affordance to aim at. */}
-      <button className="planner-head" onClick={() => setOpen((v) => !v)}>
+      <button className="planner-head" onClick={toggle}>
         <h2 className="section-title">the script</h2>
         {last && (
           <span className="planner-range">
@@ -95,7 +116,7 @@ export function DayPlanner({
       </button>
 
       {open && (
-        <div className="planner-body">
+        <div className={`planner-body ${closing ? 'closing' : ''}`}>
           <div className="planner-bounds">
             <TimeField
               label="from"
@@ -129,7 +150,7 @@ export function DayPlanner({
               <li
                 key={b.id}
                 className={`planner-block ${b.kind} ${isCurrent(b, isToday) ? 'now' : ''}`}
-                style={{ ['--i' as string]: i }}
+                style={{ ['--i' as string]: i, ['--r' as string]: blocks.length - 1 - i }}
               >
                 <span className="planner-time">{clockLabel(b.start)}</span>
                 <span className="planner-label">{b.label}</span>
