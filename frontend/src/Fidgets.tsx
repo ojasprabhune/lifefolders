@@ -8,16 +8,13 @@ const DROP = 18
 const BALL_R = DROP / 2
 
 // The paddle is always perpendicular to where the cursor is going, so a swipe
-// upward presents a flat bar and knocks the ball up. It only shows near the
-// ball and only while you are actually moving - a bar trailing the cursor
-// across the whole app would be unbearable.
+// upward presents a flat bar and knocks the ball up. It is out for as long as
+// the ball is out of its box - the cursor becomes the paddle, and is hidden
+// while it is - and it goes away the moment the ball is put back.
 const PADDLE_W = 78
 const PADDLE_H = 6
-const PADDLE_REACH = 210
-// It takes a real swipe to wake the bar, not a drift across the screen, and
-// the cursor velocity is heavily smoothed - at a low threshold with a light
-// filter the bar flickered in and out and spun on every twitch.
-const PADDLE_WAKE = 165
+// Below this the bar counts as parked, and is a wall rather than a swing.
+const PADDLE_STILL = 30
 
 const DROP_HOMES: { prefix: string; x: number; y: number }[] = [
   { prefix: '#/music', x: 0.08, y: 0.34 },
@@ -55,7 +52,9 @@ function InkDrop({
     gy: 0,
     lastT: 0,
     raf: 0,
-    parked: false,
+    // Starts in its box: a ball loose on the page on every reload is clutter,
+    // and taking it out is the whole gesture.
+    parked: true,
     dragging: false,
     // the cursor, its smoothed velocity, and when it last said anything
     px: -999,
@@ -65,10 +64,24 @@ function InkDrop({
     angle: 0,
     pointerAt: 0,
     lastHit: 0,
+    // where the cursor was on the previous frame, so a swing that crosses the
+    // ball between two frames still catches it
+    prevPx: -999,
+    prevPy: -999,
   })
 
   const draw = () => {
     if (ref.current) ref.current.style.transform = `translate(${st.current.x}px, ${st.current.y}px)`
+  }
+
+  // The paddle is out exactly when the ball is, and the real cursor is hidden
+  // for as long as it is: two pointers on screen doing the same job reads as a
+  // bug. Put the ball in its box and the cursor comes back.
+  const showPaddle = () => {
+    const s = st.current
+    const on = !s.parked && !s.dragging
+    padRef.current?.classList.toggle('up', on)
+    document.documentElement.classList.toggle('paddle-out', on)
   }
 
   const splat = useCallback((x: number, y: number, speed: number) => {
@@ -104,12 +117,14 @@ function InkDrop({
     boxRef.current?.classList.add('full')
     boxRef.current?.classList.remove('over')
     draw()
+    showPaddle()
   }
 
   const unpark = () => {
     st.current.parked = false
     ref.current?.classList.remove('parked')
     boxRef.current?.classList.remove('full')
+    showPaddle()
   }
 
   const stepRef = useRef<(t: number) => void>(() => {})
@@ -121,42 +136,57 @@ function InkDrop({
     s.raf = requestAnimationFrame((t) => stepRef.current(t))
   }, [])
 
-  // A hit is decided in the bar's own frame - how far along the bar the ball
-  // sits, and how far off it - rather than by rectangle overlap, because the
-  // bar swings as you turn and a box would catch the ball on its wrong side.
+  // Worked out in the bar's own frame - how far along the bar the ball sits,
+  // and how far off it - rather than as a rectangle overlap, because the bar
+  // swings as you turn and a box would catch the ball on its wrong side.
+  //
+  // The off-the-bar test is swept, not instantaneous: a fast swipe moves the
+  // cursor further between two frames than the ball is wide, and testing only
+  // where the bar is now let it pass clean through. The slab from where the
+  // bar was to where it is now is what gets tested instead.
   const paddleHit = (t: number) => {
     const s = st.current
-    if (s.dragging || s.parked || t - s.lastHit < 90) return
-    const speed = Math.hypot(s.pvx, s.pvy)
-    if (speed < PADDLE_WAKE) return
+    if (s.dragging || s.parked || t - s.lastHit < 60) return
     const bx = s.x + BALL_R
     const by = s.y + BALL_R
-    if (Math.hypot(bx - s.px, by - s.py) > PADDLE_REACH) return
-
     const dx = Math.cos(s.angle)
     const dy = Math.sin(s.angle)
-    const nx = -dy
-    const ny = dx
-    const rx = bx - s.px
-    const ry = by - s.py
-    const lateral = rx * dx + ry * dy
-    const along = rx * nx + ry * ny
-    const reach = BALL_R + PADDLE_H / 2 + 4
-    if (Math.abs(lateral) > PADDLE_W / 2 + BALL_R || Math.abs(along) > reach) return
+    const lateral = (bx - s.px) * dx + (by - s.py) * dy
+    if (Math.abs(lateral) > PADDLE_W / 2 + BALL_R) return
+    const reach = BALL_R + PADDLE_H / 2 + 2
 
-    const side = along >= 0 ? 1 : -1
-    s.x = s.px + dx * lateral + nx * side * reach - BALL_R
-    s.y = s.py + dy * lateral + ny * side * reach - BALL_R
-    // Reflect what the ball was already doing, then hand it the swing. That
-    // second term is why a fast swipe sends it and a slow one only nudges.
-    const vn = s.vx * nx + s.vy * ny
-    s.vx -= 1.5 * vn * nx
-    s.vy -= 1.5 * vn * ny
-    const push = Math.min(speed, 2800) * 0.85
-    s.vx += (s.pvx / speed) * push
-    s.vy += (s.pvy / speed) * push
+    const speed = Math.hypot(s.pvx, s.pvy)
+    if (speed > PADDLE_STILL) {
+      const mx = s.pvx / speed
+      const my = s.pvy / speed
+      const ahead = (bx - s.px) * mx + (by - s.py) * my
+      const step = Math.hypot(s.px - s.prevPx, s.py - s.prevPy)
+      if (ahead > reach || ahead < -(step + reach)) return
+      s.x = s.px + dx * lateral + mx * reach - BALL_R
+      s.y = s.py + dy * lateral + my * reach - BALL_R
+      // Kill whatever the ball was doing into the bar, then hand it the swing.
+      const vn = s.vx * mx + s.vy * my
+      if (vn < 0) {
+        s.vx -= 2 * vn * mx
+        s.vy -= 2 * vn * my
+      }
+      const push = Math.min(speed, 2800) * 0.85
+      s.vx += mx * push
+      s.vy += my * push
+    } else {
+      // A bar you are not moving is simply a wall to bounce off.
+      const nx = -dy
+      const ny = dx
+      const along = (bx - s.px) * nx + (by - s.py) * ny
+      if (Math.abs(along) > reach) return
+      const side = along >= 0 ? 1 : -1
+      s.x = s.px + dx * lateral + nx * side * reach - BALL_R
+      s.y = s.py + dy * lateral + ny * side * reach - BALL_R
+      const vn = s.vx * nx + s.vy * ny
+      s.vx -= 1.6 * vn * nx
+      s.vy -= 1.6 * vn * ny
+    }
     s.lastHit = t
-    if (s.parked) unpark()
   }
 
   stepRef.current = (t: number) => {
@@ -196,16 +226,17 @@ function InkDrop({
       }
     }
 
-    // A cursor that stopped moving sends no more events, so the bar has to be
-    // put away from in here or it hangs on screen wherever it was left.
-    if (t - s.pointerAt > 220) {
+    // A cursor that stopped moving sends no more events, so its velocity has
+    // to decay from in here or the bar keeps swinging at nothing.
+    if (t - s.pointerAt > 200) {
       s.pvx = 0
       s.pvy = 0
-      padRef.current?.classList.remove('up')
     }
 
     paddleHit(t)
     draw()
+    s.prevPx = s.px
+    s.prevPy = s.py
 
     // Keep going while the ball has somewhere to be, or while the cursor is
     // still swinging at it. Idle costs nothing - the loop simply stops.
@@ -229,23 +260,43 @@ function InkDrop({
       s.py = e.clientY
       s.pointerAt = now
 
-      const speed = Math.hypot(s.pvx, s.pvy)
-      if (speed > PADDLE_WAKE) s.angle = Math.atan2(s.pvy, s.pvx) + Math.PI / 2
-      const near =
-        !s.dragging &&
-        !s.parked &&
-        speed > PADDLE_WAKE &&
-        Math.hypot(s.x + BALL_R - s.px, s.y + BALL_R - s.py) < PADDLE_REACH
-      const pad = padRef.current
-      if (pad) {
-        pad.style.transform = `translate(${s.px - PADDLE_W / 2}px, ${s.py - PADDLE_H / 2}px) rotate(${s.angle}rad)`
-        pad.classList.toggle('up', near)
+      if (s.prevPx < -900) {
+        s.prevPx = e.clientX
+        s.prevPy = e.clientY
       }
-      if (near) kick()
+      const speed = Math.hypot(s.pvx, s.pvy)
+      if (speed > PADDLE_STILL) s.angle = Math.atan2(s.pvy, s.pvx) + Math.PI / 2
+      padRef.current?.style.setProperty(
+        'transform',
+        `translate(${s.px - PADDLE_W / 2}px, ${s.py - PADDLE_H / 2}px) rotate(${s.angle}rad)`,
+      )
+      showPaddle()
+      if (!s.parked && !s.dragging) kick()
     }
     window.addEventListener('pointermove', onMove)
     return () => window.removeEventListener('pointermove', onMove)
   }, [kick])
+
+  // Whatever happens, the cursor comes back when this unmounts. A hidden
+  // cursor left behind by a teardown would be unfixable from the page.
+  useEffect(() => () => document.documentElement.classList.remove('paddle-out'), [])
+
+  // Clicking the box puts the ball back, which is also how you get the cursor
+  // back without having to carry the ball there.
+  useEffect(() => {
+    const box = boxRef.current
+    if (!box) return
+    const onClick = () => {
+      const r = box.getBoundingClientRect()
+      if (!r.width) return
+      const s = st.current
+      cancelAnimationFrame(s.raf)
+      s.raf = 0
+      park({ x: r.left + r.width / 2 - BALL_R, y: r.bottom - DROP - 4 })
+    }
+    box.addEventListener('click', onClick)
+    return () => box.removeEventListener('click', onClick)
+  }, [boxRef])
 
   useEffect(() => {
     const s = st.current
@@ -253,19 +304,28 @@ function InkDrop({
     s.raf = 0
     s.vx = 0
     s.vy = 0
+    const home = DROP_HOMES.find((h) => route.startsWith(h.prefix)) ?? { x: 0.94, y: 0.42 }
+    const goHome = () => {
+      s.x = (window.innerWidth - DROP) * home.x
+      s.y = (window.innerHeight - DROP) * home.y
+      draw()
+    }
+    showPaddle()
     if (s.parked) {
-      // The box sits beside the drawer, which moves from page to page, so a
-      // parked drop has to be put back into it once the new one has laid out.
+      // Waits a frame for the box to have laid out. A window too narrow for
+      // the shelf has no box at all, and a ball parked in nothing would sit in
+      // the top left corner, so that falls back to the page's own spot.
       requestAnimationFrame(() => {
         const at = boxRef.current?.getBoundingClientRect()
-        if (at) park({ x: at.left + at.width / 2 - BALL_R, y: at.bottom - DROP - 4 })
+        if (at && at.width) park({ x: at.left + at.width / 2 - BALL_R, y: at.bottom - DROP - 4 })
+        else {
+          unpark()
+          goHome()
+        }
       })
       return () => cancelAnimationFrame(s.raf)
     }
-    const home = DROP_HOMES.find((h) => route.startsWith(h.prefix)) ?? { x: 0.94, y: 0.42 }
-    s.x = (window.innerWidth - DROP) * home.x
-    s.y = (window.innerHeight - DROP) * home.y
-    draw()
+    goHome()
     return () => cancelAnimationFrame(s.raf)
   }, [route])
 
@@ -373,10 +433,8 @@ function Shelf({ route, boxRef }: { route: string; boxRef: React.RefObject<HTMLD
         <span className="shelf-gap" />
       </div>
       <div className="shelf-plank" />
-      <div className="shelf-case">
-        <Drawer route={route} />
-        <div className="shelf-face" />
-      </div>
+      <div className="shelf-seam" />
+      <Drawer route={route} />
     </div>
   )
 }

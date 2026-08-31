@@ -6,7 +6,7 @@ import type { Category, SleepData } from './types'
 // How far the drawer travels, and how much of that you have to pull before
 // letting go commits to open. Short of it, it snaps back.
 // The body's width: shut, it is exactly hidden behind the cabinet face.
-const TRAVEL = 176
+const MAX_W = 270
 const SNAP = 0.42
 const PULLS_KEY = 'life_drawer_pulls'
 // The leak is meant to be rare enough to be a surprise, so it is a coin the
@@ -82,10 +82,9 @@ export function Drawer({ route }: { route: string }) {
   const [mode, setMode] = useState<Mode>('shut')
   const [filling, setFilling] = useState<Filling>({ kind: 'empty' })
   const [pulls, setPulls] = useState(() => Number(localStorage.getItem(PULLS_KEY) ?? 0))
-  const boxRef = useRef<HTMLDivElement>(null)
-  const lineRef = useRef<HTMLParagraphElement>(null)
-  const sheetRef = useRef<HTMLParagraphElement>(null)
-  const [sheetH, setSheetH] = useState(0)
+  const [width, setWidth] = useState(0)
+  const winRef = useRef<HTMLDivElement>(null)
+  const slipRef = useRef<HTMLParagraphElement>(null)
   const dragRef = useRef<{ startX: number; from: number; moved: boolean } | null>(null)
   const lastLine = useRef<string | null>(null)
   const modeRef = useRef<Mode>('shut')
@@ -95,7 +94,6 @@ export function Drawer({ route }: { route: string }) {
 
   modeRef.current = mode
 
-  // Moving the tab means finding it again, so a route change always closes it.
   useEffect(() => setMode('shut'), [route])
 
   useEffect(() => {
@@ -104,6 +102,13 @@ export function Drawer({ route }: { route: string }) {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [open])
+
+  // The slip sizes itself to its own text, up to MAX_W, and how far the drawer
+  // opens is just that width. Measured rather than fixed: auto is not
+  // animatable, and a one-line remark should not open a three-line drawer.
+  useLayoutEffect(() => {
+    setWidth(slipRef.current?.offsetWidth ?? 0)
+  }, [filling])
 
   const nonsense = () => {
     const line = pickNot(NONSENSE, lastLine.current)
@@ -130,11 +135,11 @@ export function Drawer({ route }: { route: string }) {
     setFilling({ kind: 'line', text: nonsense() })
   }
 
-  // The drawer does not sit still. Left alone it slides open over most of a
-  // minute, and the moment the pointer enters the bottom half of the window it
-  // is shut again - so you only ever catch it out of the corner of your eye.
-  // The poll is what makes a pointer that never moves work: a cursor parked in
-  // the top half is away, and away is what arms the leak.
+  // The drawer does not sit still. Rarely - a one-in-ten chance each half
+  // minute the pointer stays out of the bottom half, never twice inside two
+  // minutes - it slides itself open, and the moment the pointer comes near it
+  // is shut again. The poll is what makes a pointer that never moves work: a
+  // cursor parked in the top half is away, and away is what arms the leak.
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
       const bottom = e.clientY > window.innerHeight * 0.52
@@ -170,109 +175,74 @@ export function Drawer({ route }: { route: string }) {
     fill(n)
   }
 
-  // How far from open the drawer is this frame - during a leak, neither open
-  // nor shut. Grabbing it has to start from there or it jumps.
-  const currentOffset = () => {
-    const box = boxRef.current
-    if (!box) return TRAVEL
-    const t = getComputedStyle(box).transform
-    if (!t || t === 'none') return TRAVEL
-    return TRAVEL - new DOMMatrixReadOnly(t).m41
+  // How much of the slip is showing this frame, which during a leak is neither
+  // all of it nor none. Grabbing it has to start from there or it jumps.
+  const shown = () => winRef.current?.getBoundingClientRect().width ?? 0
+
+  const shownFor = (d: { startX: number; from: number }, clientX: number) => {
+    const pulled = clientX - d.startX
+    // Rubber band: the further you pull the less you get, so it stiffens
+    // toward the end of its travel instead of stopping dead.
+    const give = width * (1 - Math.exp(-Math.abs(pulled) / Math.max(width, 1))) * Math.sign(pulled)
+    return Math.max(0, Math.min(width, d.from + give))
   }
 
-  // The drag writes the transform straight to the box and turns the transition
-  // off, so the drawer tracks the finger; the release hands it back to CSS,
-  // which is what makes the snap a snap rather than a follow.
+  // The drag writes the width straight to the window with the transition off,
+  // so the drawer tracks the finger; the release hands it back to CSS, which
+  // is what makes the snap a snap rather than a follow.
   const onDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return
     e.preventDefault()
     e.currentTarget.setPointerCapture(e.pointerId)
-    dragRef.current = { startX: e.clientX, from: currentOffset(), moved: false }
-  }
-
-  const offsetFor = (d: { startX: number; from: number }, clientX: number) => {
-    const pulled = clientX - d.startX
-    // Rubber band: the further you pull, the less you get, so the drawer
-    // stiffens toward the end of its travel instead of stopping dead.
-    const give = TRAVEL * (1 - Math.exp(-Math.abs(pulled) / TRAVEL)) * Math.sign(pulled)
-    return Math.max(0, Math.min(TRAVEL, d.from - give))
+    dragRef.current = { startX: e.clientX, from: shown(), moved: false }
   }
 
   const onMove = (e: React.PointerEvent) => {
     const d = dragRef.current
-    const box = boxRef.current
-    if (!d || !box) return
+    const win = winRef.current
+    if (!d || !win) return
     if (!d.moved) {
       if (Math.abs(e.clientX - d.startX) < 4) return
       d.moved = true
-      box.style.transition = 'none'
+      win.style.transition = 'none'
     }
-    box.style.transform = `translateX(${TRAVEL - offsetFor(d, e.clientX)}px)`
+    win.style.width = `${shownFor(d, e.clientX)}px`
   }
 
   const onUp = (e: React.PointerEvent) => {
     const d = dragRef.current
-    const box = boxRef.current
+    const win = winRef.current
     dragRef.current = null
-    if (!d || !box) return
-    box.style.transition = ''
-    box.style.transform = ''
+    if (!d || !win) return
+    win.style.transition = ''
+    win.style.width = ''
     if (!d.moved) {
       commit(!open)
       return
     }
-    commit(offsetFor(d, e.clientX) < TRAVEL * (1 - SNAP))
+    commit(shownFor(d, e.clientX) > width * SNAP)
   }
 
-  // Anything too long for the drawer's two lines gets a scroll instead, cut to
-  // exactly the height that text needs. The measured copy is absolutely
-  // positioned inside the rolled-up sheet, so it can be measured at the right
-  // width without giving the sheet a height of its own.
-  useLayoutEffect(() => {
-    const line = lineRef.current
-    const sheet = sheetRef.current
-    if (!line || !sheet) {
-      setSheetH(0)
-      return
-    }
-    setSheetH(line.scrollHeight > line.clientHeight + 1 ? sheet.offsetHeight : 0)
-  }, [filling])
-
   const wear = pulls >= 100 ? 3 : pulls >= 50 ? 2 : pulls >= 10 ? 1 : 0
+  const text =
+    filling.kind === 'line' ? filling.text : filling.kind === 'empty' ? '(empty)' : '…'
 
   return (
     <div
-      className={`fidget ${mode}${sheetH ? ' has-scroll' : ''}`}
-      style={{ ['--travel' as string]: `${TRAVEL}px`, ['--leak' as string]: `${LEAK_MS}ms` }}
-      ref={boxRef}
+      className={`fidget ${mode}`}
+      style={{
+        ['--w' as string]: `${width}px`,
+        ['--maxw' as string]: `${MAX_W}px`,
+        ['--leak' as string]: `${LEAK_MS}ms`,
+      }}
     >
-      {filling.kind === 'line' && (
-        <div
-          className={`scroll${sheetH && open ? ' out' : ''}`}
-          style={{ ['--h' as string]: `${sheetH}px` }}
-          aria-hidden={!sheetH}
-        >
-          <div className="scroll-roll" />
-          <div className="scroll-sheet">
-            <p className="scroll-text" ref={sheetRef}>
-              {filling.text}
-            </p>
-          </div>
-        </div>
-      )}
-      <div className="fidget-body">
-        {filling.kind === 'line' ? (
-          <p className="fidget-line" ref={lineRef}>
-            {filling.text}
-          </p>
-        ) : filling.kind === 'empty' ? (
-          <p className="fidget-line dim">(empty)</p>
-        ) : (
-          <p className="fidget-line dim">…</p>
-        )}
+      <div className="fidget-window" ref={winRef}>
+        <p className={`fidget-slip${filling.kind === 'line' ? '' : ' dim'}`} ref={slipRef}>
+          {text}
+        </p>
       </div>
       <button
-        className={`fidget-tab wear-${wear}`}
+        className={`fidget-pull wear-${wear}`}
         aria-label={open ? 'close the drawer' : 'open the drawer'}
         onPointerDown={onDown}
         onPointerMove={onMove}
