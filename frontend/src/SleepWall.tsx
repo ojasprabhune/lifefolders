@@ -21,6 +21,7 @@ import {
   timeShort,
 } from './sleepStats'
 import type { Log, SleepData } from './types'
+import { lastPanel } from './lastPanel'
 
 const RASTER_NIGHTS = 45
 const DRIFT_NIGHTS = 60
@@ -85,7 +86,7 @@ export function SleepWall() {
           <a className="guide-link" href="#/sleep">
             panel
           </a>
-          <a className="guide-link" href="#/">
+          <a className="guide-link" href={lastPanel()}>
             back
           </a>
         </div>

@@ -9,6 +9,7 @@ import { Clock } from './Clock'
 import { DailyPlan } from './DailyPlan'
 import { useFlipList } from './motion'
 import { Guide } from './Guide'
+import { rememberPanel } from './lastPanel'
 import { Soma } from './Soma'
 import { CadenceWall, Cadences } from './Cadences'
 import { SleepWall } from './SleepWall'
@@ -114,8 +115,16 @@ export default function App() {
   // Tracked with the same 220ms grace as an individual panel's own close, so
   // the slot doesn't collapse until the last panel inside has finished
   // animating out.
-  const anyPanelOpen = PANEL_ROUTE_PREFIXES.some((p) => route.startsWith(p))
+  // The two walls sit under panel prefixes but are full-page, so they must not
+  // be remembered as the panel to come back to - you'd return to the wall you
+  // just left rather than the panel beside it.
+  const isWall = route.startsWith('#/cadences/all') || route.startsWith('#/sleep/all')
+  const anyPanelOpen = !isWall && PANEL_ROUTE_PREFIXES.some((p) => route.startsWith(p))
   const { mounted: slotMounted } = usePanelState(anyPanelOpen)
+
+  useEffect(() => {
+    if (anyPanelOpen) rememberPanel(route)
+  }, [anyPanelOpen, route])
 
   useEffect(() => {
     const onUnauthorized = () => setAuthed(false)

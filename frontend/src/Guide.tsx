@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { getHiddenDomains, getShowClock, getTheme, saveHiddenDomains, setShowClock, setTheme } from './api'
 import { DOMAINS } from './domains'
+import { lastPanel } from './lastPanel'
 
 function resolvedTheme(stored: 'light' | 'dark' | null): 'light' | 'dark' {
   return stored ?? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
@@ -32,7 +33,7 @@ export function Guide() {
     <div className="app guide">
       <header>
         <h1 className="brand">guide</h1>
-        <a className="guide-link" href="#/">
+        <a className="guide-link" href={lastPanel()}>
           back
         </a>
       </header>

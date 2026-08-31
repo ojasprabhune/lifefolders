@@ -10,6 +10,7 @@ import {
 import { Panel, usePanelState } from './Panel'
 import type { Cadence, CadenceCompletions, CadenceSchedule, IntervalUnit } from './types'
 import { Quip } from './Quip'
+import { lastPanel } from './lastPanel'
 
 const WEEKS = 14
 const DAY_INITIALS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
@@ -282,7 +283,7 @@ export function CadenceWall() {
           <a className="guide-link" href="#/cadences">
             panel
           </a>
-          <a className="guide-link" href="#/">
+          <a className="guide-link" href={lastPanel()}>
             back
           </a>
         </div>

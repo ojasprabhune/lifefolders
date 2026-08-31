@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { listCadences, listTasks } from './api'
+import { lastPanel } from './lastPanel'
 import type { Cadence, TaskWithCheckpoints } from './types'
 import {
   beginFocusSession,
@@ -21,9 +22,18 @@ function mmss(totalSeconds: number): string {
   return `${m}:${String(s % 60).padStart(2, '0')}`
 }
 
-function preselectedTask(): string {
-  const q = window.location.hash.split('?')[1] ?? ''
-  return new URLSearchParams(q).get('task') ?? ''
+// A block in the day plan already knows what it is and how long it runs, so
+// its play button hands both over and asks for the timer to be running by the
+// time the page arrives. The sidequest panel's play button deliberately does
+// not: a sidequest's estimate is the whole job, not one sitting at it.
+function focusParams(): { task: string; minutes: number | null; autostart: boolean } {
+  const q = new URLSearchParams(window.location.hash.split('?')[1] ?? '')
+  const m = Number(q.get('minutes'))
+  return {
+    task: q.get('task') ?? '',
+    minutes: Number.isFinite(m) && m > 0 ? Math.min(Math.round(m), 600) : null,
+    autostart: q.get('start') === '1',
+  }
 }
 
 export function FocusTimer() {
@@ -41,15 +51,28 @@ export function FocusTimer() {
   const [summary, setSummary] = useState<FocusSummary | null>(null)
   const [error, setError] = useState('')
   const [confirmingStop, setConfirmingStop] = useState(false)
+  // Set once, by the effect above, when the URL asked for a running timer. Held
+  // rather than started inline because the task list has to have resolved
+  // first, and cleared immediately so a re-render can't start a second one.
+  const [pending, setPending] = useState<{ taskId: string; minutes: number } | null>(null)
 
   useEffect(() => {
+    const wanted = focusParams()
+    if (wanted.minutes !== null) {
+      setMinutes(wanted.minutes)
+      // Anything that isn't one of the presets has to show up in the custom
+      // box, or the page claims a length none of its controls agree with.
+      if (!PRESETS.includes(wanted.minutes)) setCustom(String(wanted.minutes))
+    }
     listTasks()
       .then((all) => {
         const open = all.filter((t) => t.status !== 'done')
         setTasks(open)
-        const pre = preselectedTask()
-        if (pre && open.some((t) => t.id === pre)) setTaskId(pre)
-        else if (open.length > 0) setTaskId(open[0].id)
+        const pre = wanted.task
+        if (pre && open.some((t) => t.id === pre)) {
+          setTaskId(pre)
+          if (wanted.autostart) setPending({ taskId: pre, minutes: wanted.minutes ?? 25 })
+        } else if (open.length > 0) setTaskId(open[0].id)
       })
       .catch(() => {})
     listCadences()
@@ -103,15 +126,8 @@ export function FocusTimer() {
     document.title = 'life'
   }, [])
 
-  const start = async () => {
+  const startWith = async (body: Parameters<typeof beginFocusSession>[0]) => {
     setError('')
-    const planned = minutes
-    const body =
-      target === 'cadence'
-        ? { cadence_id: cadenceId, planned_minutes: planned }
-        : taskId === NEW_TASK
-          ? { new_task: { title: newTitle.trim() }, planned_minutes: planned }
-          : { task_id: taskId, planned_minutes: planned }
     try {
       const s = await beginFocusSession(body)
       setActive(s)
@@ -121,6 +137,24 @@ export function FocusTimer() {
       setError(e instanceof Error ? e.message : 'could not start')
     }
   }
+
+  const start = () =>
+    startWith(
+      target === 'cadence'
+        ? { cadence_id: cadenceId, planned_minutes: minutes }
+        : taskId === NEW_TASK
+          ? { new_task: { title: newTitle.trim() }, planned_minutes: minutes }
+          : { task_id: taskId, planned_minutes: minutes },
+    )
+
+  useEffect(() => {
+    if (!pending || mode !== 'setup') return
+    setPending(null)
+    void startWith({ task_id: pending.taskId, planned_minutes: pending.minutes })
+    // startWith is stable enough for this - it only ever runs on the one
+    // pending value the URL set, which is cleared on the line above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pending, mode])
 
   const reset = () => {
     setSummary(null)
@@ -141,7 +175,7 @@ export function FocusTimer() {
     <div className="app">
       <header>
         <h1 className="brand">clarity</h1>
-        <a className="guide-link" href="#/">
+        <a className="guide-link" href={lastPanel()}>
           back
         </a>
       </header>

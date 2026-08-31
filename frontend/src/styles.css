@@ -3653,6 +3653,7 @@ header > .brand {
   .planner-block,
   .planner-block::before,
   .planner-list,
+  .planner-list.plan-dragging .planner-block,
   .planner-body.closing .planner-block,
   .planner-body.closing .planner-block::before,
   .planner-body.closing .planner-list,
@@ -3929,6 +3930,36 @@ header > .brand {
 .planner-block.break .planner-label {
   color: var(--faint);
   font-style: italic;
+}
+
+/* Dragging. The entrance animation is switched off for the duration, because
+   its `both` fill sits in the cascade above an inline style and would win
+   against the transform the drag is writing. Rows other than the held one get
+   a transition, so the gap opens by sliding rather than jumping; the held one
+   must not have one, or it lags the pointer. */
+.planner-list.plan-dragging .planner-block {
+  animation: none;
+  transition: transform 150ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.planner-list.plan-dragging .planner-block.plan-held {
+  transition: none;
+  z-index: 3;
+  cursor: grabbing;
+  opacity: 0.92;
+}
+
+.planner-list.plan-dragging .planner-block.plan-held .planner-label {
+  color: var(--ink);
+}
+
+.planner-list.plan-dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.planner-block {
+  cursor: grab;
 }
 
 .planner-time {

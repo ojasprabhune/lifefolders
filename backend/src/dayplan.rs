@@ -448,20 +448,54 @@ pub async fn patch_block(
     .execute(&state.pool)
     .await?;
 
-    if let Some(to) = body.position {
-        // Moved rows are parked at a fractional-ish position between their new
-        // neighbours and then renumbered, which avoids a shuffle that has to
-        // know whether the row moved up or down.
-        sqlx::query("UPDATE plan_blocks SET position = position * 2 WHERE plan_date = $1")
+    // A length you set here is the estimate for that sidequest, so it survives
+    // a re-plan instead of reverting to the default. Only when the sidequest
+    // owns exactly one block, though: a task split around a meal is two, and
+    // writing either half back would quietly halve the whole estimate.
+    if let Some(mins) = body.minutes.filter(|m| *m > 0) {
+        let owner: Option<(Option<Uuid>,)> =
+            sqlx::query_as("SELECT task_id FROM plan_blocks WHERE id = $1")
+                .bind(id)
+                .fetch_optional(&state.pool)
+                .await?;
+        if let Some((Some(task_id),)) = owner {
+            let (blocks,): (i64,) = sqlx::query_as(
+                "SELECT count(*) FROM plan_blocks WHERE plan_date = $1 AND task_id = $2",
+            )
             .bind(date)
-            .execute(&state.pool)
+            .bind(task_id)
+            .fetch_one(&state.pool)
             .await?;
-        sqlx::query("UPDATE plan_blocks SET position = $2 WHERE id = $1")
-            .bind(id)
-            .bind(to * 2 - 1)
-            .execute(&state.pool)
-            .await?;
-        renumber(&state, date).await?;
+            if blocks == 1 {
+                sqlx::query("UPDATE tasks SET effort_minutes = $2 WHERE id = $1")
+                    .bind(task_id)
+                    .bind(mins)
+                    .execute(&state.pool)
+                    .await?;
+            }
+        }
+    }
+
+    if let Some(to) = body.position {
+        // `to` is where the row should END UP, counted in the list it leaves
+        // behind. Doubling positions and slotting the moved row between two of
+        // them was the previous approach and it was quietly wrong in one
+        // direction: removing the row shifts every index below it, so moving
+        // something down landed it short. Taking the row out and putting it
+        // back needs no arithmetic to get wrong.
+        let ids: Vec<Uuid> = sqlx::query_scalar(
+            "SELECT id FROM plan_blocks WHERE plan_date = $1 ORDER BY position",
+        )
+        .bind(date)
+        .fetch_all(&state.pool)
+        .await?;
+        for (i, block_id) in reorder(ids, id, to).iter().enumerate() {
+            sqlx::query("UPDATE plan_blocks SET position = $2 WHERE id = $1")
+                .bind(block_id)
+                .bind(i as i32)
+                .execute(&state.pool)
+                .await?;
+        }
     }
     Ok(Json(view(&state, date, row).await?))
 }
@@ -481,6 +515,14 @@ pub async fn delete_block(
         .await?;
     renumber(&state, date).await?;
     Ok(Json(view(&state, date, row).await?))
+}
+
+/// Take `id` out of the list and put it back at index `to`.
+fn reorder(ids: Vec<Uuid>, id: Uuid, to: i32) -> Vec<Uuid> {
+    let mut rest: Vec<Uuid> = ids.into_iter().filter(|x| *x != id).collect();
+    let at = (to.max(0) as usize).min(rest.len());
+    rest.insert(at, id);
+    rest
 }
 
 async fn renumber(state: &AppState, date: NaiveDate) -> Result<(), AppError> {
@@ -875,6 +917,22 @@ mod tests {
         assert_eq!(breaks, vec!["lunch", "dinner"]);
         let work: i32 = out.iter().filter(|b| b.kind == "task").map(|b| b.minutes).sum();
         assert_eq!(work, 12 * 60, "splitting must not lose or invent minutes");
+    }
+
+    #[test]
+    fn a_row_lands_where_the_drag_put_it_in_both_directions() {
+        let ids: Vec<Uuid> = (1..=4u128).map(Uuid::from_u128).collect();
+        let (a, b, c, d) = (ids[0], ids[1], ids[2], ids[3]);
+        // Dragging the first row down past two others.
+        assert_eq!(super::reorder(ids.clone(), a, 2), vec![b, c, a, d]);
+        // And the last row up past two others.
+        assert_eq!(super::reorder(ids.clone(), d, 1), vec![a, d, b, c]);
+        // Ends stay reachable, and a nonsense index is clamped rather than
+        // panicking on a list that has shrunk under a stale drag.
+        assert_eq!(super::reorder(ids.clone(), a, 3), vec![b, c, d, a]);
+        assert_eq!(super::reorder(ids.clone(), d, 0), vec![d, a, b, c]);
+        assert_eq!(super::reorder(ids.clone(), b, 99), vec![a, c, d, b]);
+        assert_eq!(super::reorder(ids.clone(), b, 1), ids);
     }
 
     #[test]

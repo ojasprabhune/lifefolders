@@ -115,7 +115,12 @@ export async function beginFocusSession(body: {
       (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
     audio = new Ctx()
   }
-  await audio.resume()
+  // Deliberately not awaited. A suspended AudioContext only resumes inside a
+  // user gesture, and the day plan's play button starts a session from an
+  // effect after navigating - the click is over by then, so awaiting this
+  // hangs forever and the session never starts. The chime is worth less than
+  // the timer; if the context stays suspended, a later gesture unblocks it.
+  void audio.resume().catch(() => {})
   const s = await startFocusSession(body)
   current = {
     id: s.id,

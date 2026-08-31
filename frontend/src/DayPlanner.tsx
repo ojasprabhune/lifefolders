@@ -55,6 +55,22 @@ export function DayPlanner({
   // just make it vanish.
   const [closing, setClosing] = useState(false)
   const [adding, setAdding] = useState<string | null>(null)
+  // A drag is two values moving at different rates. The pointer offset changes
+  // every frame and is written straight to the held row's style; the index it
+  // would land on changes only when you cross a neighbour, and that one is
+  // state because it re-lays-out the rows around it.
+  const listRef = useRef<HTMLOListElement>(null)
+  const [held, setHeld] = useState<{ id: string; from: number; height: number } | null>(null)
+  const [overIndex, setOverIndex] = useState<number | null>(null)
+  const dragRef = useRef<{
+    id: string
+    from: number
+    startY: number
+    tops: number[]
+    heights: number[]
+    el: HTMLElement
+    moved: boolean
+  } | null>(null)
   // Re-renders once a minute so the "now" marker moves without a refresh.
   const [, setTick] = useState(0)
 
@@ -130,6 +146,93 @@ export function DayPlanner({
     [onChanged],
   )
 
+  const startDrag = (e: React.PointerEvent<HTMLLIElement>, id: string, index: number) => {
+    if (e.button !== 0) return
+    // The controls on the row keep working; only the row itself is a handle.
+    if ((e.target as HTMLElement).closest('button, input, select, a')) return
+    const list = listRef.current
+    if (!list) return
+    const rows = Array.from(list.querySelectorAll<HTMLElement>('.planner-block'))
+    const rects = rows.map((r) => r.getBoundingClientRect())
+    if (!rects[index]) return
+    setAdding(null)
+    dragRef.current = {
+      id,
+      from: index,
+      startY: e.clientY,
+      tops: rects.map((r) => r.top),
+      heights: rects.map((r) => r.height),
+      el: rows[index],
+      moved: false,
+    }
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+
+  const moveDrag = (e: React.PointerEvent) => {
+    const d = dragRef.current
+    if (!d) return
+    const dy = e.clientY - d.startY
+    // A few pixels of slop, so a stray press on a row isn't a drag.
+    if (!d.moved) {
+      if (Math.abs(dy) < 4) return
+      d.moved = true
+      setHeld({ id: d.id, from: d.from, height: d.heights[d.from] })
+      setOverIndex(d.from)
+    }
+    d.el.style.transform = `translateY(${dy}px)`
+
+    // Where the held row's middle now sits, against where its neighbours
+    // started. Measuring against the original layout rather than the live one
+    // is what stops the answer oscillating as the others slide out of the way.
+    const centre = d.tops[d.from] + d.heights[d.from] / 2 + dy
+    let target = d.from
+    for (let i = 0; i < d.tops.length; i++) {
+      if (i === d.from) continue
+      const middle = d.tops[i] + d.heights[i] / 2
+      if (i < d.from && centre < middle) target = Math.min(target, i)
+      if (i > d.from && centre > middle) target = Math.max(target, i)
+    }
+    setOverIndex((cur) => (cur === target ? cur : target))
+  }
+
+  const endDrag = () => {
+    const d = dragRef.current
+    if (!d) return
+    dragRef.current = null
+    const to = overIndex
+    const clear = () => {
+      d.el.style.transform = ''
+      setHeld(null)
+      setOverIndex(null)
+    }
+    if (!d.moved || to === null || to === d.from) {
+      clear()
+      return
+    }
+    // The preview stays put until the server answers, so the rows never snap
+    // back to the old order for the length of a round trip. Clearing lands in
+    // the same commit as the new plan.
+    setBusy(true)
+    patchPlanBlock(date, d.id, { position: to })
+      .then((p) => {
+        setPlan(p)
+        onChanged()
+      })
+      .catch(() => {})
+      .finally(() => {
+        clear()
+        setBusy(false)
+      })
+  }
+
+  // How far a row that isn't the held one has to move to open the gap.
+  const shiftOf = (i: number): number => {
+    if (!held || overIndex === null || i === held.from) return 0
+    if (held.from < overIndex && i > held.from && i <= overIndex) return -held.height
+    if (held.from > overIndex && i >= overIndex && i < held.from) return held.height
+    return 0
+  }
+
   if (!plan) return null
   const blocks = plan.blocks
   const last = blocks[blocks.length - 1]
@@ -174,15 +277,29 @@ export function DayPlanner({
             <div className="empty">nothing planned — hit plan it, or add a block below</div>
           )}
 
-          <ol className="planner-list" style={{ ['--n' as string]: blocks.length }}>
+          <ol
+            className={`planner-list ${held ? 'plan-dragging' : ''}`}
+            ref={listRef}
+            style={{ ['--n' as string]: blocks.length }}
+          >
             {blocks.flatMap((b, i) => [
               // --i drives the stagger. The body unmounts when collapsed, so
               // the cascade runs on open; editing a block reuses its element
               // by key, so it doesn't replay on every change.
               <li
                 key={b.id}
-                className={`planner-block ${b.kind} ${isCurrent(b, isToday) ? 'now' : ''}`}
-                style={{ ['--i' as string]: i, ['--r' as string]: blocks.length - 1 - i }}
+                className={`planner-block ${b.kind} ${isCurrent(b, isToday) ? 'now' : ''} ${
+                  held?.id === b.id ? 'plan-held' : ''
+                }`}
+                style={{
+                  ['--i' as string]: i,
+                  ['--r' as string]: blocks.length - 1 - i,
+                  ...(held && held.id !== b.id ? { transform: `translateY(${shiftOf(i)}px)` } : {}),
+                }}
+                onPointerDown={(e) => startDrag(e, b.id, i)}
+                onPointerMove={moveDrag}
+                onPointerUp={endDrag}
+                onPointerCancel={endDrag}
               >
                 <span className="planner-time">{clockLabel(b.start)}</span>
                 <span className="planner-label">{b.label}</span>
@@ -191,7 +308,11 @@ export function DayPlanner({
                   onSave={(m) => void run(() => patchPlanBlock(date, b.id, { minutes: m }))}
                 />
                 {b.task_id && (
-                  <a className="task-focus" href={`#/focus?task=${b.task_id}`} aria-label="clarity session">
+                  <a
+                    className="task-focus"
+                    href={`#/focus?task=${b.task_id}&minutes=${b.minutes}&start=1`}
+                    aria-label="start a clarity session for this block"
+                  >
                     ▷
                   </a>
                 )}
