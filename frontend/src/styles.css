@@ -242,6 +242,16 @@ header {
   font-size: 21px;
   line-height: 0.85;
   color: var(--muted);
+  /* The clip paints only inside the box, and this italic f throws its ink well
+     outside a 0.85 line box — the tail drops past the baseline and swings left
+     of where the letter starts. Without the padding the flourish is simply not
+     painted; the matching negative margins put the layout back where it was.
+     The rule below is offset by the same amounts, since an absolutely
+     positioned child measures from the padding box. */
+  --bleed-x: 15px;
+  --bleed-y: 17px;
+  padding: var(--bleed-y) var(--bleed-x);
+  margin: calc(var(--bleed-y) * -1) calc(var(--bleed-x) * -1);
   background-image: linear-gradient(100deg, var(--accent) 0 30%, var(--muted) 38% 100%);
   background-size: 320% 100%;
   background-position: 100% 0;
@@ -263,9 +273,9 @@ header {
 .brand-sub::after {
   content: '';
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -3px;
+  left: var(--bleed-x);
+  right: var(--bleed-x);
+  bottom: calc(var(--bleed-y) - 3px);
   height: 1.5px;
   background: var(--accent);
   transform: scaleX(0);
