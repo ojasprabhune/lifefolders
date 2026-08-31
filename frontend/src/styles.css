@@ -4199,6 +4199,155 @@ header > .brand {
   cursor: pointer;
 }
 
+/* The drawer. A tab on the bottom edge that you pull upward, sitting at a
+   different spot along that edge on every page (SPOTS in Drawer.tsx) so
+   finding it is part of it. Only the wrapper moves: the tab and the body are
+   stacked and slide as a pair, which is why the body needs no position of its
+   own and why the travel is exactly the body's height. The bezier overshoots
+   a little - a drawer that stops dead feels stuck. */
+.fidget {
+  position: fixed;
+  bottom: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* half the body, so the left percentage centres the drawer rather than
+     starting it. */
+  margin-left: -110px;
+  transform: translateY(var(--travel));
+  transition: transform 320ms cubic-bezier(0.2, 1.25, 0.35, 1);
+}
+
+/* A drag beats these with an inline transform, then hands back on release. */
+.fidget.pulled,
+.fidget.leaking {
+  transform: translateY(0);
+}
+
+/* The leak is the whole joke, so it has to be slow enough that you notice it
+   only once it is already half out. Shutting is not slow: the base transition
+   above takes it back, and a transition interrupted mid-flight starts from
+   wherever it had got to, which is exactly the snatch we want. */
+.fidget.leaking {
+  transition: transform var(--leak) linear;
+}
+
+.fidget-tab {
+  flex: none;
+  position: relative;
+  width: 62px;
+  height: 17px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-bottom: none;
+  border-radius: 7px 7px 0 0;
+  background: var(--bg);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.fidget-tab:active {
+  cursor: grabbing;
+}
+
+.fidget-tab::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 50%;
+  width: 15px;
+  transform: translateX(-50%);
+  background: repeating-linear-gradient(to right, var(--faint) 0 1px, transparent 1px 6px);
+}
+
+/* Wear. Nothing says how many times you have pulled it - the tab just stops
+   looking new: a nick bitten out of the top edge, then the grip rubbed
+   smooth, then the thing is simply red. */
+.fidget-tab.wear-1::after,
+.fidget-tab.wear-2::after,
+.fidget-tab.wear-3::after {
+  content: '';
+  position: absolute;
+  top: -3px;
+  left: 12px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--bg);
+}
+
+.fidget-tab.wear-2::before,
+.fidget-tab.wear-3::before {
+  opacity: 0.4;
+}
+
+.fidget-tab.wear-3 {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.fidget-tab.wear-3::before {
+  background: repeating-linear-gradient(to right, var(--paper) 0 1px, transparent 1px 6px);
+  opacity: 0.55;
+}
+
+.fidget-body {
+  width: 220px;
+  height: var(--travel);
+  display: flex;
+  align-items: center;
+  padding: 14px 17px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-bottom: none;
+  border-radius: 11px 11px 0 0;
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.2);
+}
+
+.fidget-line {
+  margin: 0;
+  font-family: 'mencken-std-text', serif;
+  font-size: 15px;
+  line-height: 1.35;
+  color: var(--ink);
+}
+
+.fidget-line.dim {
+  color: var(--faint);
+}
+
+/* A slot in the bottom edge, tucked in beside the drawer, for when you want
+   the drop out of the way. It sits under the drop rather than over it, so a
+   parked one shows inside the box rather than behind it. */
+.ball-box {
+  position: fixed;
+  bottom: 0;
+  width: 34px;
+  height: 22px;
+  z-index: 22;
+  border: 1px solid var(--line);
+  border-top: none;
+  border-radius: 0 0 7px 7px;
+  background: var(--bg);
+  user-select: none;
+  transition:
+    border-color 140ms ease,
+    transform 160ms cubic-bezier(0.3, 1.2, 0.4, 1);
+}
+
+.ball-box.over {
+  border-color: var(--accent);
+  transform: translateY(-4px);
+}
+
+.ball-box.full {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+}
+
 /* The paddle: a bar through the cursor, square to wherever it is going, so a
    swipe upward presents a flat edge. Its transform is written every pointer
    move and never through state - it is a cursor, effectively. */

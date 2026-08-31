@@ -14,7 +14,10 @@ const BALL_R = DROP / 2
 const PADDLE_W = 78
 const PADDLE_H = 6
 const PADDLE_REACH = 210
-const PADDLE_WAKE = 40
+// It takes a real swipe to wake the bar, not a drift across the screen, and
+// the cursor velocity is heavily smoothed - at a low threshold with a light
+// filter the bar flickered in and out and spun on every twitch.
+const PADDLE_WAKE = 165
 
 const DROP_HOMES: { prefix: string; x: number; y: number }[] = [
   { prefix: '#/music', x: 0.08, y: 0.34 },
@@ -118,7 +121,7 @@ function InkDrop({ route }: { route: string }) {
   // bar swings as you turn and a box would catch the ball on its wrong side.
   const paddleHit = (t: number) => {
     const s = st.current
-    if (s.dragging || t - s.lastHit < 90) return
+    if (s.dragging || s.parked || t - s.lastHit < 90) return
     const speed = Math.hypot(s.pvx, s.pvy)
     if (speed < PADDLE_WAKE) return
     const bx = s.x + BALL_R
@@ -214,8 +217,8 @@ function InkDrop({ route }: { route: string }) {
         // cursor jitters between two frames.
         const vx = ((e.clientX - s.px) / dt) * 1000
         const vy = ((e.clientY - s.py) / dt) * 1000
-        s.pvx = s.pvx * 0.55 + vx * 0.45
-        s.pvy = s.pvy * 0.55 + vy * 0.45
+        s.pvx = s.pvx * 0.74 + vx * 0.26
+        s.pvy = s.pvy * 0.74 + vy * 0.26
       }
       s.px = e.clientX
       s.py = e.clientY
@@ -225,6 +228,7 @@ function InkDrop({ route }: { route: string }) {
       if (speed > PADDLE_WAKE) s.angle = Math.atan2(s.pvy, s.pvx) + Math.PI / 2
       const near =
         !s.dragging &&
+        !s.parked &&
         speed > PADDLE_WAKE &&
         Math.hypot(s.x + BALL_R - s.px, s.y + BALL_R - s.py) < PADDLE_REACH
       const pad = padRef.current

@@ -8,9 +8,14 @@ import type { Category, SleepData } from './types'
 const TRAVEL = 132
 const SNAP = 0.42
 const PULLS_KEY = 'life_drawer_pulls'
-// How long the pointer has to stay out of the bottom half before the drawer
-// starts sliding open by itself, and how long it takes to get all the way out.
-const LEAK_DELAY_MS = 4000
+// The leak is meant to be rare enough to be a surprise, so it is a coin the
+// app flips every so often rather than a timer that always fires: roughly once
+// every five minutes of the pointer staying out of the bottom half, never
+// twice inside a couple of minutes, and eighteen seconds to slide all the way
+// out once it does.
+const LEAK_CHECK_MS = 30000
+const LEAK_CHANCE = 0.1
+const LEAK_COOLDOWN_MS = 120000
 const LEAK_MS = 18000
 
 // The tab slides along the bottom edge from page to page - finding it is part
@@ -104,7 +109,7 @@ export function Drawer({ route }: { route: string }) {
   const lastLine = useRef<string | null>(null)
   const modeRef = useRef<Mode>('shut')
   const inBottom = useRef(false)
-  const awaySince = useRef(Date.now())
+  const lastLeak = useRef(Date.now())
   const open = mode !== 'shut'
 
   modeRef.current = mode
@@ -154,16 +159,18 @@ export function Drawer({ route }: { route: string }) {
       const bottom = e.clientY > window.innerHeight * 0.52
       inBottom.current = bottom
       if (!bottom) return
-      awaySince.current = Date.now()
+      lastLeak.current = Date.now()
       setMode((m) => (m === 'leaking' ? 'shut' : m))
     }
     window.addEventListener('pointermove', onMove)
     const tick = window.setInterval(() => {
       if (inBottom.current || modeRef.current !== 'shut') return
-      if (Date.now() - awaySince.current < LEAK_DELAY_MS) return
+      if (Date.now() - lastLeak.current < LEAK_COOLDOWN_MS) return
+      if (Math.random() > LEAK_CHANCE) return
+      lastLeak.current = Date.now()
       fill(pulls)
       setMode('leaking')
-    }, 900)
+    }, LEAK_CHECK_MS)
     return () => {
       window.removeEventListener('pointermove', onMove)
       window.clearInterval(tick)
