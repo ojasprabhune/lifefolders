@@ -4199,244 +4199,32 @@ header > .brand {
   cursor: pointer;
 }
 
-@property --peel-size {
-  syntax: '<length>';
-  inherits: false;
-  initial-value: 0px;
-}
-
-/* The drawer. A tab on the bottom edge that you pull upward, sitting at a
-   different spot along that edge on every page (SPOTS in Drawer.tsx) so
-   finding it is part of it. Only the wrapper moves: the tab and the body are
-   stacked and slide as a pair, which is why the body needs no position of its
-   own and why the travel is exactly the body's height. The bezier overshoots
-   a little - a drawer that stops dead feels stuck. */
-.fidget {
+/* The paddle: a bar through the cursor, square to wherever it is going, so a
+   swipe upward presents a flat edge. Its transform is written every pointer
+   move and never through state - it is a cursor, effectively. */
+.paddle {
   position: fixed;
-  bottom: 0;
-  z-index: 30;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  /* half the body, so the left percentage centres the drawer rather than
-     starting it. */
-  margin-left: -110px;
-  transform: translateY(var(--travel));
-  transition: transform 320ms cubic-bezier(0.2, 1.25, 0.35, 1);
-}
-
-/* A drag beats these with an inline transform, then hands back on release. */
-.fidget.pulled,
-.fidget.leaking {
-  transform: translateY(0);
-}
-
-/* The leak is the whole joke, so it has to be slow enough that you notice it
-   only once it is already half out. Shutting is not slow: the base transition
-   above takes it back, and a transition interrupted mid-flight starts from
-   wherever it had got to, which is exactly the snatch we want. */
-.fidget.leaking {
-  transition: transform var(--leak) linear;
-}
-
-.fidget-tab {
-  flex: none;
-  position: relative;
-  width: 62px;
-  height: 17px;
-  padding: 0;
-  border: 1px solid var(--line);
-  border-bottom: none;
-  border-radius: 7px 7px 0 0;
-  background: var(--bg);
-  cursor: grab;
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
-}
-
-.fidget-tab:active {
-  cursor: grabbing;
-}
-
-.fidget-tab::before {
-  content: '';
-  position: absolute;
-  top: 4px;
-  bottom: 4px;
-  left: 50%;
-  width: 15px;
-  transform: translateX(-50%);
-  background: repeating-linear-gradient(to right, var(--faint) 0 1px, transparent 1px 6px);
-}
-
-/* Wear. Nothing says how many times you have pulled it - the tab just stops
-   looking new: a nick bitten out of the top edge, then the grip rubbed
-   smooth, then the thing is simply red. */
-.fidget-tab.wear-1::after,
-.fidget-tab.wear-2::after,
-.fidget-tab.wear-3::after {
-  content: '';
-  position: absolute;
-  top: -3px;
-  left: 12px;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--bg);
-}
-
-.fidget-tab.wear-2::before,
-.fidget-tab.wear-3::before {
-  opacity: 0.4;
-}
-
-.fidget-tab.wear-3 {
-  background: var(--accent);
-  border-color: var(--accent);
-}
-
-.fidget-tab.wear-3::before {
-  background: repeating-linear-gradient(to right, var(--paper) 0 1px, transparent 1px 6px);
-  opacity: 0.55;
-}
-
-.fidget-body {
-  width: 220px;
-  height: var(--travel);
-  display: flex;
-  align-items: center;
-  padding: 14px 17px;
-  background: var(--bg);
-  border: 1px solid var(--line);
-  border-bottom: none;
-  border-radius: 11px 11px 0 0;
-  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.2);
-}
-
-.fidget-line {
-  margin: 0;
-  font-family: 'mencken-std-text', serif;
-  font-size: 15px;
-  line-height: 1.35;
-  color: var(--ink);
-}
-
-.fidget-line.dim {
-  color: var(--faint);
-}
-
-.fidget-rail {
-  position: relative;
-  width: 100%;
-  height: 28px;
-}
-
-.fidget-rail::before {
-  content: '';
-  position: absolute;
-  left: 6px;
-  right: 6px;
-  top: 50%;
-  height: 2px;
-  border-radius: 1px;
-  background: var(--line);
-}
-
-.fidget-bead {
-  position: absolute;
   top: 0;
   left: 0;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: var(--accent);
-  cursor: grab;
-  touch-action: none;
-}
-
-.fidget-bead:active {
-  cursor: grabbing;
-}
-
-/* A slot in the bottom edge, tucked in beside the drawer, for when you want
-   the drop out of the way. It sits under the drop rather than over it, so a
-   parked one shows inside the box rather than behind it. */
-.ball-box {
-  position: fixed;
-  bottom: 0;
-  width: 34px;
-  height: 22px;
-  z-index: 22;
-  border: 1px solid var(--line);
-  border-top: none;
-  border-radius: 0 0 7px 7px;
-  background: var(--bg);
-  user-select: none;
-  transition:
-    border-color 140ms ease,
-    transform 160ms cubic-bezier(0.3, 1.2, 0.4, 1);
-}
-
-.ball-box.over {
-  border-color: var(--accent);
-  transform: translateY(-4px);
-}
-
-.ball-box.full {
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
-}
-
-/* The corner of the page. The only one of these you have to find: it is not
-   drawn at all until the pointer comes near the bottom right, and the size
-   the fold springs back to is the whole animation - width and height are what
-   move, so the triangle and the text it uncovers stay in step. */
-.peel {
-  position: fixed;
-  right: 0;
-  bottom: 0;
-  width: var(--peel-size);
-  height: var(--peel-size);
-  z-index: 24;
-  transition: --peel-size 420ms cubic-bezier(0.2, 1.55, 0.35, 1);
-}
-
-.peel-curl {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  clip-path: polygon(100% 0, 100% 100%, 0 100%);
-  background: linear-gradient(
-    315deg,
-    color-mix(in srgb, var(--line) 92%, var(--ink)) 0%,
-    var(--line) 38%,
-    color-mix(in srgb, var(--line) 45%, var(--bg)) 100%
-  );
-  cursor: grab;
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
-  filter: drop-shadow(-3px -3px 9px rgba(0, 0, 0, 0.3));
-}
-
-.peel-curl:active {
-  cursor: grabbing;
-}
-
-/* The line is printed on the back of the corner, so it lives inside the
-   triangle and is uncovered by the fold rather than revealed all at once.
-   Narrow enough to sit in the widest part of it. */
-.peel-line {
-  position: absolute;
-  right: 7px;
-  bottom: 6px;
-  width: 104px;
-  text-align: right;
-  font-family: 'mencken-std-text', serif;
-  font-size: 11px;
-  line-height: 1.25;
-  color: color-mix(in srgb, var(--ink) 70%, var(--line));
+  width: 78px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--paper);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+  opacity: 0;
   pointer-events: none;
+  z-index: 25;
+  transition: opacity 130ms ease;
+}
+
+.paddle.up {
+  opacity: 0.92;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .paddle {
+    transition: none;
+  }
 }
 
 /* The send button is a stamp. The plate takes currentColor so the disabled
@@ -4564,7 +4352,6 @@ header > .brand {
 
 @media (prefers-reduced-motion: reduce) {
   .fidget,
-  .peel,
   .ball-box,
   .send-btn.stamp,
   .stamp-plate {

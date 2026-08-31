@@ -63,19 +63,6 @@ export const COUNTED = [
   (n: number) => `${n} pulls, zero findings.`,
 ]
 
-export const PEELS = [
-  'nothing under here either.',
-  'stop that.',
-  'you found the corner.',
-  'the page underneath is the same page.',
-  'careful, it tears.',
-  'made you look.',
-  'this is load-bearing. probably.',
-  'no notes on the back.',
-  'the corner would prefer to lie flat.',
-  'you are going to wear this out.',
-]
-
 export const STAMP_WORDS = [
   'SEEN',
   'NOTED',
