@@ -326,22 +326,20 @@ pub async fn apply(
             }
 
             let spent = focus::minutes_by_task(state, 14).await?;
-            let mut brief = format!(
-                "It is {} on {}.\nOpen sidequests:\n",
-                now_local.format("%-I:%M%p").to_string().to_lowercase(),
-                now_local.format("%A %Y-%m-%d")
-            );
-            for t in &open {
+            let line = |t: &Task| {
                 let due = match (t.due_date, t.due_time) {
                     (Some(d), Some(time)) => format!("due {d} at {}", time.format("%-I:%M%p")),
                     (Some(d), None) if d == today => "due today".into(),
                     (Some(d), None) => format!("due {d}"),
                     (None, _) => "no deadline".into(),
                 };
+                // An estimate typed into the note counts, because that is where
+                // people put them before the field existed.
                 let effort = t
                     .effort_minutes
-                    .map(|m| format!(", about {m}m of work"))
-                    .unwrap_or_default();
+                    .or_else(|| t.note.as_deref().and_then(tasks::effort_from_text))
+                    .map(|m| format!(", takes about {m} minutes"))
+                    .unwrap_or_else(|| ", no estimate".into());
                 let history = match spent.iter().find(|(id, ..)| *id == t.id) {
                     Some((_, mins, count, last)) => format!(
                         ", {mins}m of focus across {count} sessions, last on {}",
@@ -349,10 +347,32 @@ pub async fn apply(
                     ),
                     None => ", never worked on".into(),
                 };
-                brief.push_str(&format!(
-                    "- {} [{}] {due}, {}{effort}{history}\n",
-                    t.title, t.category, t.status
-                ));
+                format!("- {} [{}] {due}, {}{effort}{history}\n", t.title, t.category, t.status)
+            };
+
+            // Split rather than sorted: the model kept spreading the whole open
+            // list across the evening, so which side of the line a sidequest
+            // falls on has to be stated rather than inferred from its date.
+            let (now_due, later): (Vec<&Task>, Vec<&Task>) =
+                open.iter().partition(|t| t.due_date.is_some_and(|d| d <= today));
+            let mut brief = format!(
+                "It is {} on {}.\n",
+                now_local.format("%-I:%M%p").to_string().to_lowercase(),
+                now_local.format("%A %Y-%m-%d")
+            );
+            brief.push_str("\nDUE TODAY OR ALREADY LATE - plan these:\n");
+            if now_due.is_empty() {
+                brief.push_str("(nothing)\n");
+            }
+            for t in &now_due {
+                brief.push_str(&line(t));
+            }
+            brief.push_str("\nNOT DUE YET - only if everything above is placed:\n");
+            if later.is_empty() {
+                brief.push_str("(nothing)\n");
+            }
+            for t in &later {
+                brief.push_str(&line(t));
             }
 
             let Some(plan) = groq::plan_today(&state.http, &state.groq_key, &brief).await else {

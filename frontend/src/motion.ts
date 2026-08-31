@@ -137,3 +137,31 @@ export function useTextFlash<T extends HTMLElement>(enabled = true) {
 
   return ref
 }
+
+/**
+ * The reverse of strikeOut: a row that has come back opens from nothing and
+ * overshoots slightly on the way, so it reads as landing rather than simply
+ * being there. The rows below it are pushed down by the height change, and the
+ * caller's FLIP carries them - which is the ripple.
+ */
+export function unfold(el: HTMLElement | null) {
+  if (!el || prefersReducedMotion()) return
+  // Measure the row at rest. A previous run of this animation still on the
+  // element is holding it near zero, so measuring over the top of one gives a
+  // height of about 1px and the row appears to jump instead of opening.
+  el.getAnimations().forEach((a) => a.cancel())
+  const height = el.getBoundingClientRect().height
+  el.style.overflow = 'hidden'
+  const anim = el.animate(
+    [
+      { height: '0px', opacity: 0, transform: 'translateY(-6px)' },
+      { height: `${height}px`, opacity: 1, transform: 'translateY(0)' },
+    ],
+    { duration: 380, easing: 'cubic-bezier(0.34, 1.4, 0.64, 1)' },
+  )
+  const clear = () => {
+    el.style.overflow = ''
+  }
+  anim.onfinish = clear
+  anim.oncancel = clear
+}

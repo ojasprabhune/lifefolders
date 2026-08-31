@@ -409,6 +409,11 @@ function Home() {
     // lands there and the view stays put, rather than snapping back to today.
     const forDate = isToday ? undefined : date
 
+    // A cold backend doesn't reject, it just takes a very long time - so the
+    // catch below never fires for the case the notice is actually for. Anything
+    // still in flight after this long is a wake-up, not a slow response.
+    const slow = window.setTimeout(markBackendOffline, 2500)
+
     for (let attempt = 0; ; attempt++) {
       try {
         const {
@@ -416,6 +421,7 @@ function Home() {
           notice: message,
           focus_session,
         } = await createLog(rawText, forDate)
+        window.clearTimeout(slow)
         markBackendOnline()
         const createdIds = new Set(created.map((x) => x.id))
         const sleeps = created.filter((x) => x.parsed_type === 'sleep')
@@ -440,6 +446,7 @@ function Home() {
         if (created.length === 0) void refresh(date)
         return
       } catch {
+        window.clearTimeout(slow)
         if (attempt === 0) markBackendOffline()
         const delay = RETRY_DELAYS_MS[attempt]
         if (delay === undefined) {

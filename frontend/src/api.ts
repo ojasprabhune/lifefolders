@@ -99,9 +99,19 @@ export function setSleepGoalMin(min: number) {
 // Unauthenticated and DB-free on the backend, so this succeeds the instant
 // the process is up even if the Postgres connection or a real query would
 // still be slow - the cheapest possible "is it alive" probe.
+// The timeout is the whole point. A sleeping Render service doesn't refuse the
+// connection, it holds it open for the 30-60s the container takes to boot and
+// then answers 200 - so without a deadline this never returns false and the
+// "waking up the server" notice never appeared for the one case it exists for.
+// An awake backend answers this in well under a second.
+const HEALTH_TIMEOUT_MS = 3000
+
 export async function checkHealth(): Promise<boolean> {
   try {
-    const res = await fetch(`${API}/health`, { cache: 'no-store' })
+    const res = await fetch(`${API}/health`, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS),
+    })
     return res.ok
   } catch {
     return false
@@ -381,6 +391,7 @@ export async function patchTask(
     due_time: string
     category: string
     effort_minutes: number
+    clear_effort: boolean
     is_exam: boolean
     note: string
   }>,

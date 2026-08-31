@@ -571,6 +571,10 @@ pub struct PatchTask {
     // appends (see update_task). Correcting a note you can see on screen has
     // to be able to shorten it, not only grow it.
     pub note: Option<String>,
+    // update_task COALESCEs effort_minutes, so a null there means "leave it
+    // alone" and there is otherwise no way to take an estimate back off.
+    #[serde(default)]
+    pub clear_effort: bool,
 }
 
 pub async fn patch_task(
@@ -609,6 +613,15 @@ pub async fn patch_task(
     // Both applied after update_task rather than through it: it treats title
     // as the thing to match an existing task *by*, and appends to note rather
     // than replacing. Editing either field on screen means replace.
+    if body.clear_effort {
+        task = sqlx::query_as(&format!(
+            "UPDATE tasks SET effort_minutes = NULL WHERE id = $1 RETURNING {TASK_COLUMNS}"
+        ))
+        .bind(id)
+        .fetch_one(&state.pool)
+        .await?;
+    }
+
     let new_title = body.title.as_deref().map(str::trim).filter(|t| !t.is_empty());
     if new_title.is_some() || body.note.is_some() {
         let note = body.note.as_deref().map(str::trim).filter(|n| !n.is_empty());
@@ -861,9 +874,92 @@ pub async fn patch_checkpoint(
     Ok(Json(cp))
 }
 
+/// Minutes of work read out of free text: "3 hr", "1.5h", "30m", "2h30",
+/// "45 minutes". Used as a fallback when a sidequest has no explicit estimate,
+/// because people wrote their estimates into the note before there was a field
+/// for them. A bare number with no unit is ignored - "physics ps5" and "read
+/// pages 30-40" are not durations - except directly after an hours figure,
+/// which is how "2h30" is written.
+pub(crate) fn effort_from_text(s: &str) -> Option<i32> {
+    let lower = s.to_lowercase();
+    let b = lower.as_bytes();
+    let mut total = 0.0f64;
+    let mut found = false;
+    let mut after_hours = false;
+    let mut i = 0;
+    while i < b.len() {
+        if !b[i].is_ascii_digit() {
+            // Only whitespace may sit between "2h" and its "30".
+            if !b[i].is_ascii_whitespace() {
+                after_hours = false;
+            }
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < b.len() && (b[i].is_ascii_digit() || b[i] == b'.') {
+            i += 1;
+        }
+        let Ok(n) = lower[start..i].parse::<f64>() else {
+            after_hours = false;
+            continue;
+        };
+        let mut j = i;
+        while j < b.len() && b[j] == b' ' {
+            j += 1;
+        }
+        let unit_start = j;
+        while j < b.len() && b[j].is_ascii_alphabetic() {
+            j += 1;
+        }
+        let unit = &lower[unit_start..j];
+        if unit.starts_with("hr") || unit == "h" || unit.starts_with("hour") {
+            total += n * 60.0;
+            found = true;
+            after_hours = true;
+            i = j;
+        } else if unit == "m" || unit.starts_with("min") {
+            total += n;
+            found = true;
+            after_hours = false;
+            i = j;
+        } else if after_hours && unit.is_empty() {
+            total += n;
+            after_hours = false;
+        }
+    }
+    let minutes = total.round() as i32;
+    // A whole day of work in one sidequest is a typo, not an estimate.
+    (found && minutes > 0 && minutes <= 16 * 60).then_some(minutes)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{explicit_note, strip_markers};
+    use super::{effort_from_text, explicit_note, strip_markers};
+
+    #[test]
+    fn durations_are_read_out_of_free_text() {
+        assert_eq!(effort_from_text("3 hr"), Some(180));
+        assert_eq!(effort_from_text("1.5 hr"), Some(90));
+        assert_eq!(effort_from_text("30 min"), Some(30));
+        assert_eq!(effort_from_text("25m"), Some(25));
+        assert_eq!(effort_from_text("2h30"), Some(150));
+        assert_eq!(effort_from_text("1h 30m"), Some(90));
+        assert_eq!(effort_from_text("takes about 45 minutes i think"), Some(45));
+        assert_eq!(effort_from_text("2 hours"), Some(120));
+    }
+
+    #[test]
+    fn a_bare_number_is_not_a_duration() {
+        // Every one of these is a real note that must not become an estimate.
+        assert_eq!(effort_from_text("physics ps5"), None);
+        assert_eq!(effort_from_text("read pages 30-40"), None);
+        assert_eq!(effort_from_text("did 20 of 30 problems"), None);
+        assert_eq!(effort_from_text("ch 3 only"), None);
+        assert_eq!(effort_from_text(""), None);
+        // 20 hours of work on one sidequest is a typo.
+        assert_eq!(effort_from_text("20 hr"), None);
+    }
 
     #[test]
     fn note_marker_takes_everything_after_it() {

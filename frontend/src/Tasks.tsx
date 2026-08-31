@@ -11,7 +11,7 @@ import {
 } from './api'
 import { dayLabel, dueLabel } from './dates'
 import { Expand } from './Expand'
-import { strikeOut, useFlipList } from './motion'
+import { strikeOut, unfold, useFlipList } from './motion'
 import { Panel, usePanelState } from './Panel'
 import type { FocusSession, TaskCheckpoint, TaskWithCheckpoints } from './types'
 import { Quip } from './Quip'
@@ -29,12 +29,16 @@ const CHANGE_MS = 1300
 // only place that catches all of them.
 export type TaskChange =
   | { kind: 'done' }
+  | { kind: 'undone' }
   | { kind: 'reschedule'; from: string | null }
   | { kind: 'recategorize' }
   | { kind: 'note' }
 
 function diffTask(before: TaskWithCheckpoints, after: TaskWithCheckpoints): TaskChange | null {
   if (before.status !== 'done' && after.status === 'done') return { kind: 'done' }
+  // Coming back - an undo, or clicking the circle round again. Worth its own
+  // marker because the row has to unfold rather than simply appear.
+  if (before.status === 'done' && after.status !== 'done') return { kind: 'undone' }
   if (before.due_date !== after.due_date) return { kind: 'reschedule', from: before.due_date }
   if (before.is_exam !== after.is_exam || before.category !== after.category) {
     return { kind: 'recategorize' }
@@ -70,7 +74,9 @@ export function Tasks({ open }: { open: boolean }) {
       // Captured before the state change, while the old layout is still on
       // screen - a reschedule or a recategorize moves the row to a new place
       // in the sort, and the glide needs where it used to be.
-      const moves = [...found.values()].some((c) => c.kind === 'reschedule' || c.kind === 'recategorize')
+      const moves = [...found.values()].some(
+        (c) => c.kind === 'reschedule' || c.kind === 'recategorize' || c.kind === 'undone',
+      )
       if (moves) captureRows()
       setLeaving(
         [...found.entries()]
@@ -378,6 +384,31 @@ function dayOfMonth(dateStr: string): number {
   return new Date(dateStr + 'T00:00').getDate()
 }
 
+export function formatEffort(minutes: number): string {
+  if (minutes < 60) return `${minutes}m`
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  return m === 0 ? `${h}h` : `${h}h${m}`
+}
+
+// Deliberately forgiving, because this is a box you type into in a hurry:
+// "90", "90m", "1.5h", "1h30", "2 hours" all mean what they look like. A bare
+// number is minutes, which is the only reading that makes sense in a field
+// labelled with a duration.
+function parseEffort(text: string): number | null {
+  const s = text.trim().toLowerCase()
+  if (!s) return null
+  const compact = s.match(/^(\d+)\s*h\s*(\d+)\s*m?$/)
+  if (compact) return Number(compact[1]) * 60 + Number(compact[2])
+  const single = s.match(/^(\d+(?:\.\d+)?)\s*([a-z]*)$/)
+  if (!single) return null
+  const n = Number(single[1])
+  const unit = single[2]
+  if (unit.startsWith('h')) return Math.round(n * 60)
+  if (unit === '' || unit === 'm' || unit.startsWith('min')) return Math.round(n)
+  return null
+}
+
 function formatDueTime(timeStr: string): string {
   return new Date(`2000-01-01T${timeStr}`)
     .toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
@@ -528,6 +559,57 @@ function CheckpointPill({
   )
 }
 
+// Sits next to the title in the expanded card. The estimate matters because
+// the day plan builds its blocks out of it - a sidequest with no estimate gets
+// a flat thirty minutes, which is how the plan ended up scheduling three hours
+// of research into half an hour.
+function EffortPill({ task, onRefresh }: { task: TaskWithCheckpoints; onRefresh: () => void }) {
+  const [draft, setDraft] = useState<string | null>(null)
+
+  const commit = async (raw: string | null) => {
+    setDraft(null)
+    if (raw === null) return
+    const next = raw.trim() === '' ? null : parseEffort(raw)
+    // Something typed that isn't a duration leaves the estimate alone rather
+    // than silently wiping it.
+    if (raw.trim() !== '' && next === null) return
+    if (next === task.effort_minutes) return
+    // Emptying the box takes the estimate off; the patch COALESCEs, so
+    // clearing needs its own flag rather than a null.
+    const patch = next === null ? { clear_effort: true } : { effort_minutes: next }
+    await patchTask(task.id, patch).catch(() => {})
+    onRefresh()
+  }
+
+  if (draft !== null) {
+    return (
+      <input
+        className="effort-pill-input"
+        autoFocus
+        placeholder="1h30"
+        value={draft}
+        onFocus={(e) => e.currentTarget.select()}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={(e) => void commit(e.currentTarget.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur()
+          if (e.key === 'Escape') setDraft(null)
+        }}
+      />
+    )
+  }
+
+  return (
+    <button
+      className={`effort-pill ${task.effort_minutes ? 'set' : ''}`}
+      title="how long you think this takes - the day plan uses it"
+      onClick={() => setDraft(task.effort_minutes ? formatEffort(task.effort_minutes) : '')}
+    >
+      {task.effort_minutes ? formatEffort(task.effort_minutes) : '+ time'}
+    </button>
+  )
+}
+
 function TaskRow({
   task,
   onCycle,
@@ -547,11 +629,12 @@ function TaskRow({
 }) {
   const isOverdue = task.due_date && task.due_date < dateToStr(new Date())
   const isSoon = !isOverdue && task.due_date && daysUntil(task.due_date) <= 2
-  const lastNote = task.note
-    ?.split('\n')
+  // Every line, not just the most recent one. A note builds up as you check in
+  // on something, and the earlier lines are the part you'd want back.
+  const noteLines = (task.note ?? '')
+    .split('\n')
     .map((line) => line.trim())
     .filter(Boolean)
-    .pop()
   const [expanded, setExpanded] = useState(false)
   const [sessions, setSessions] = useState<FocusSession[] | null>(null)
   const [dragging, setDragging] = useState(false)
@@ -560,9 +643,13 @@ function TaskRow({
   const [titleDraft, setTitleDraft] = useState(task.title)
   const wrapRef = useRef<HTMLDivElement>(null)
 
-  // The strike-through is CSS on the title; the collapse that follows it has
-  // to be measured, so it runs from here.
+  // Both of these need a measured height - `auto` is not animatable - so they
+  // run from here rather than as CSS on the row.
   useEffect(() => {
+    if (change?.kind === 'undone') {
+      unfold(wrapRef.current)
+      return
+    }
     if (change?.kind !== 'done') return
     strikeOut(wrapRef.current, onLeft)
     // onLeft is a fresh closure every render and re-running this would restart
@@ -672,10 +759,14 @@ function TaskRow({
               )}
             </div>
           )}
-          {task.effort_minutes && <div className="task-effort">{task.effort_minutes} min</div>}
-          {lastNote && (
+          {task.effort_minutes && (
+            <div className="task-effort">{formatEffort(task.effort_minutes)}</div>
+          )}
+          {noteLines.length > 0 && (
             <div className="task-note">
-              <span>{lastNote}</span>
+              {noteLines.map((line, i) => (
+                <span key={i}>{line}</span>
+              ))}
             </div>
           )}
         </div>
@@ -701,20 +792,23 @@ function TaskRow({
       </div>
       <Expand open={expanded}>
         <div className="task-note-edit">
-          <input
-            className="task-title-input"
-            value={titleDraft}
-            placeholder="title"
-            onChange={(e) => setTitleDraft(e.target.value)}
-            onBlur={() => void saveTitle()}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') e.currentTarget.blur()
-              if (e.key === 'Escape') {
-                setTitleDraft(task.title)
-                e.currentTarget.blur()
-              }
-            }}
-          />
+          <div className="task-title-row">
+            <input
+              className="task-title-input"
+              value={titleDraft}
+              placeholder="title"
+              onChange={(e) => setTitleDraft(e.target.value)}
+              onBlur={() => void saveTitle()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur()
+                if (e.key === 'Escape') {
+                  setTitleDraft(task.title)
+                  e.currentTarget.blur()
+                }
+              }}
+            />
+            <EffortPill task={task} onRefresh={onRefresh} />
+          </div>
           <textarea
             rows={2}
             value={noteDraft}

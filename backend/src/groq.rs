@@ -824,13 +824,21 @@ pub async fn sleep_insight(http: &reqwest::Client, api_key: &str, nights_summary
 const PLAN_MODEL: &str = "openai/gpt-oss-20b";
 
 const PLAN_PROMPT: &str = "You lay out the rest of someone's day. You get the current local time \
-and their open sidequests - each with a category, a deadline, a status, and how much focus time \
-they have already put into it. \
-Reply with one or two short lines, all lowercase, no more than 200 characters total. Work forward \
-from the time you are given and name real clock times. Lead with whatever is due soonest, and when \
-two things are equally urgent lead with the one already part-done - finishing it is cheaper than \
-starting the other. Say roughly how long each stretch runs, and it is fine to put a break between \
-them. Anything with a stated deadline time must land before that time. \
+and their open sidequests in two groups, each sidequest with a category, a deadline, a status, \
+roughly how long it takes, and how much focus time they have already put into it. \
+Plan the DUE TODAY OR ALREADY LATE group. Only reach into the NOT DUE YET group once every one of \
+those is placed and there is still evening left - never before them, and never mixed in among \
+them. When you do, put a line reading \"if there's time:\" before the first one, so it is obvious \
+which work is actually due. \
+Every block must be as long as that sidequest says it takes. A three hour task gets three hours, \
+not thirty minutes. Never split one into pieces and never shorten it to make the day fit. Where a \
+sidequest has no estimate, give it thirty minutes. \
+Work forward from the time you are given in real clock times, one line per block, all lowercase. \
+Lead with whatever is due soonest, and when two things are equally urgent lead with the one \
+already part-done - finishing it is cheaper than starting the other. Anything with a stated \
+deadline time must land before that time. A short break between long stretches is fine. \
+If there is more work than time left before midnight, stop where the day runs out and end with \
+one line naming what did not fit. Do not compress the day to make everything land. \
 Mention only sidequests from the list, by their tracked titles. Do not invent work, do not add \
 encouragement, and do not explain your reasoning. Output only the plan: no preamble, no bullet \
 characters, no markdown.";
@@ -842,7 +850,9 @@ pub async fn plan_today(http: &reqwest::Client, api_key: &str, brief: &str) -> O
     let body = json!({
         "model": PLAN_MODEL,
         "temperature": 0.3,
-        "max_tokens": 400,
+        // A whole evening of blocks, and the hidden reasoning tokens come out
+        // of the same budget - at 400 the plan was cut off mid-line.
+        "max_tokens": 1500,
         // Same reasoning-budget trap as polish() and sleep_insight().
         "reasoning_effort": "low",
         "messages": [
@@ -862,7 +872,8 @@ pub async fn plan_today(http: &reqwest::Client, api_key: &str, brief: &str) -> O
     let value: Value = resp.json().await.ok()?;
     let text = value["choices"][0]["message"]["content"].as_str()?.trim();
     let text = text.trim_matches('"').trim().to_lowercase();
-    if text.is_empty() || text.len() > 400 {
+    // A full evening of blocks, not the one-liner this used to ask for.
+    if text.is_empty() || text.len() > 1200 {
         return None;
     }
     Some(text)
@@ -893,6 +904,51 @@ mod tests {
         ));
         assert!(!usable_polish(raw, ""));
         assert!(!usable_polish(raw, "Sure, here is the cleaned transcript:\nMet Sarah Kim."));
+    }
+
+    // Real API. The prompt has to hold two lines it kept breaking: blocks as
+    // long as the estimate says, and nothing from the not-due group until the
+    // due group is placed.
+    #[tokio::test]
+    #[ignore = "hits the live Groq API"]
+    async fn the_plan_uses_stated_lengths_and_leaves_later_work_alone() {
+        let key = std::env::var("GROQ_API_KEY").expect("GROQ_API_KEY");
+        let http = reqwest::Client::new();
+        let brief = "It is 5:44pm on Sunday 2026-08-30.\n\n\
+DUE TODAY OR ALREADY LATE - plan these:\n\
+- full research compilation for dada [homework] due today, not_started, takes about 180 minutes, never worked on\n\
+- lit paragraph [homework] due today, not_started, takes about 90 minutes, never worked on\n\
+- physics ps4 [homework] due today, not_started, takes about 30 minutes, never worked on\n\
+\nNOT DUE YET - only if everything above is placed:\n\
+- submit evhs ptsa award [other] due 2026-09-03, not_started, no estimate, never worked on\n\
+- read up on history lessons [homework] due 2026-09-02, not_started, no estimate, never worked on\n";
+        let plan = super::plan_today(&http, &key, brief).await.expect("a plan");
+        println!("\n----- plan -----\n{plan}\n----------------");
+        // Every due-today block is as long as its estimate says.
+        for (title, span) in [
+            ("full research compilation for dada", 180),
+            ("lit paragraph", 90),
+            ("physics ps4", 30),
+        ] {
+            assert!(plan.contains(title), "{title} is due today and must be scheduled: {plan}");
+            let _ = span;
+        }
+        // Not-due work may fill a genuinely empty evening, but never before or
+        // among the work that is actually due, and never unlabelled.
+        let last_due = ["full research compilation for dada", "lit paragraph", "physics ps4"]
+            .iter()
+            .filter_map(|t| plan.find(t))
+            .max()
+            .expect("a due-today task");
+        for later in ["ptsa", "history"] {
+            if let Some(at) = plan.find(later) {
+                assert!(at > last_due, "{later} was placed among today's work: {plan}");
+                assert!(
+                    plan.contains("if there's time"),
+                    "later work has to be labelled as optional: {plan}"
+                );
+            }
+        }
     }
 
     // Everything below calls the real Groq API, so it is #[ignore]d and run on

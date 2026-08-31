@@ -1934,10 +1934,90 @@ header > .brand {
 }
 
 .task-note {
+  display: flex;
+  flex-direction: column;
   font-size: 12px;
   color: var(--muted);
   font-style: italic;
   margin-top: 2px;
+}
+
+.task-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.task-title-row .task-title-input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Deliberately styled like the checkpoint pills above it - same shape, same
+   click-to-edit behaviour, so it reads as part of the same row of controls. */
+.effort-pill,
+.effort-pill-input {
+  flex-shrink: 0;
+  font-family: 'calling-code', monospace;
+  font-size: 11px;
+  line-height: 1;
+  padding: 5px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--faint);
+  cursor: pointer;
+}
+
+.effort-pill:hover {
+  color: var(--ink);
+  border-color: var(--muted);
+}
+
+.effort-pill.set {
+  color: var(--focus);
+  border-color: color-mix(in srgb, var(--focus) 45%, transparent);
+}
+
+.effort-pill-input {
+  width: 56px;
+  text-align: center;
+  color: var(--ink);
+  cursor: text;
+}
+
+/* Coming back from an undo. The row unfolds from nothing (measured in JS, see
+   motion.ts) and the rows below it are carried down by the panel's FLIP, which
+   is what makes it ripple rather than jump. */
+.did-undone .task-title {
+  animation: undone-lift 380ms cubic-bezier(0.34, 1.4, 0.64, 1) both;
+}
+
+@keyframes undone-lift {
+  0% {
+    color: var(--muted);
+    letter-spacing: 0.04em;
+  }
+  100% {
+    letter-spacing: 0;
+  }
+}
+
+.did-undone::before {
+  content: '';
+  position: absolute;
+  left: -8px;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--focus);
+  transform-origin: center;
+  animation: edge-wipe 520ms cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+
+.did-undone {
+  position: relative;
 }
 
 /* --- what just happened to a sidequest -------------------------------------
@@ -3589,6 +3669,8 @@ header > .brand {
   .task-due-was,
   .did-recategorize::before,
   .did-recategorize,
+  .did-undone::before,
+  .did-undone .task-title,
   .did-note .task-note,
   .did-note .task-note > span,
   .did-done .task-title::after,
@@ -3599,6 +3681,7 @@ header > .brand {
 
   .task-due-was,
   .did-recategorize::before,
+  .did-undone::before,
   .did-done .task-title::after {
     display: none;
   }
