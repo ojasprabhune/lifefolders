@@ -18,6 +18,17 @@ import type { TaskWithCheckpoints } from './types'
 // here replaces the whole plan rather than patching one row - moving one thing
 // re-times everything under it.
 
+// A press that might become a drag must not also start a text selection. The
+// `user-select: none` on the dragging class arrives too late - the browser has
+// already begun selecting by the time the movement threshold is crossed - and
+// applying it afterwards doesn't clear a selection that exists. Blocking
+// selectstart for the life of the gesture stops one forming at all, without
+// preventDefault on pointerdown, which would also swallow the focus change
+// that commits an open field.
+function blockSelection(e: Event) {
+  e.preventDefault()
+}
+
 function clockLabel(hhmm: string): string {
   const [h, m] = hhmm.split(':').map(Number)
   const suffix = h >= 12 ? 'pm' : 'am'
@@ -163,6 +174,7 @@ export function DayPlanner({
     const rects = rows.map((r) => r.getBoundingClientRect())
     if (!rects[index]) return
     setAdding(null)
+    document.addEventListener('selectstart', blockSelection)
     dragRef.current = {
       id,
       from: index,
@@ -183,6 +195,9 @@ export function DayPlanner({
     if (!d.moved) {
       if (Math.abs(dy) < 4) return
       d.moved = true
+      // Anything that got selected in the four pixels before we knew this was
+      // a drag goes away now.
+      window.getSelection()?.removeAllRanges()
       setHeld({ id: d.id, from: d.from, height: d.heights[d.from] })
       setOverIndex(d.from)
     }
@@ -206,6 +221,7 @@ export function DayPlanner({
     const d = dragRef.current
     if (!d) return
     dragRef.current = null
+    document.removeEventListener('selectstart', blockSelection)
     const to = overIndex
     const clear = () => {
       d.el.style.transform = ''

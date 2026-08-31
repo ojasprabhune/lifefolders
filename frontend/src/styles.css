@@ -4054,6 +4054,13 @@ header > .brand {
 
 .planner-list.plan-dragging {
   cursor: grabbing;
+}
+
+/* Belt and braces with the selectstart guard in DayPlanner: this alone can't
+   fix it, because the selection starts before the drag threshold is crossed
+   and turning selection off afterwards doesn't undo one already made. */
+.planner-list.plan-dragging,
+.planner-list.plan-dragging * {
   user-select: none;
 }
 
