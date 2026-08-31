@@ -339,12 +339,12 @@ function InkDrop({
 // below the plank: shut, it sits exactly behind the face, and only its pull
 // shows past the right edge.
 const BOOKS: { domain: string; h: number; w: number; lean?: number }[] = [
-  { domain: 'music', h: 31, w: 7 },
-  { domain: 'task', h: 26, w: 6 },
-  { domain: 'food', h: 33, w: 8 },
-  { domain: 'gym', h: 24, w: 5 },
-  { domain: 'trip', h: 29, w: 7 },
-  { domain: 'learning', h: 25, w: 6, lean: -14 },
+  { domain: 'music', h: 24, w: 6 },
+  { domain: 'task', h: 20, w: 5 },
+  { domain: 'food', h: 26, w: 6 },
+  { domain: 'gym', h: 18, w: 4 },
+  { domain: 'trip', h: 23, w: 6 },
+  { domain: 'learning', h: 19, w: 5, lean: -14 },
 ]
 
 function Shelf({ route, boxRef }: { route: string; boxRef: React.RefObject<HTMLDivElement | null> }) {
@@ -369,8 +369,8 @@ function Shelf({ route, boxRef }: { route: string; boxRef: React.RefObject<HTMLD
           <i className="leaf c" />
           <i className="pot" />
         </span>
-        <span className="shelf-gap" />
         <div className="ball-box" ref={boxRef} />
+        <span className="shelf-gap" />
       </div>
       <div className="shelf-plank" />
       <div className="shelf-case">

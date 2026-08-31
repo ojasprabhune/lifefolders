@@ -6,7 +6,7 @@ import type { Category, SleepData } from './types'
 // How far the drawer travels, and how much of that you have to pull before
 // letting go commits to open. Short of it, it snaps back.
 // The body's width: shut, it is exactly hidden behind the cabinet face.
-const TRAVEL = 230
+const TRAVEL = 176
 const SNAP = 0.42
 const PULLS_KEY = 'life_drawer_pulls'
 // The leak is meant to be rare enough to be a surprise, so it is a coin the
@@ -65,7 +65,8 @@ async function factFor(route: string): Promise<string | null> {
     if (!logs.length) {
       return spot ? `nothing in ${spot.label} today.` : 'nothing logged today. the drawer matches.'
     }
-    return `the last thing you told me: "${logs[0].raw_input}"`
+    const said = logs[0].raw_input
+    return `the last thing you told me: "${said.length > 44 ? said.slice(0, 43).trimEnd() + '…' : said}"`
   } catch {
     return null
   }

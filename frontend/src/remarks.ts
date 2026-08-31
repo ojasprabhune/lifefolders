@@ -3,7 +3,7 @@
 
 export const NONSENSE = [
   'the drawer is empty. it was empty before you looked.',
-  'nothing. try again the same way and expect something else.',
+  'nothing. try again the same way, expect something else.',
   'a key. no idea what it opens.',
   "someone else's list: eggs, twine, a small hammer.",
   'one (1) spare hour. non-transferable.',
@@ -48,7 +48,7 @@ export const NONSENSE = [
   'a warranty card, unsent, for a thing long broken.',
   'a spare key to this drawer, which does not lock.',
   'four thumbtacks and a strong opinion.',
-  'the drawer has been asked to be more interesting and has declined.',
+  'the drawer was asked to be more interesting. it declined.',
 ]
 
 export const COUNTED = [
