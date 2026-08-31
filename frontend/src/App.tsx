@@ -7,6 +7,7 @@ import { Row } from './Row'
 import { adoptFocusSession, restoreFocusSession } from './focusEngine'
 import { Clock } from './Clock'
 import { DailyPlan } from './DailyPlan'
+import { Drawer } from './Drawer'
 import { useFlipList } from './motion'
 import { Guide } from './Guide'
 import { rememberPanel } from './lastPanel'
@@ -202,6 +203,7 @@ export default function App() {
       {content}
       <SleepReminder />
       <FocusPill route={route} />
+      <Drawer route={route} />
       {showClock && <Clock />}
     </>
   )

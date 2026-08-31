@@ -4180,3 +4180,181 @@ header > .brand {
 .due-col {
   cursor: pointer;
 }
+
+/* The drawer. A tab on one edge of the window that you pull out, sitting at a
+   different spot on every page (SPOTS in Drawer.tsx) so finding it is part of
+   it. Only the wrapper ever moves: the tab and the body sit side by side and
+   the whole pair slides, which is why the body needs no position of its own.
+   The bezier overshoots slightly - a drawer that stops dead feels stuck. */
+.fidget {
+  position: fixed;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  transition: transform 320ms cubic-bezier(0.2, 1.25, 0.35, 1);
+}
+
+.fidget.right {
+  right: 0;
+  transform: translateX(var(--travel));
+}
+
+.fidget.left {
+  left: 0;
+  flex-direction: row-reverse;
+  transform: translateX(calc(var(--travel) * -1));
+}
+
+/* After the side rules, so it wins at equal specificity. A drag beats both
+   with an inline transform, then hands back to these on release. */
+.fidget.open {
+  transform: translateX(0);
+}
+
+.fidget-tab {
+  flex: none;
+  position: relative;
+  width: 17px;
+  height: 58px;
+  padding: 0;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  cursor: grab;
+  touch-action: none;
+}
+
+.fidget-tab:active {
+  cursor: grabbing;
+}
+
+.fidget.right .fidget-tab {
+  border-right: none;
+  border-radius: 7px 0 0 7px;
+}
+
+.fidget.left .fidget-tab {
+  border-left: none;
+  border-radius: 0 7px 7px 0;
+}
+
+/* The grip. */
+.fidget-tab::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: 50%;
+  height: 13px;
+  transform: translateY(-50%);
+  background: repeating-linear-gradient(to bottom, var(--faint) 0 1px, transparent 1px 6px);
+}
+
+/* Wear. Nothing says how many times you have pulled it - the tab just stops
+   looking new: a nick out of the outer edge, then the grip rubbed smooth,
+   then the thing is simply red. */
+.fidget-tab.wear-1::after,
+.fidget-tab.wear-2::after,
+.fidget-tab.wear-3::after {
+  content: '';
+  position: absolute;
+  top: 13px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--bg);
+}
+
+.fidget.right .fidget-tab::after {
+  left: -3px;
+}
+
+.fidget.left .fidget-tab::after {
+  right: -3px;
+}
+
+.fidget-tab.wear-2::before,
+.fidget-tab.wear-3::before {
+  opacity: 0.4;
+}
+
+.fidget-tab.wear-3 {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.fidget-tab.wear-3::before {
+  background: repeating-linear-gradient(to bottom, var(--paper) 0 1px, transparent 1px 6px);
+  opacity: 0.55;
+}
+
+.fidget-body {
+  width: var(--travel);
+  min-height: 118px;
+  display: flex;
+  align-items: center;
+  padding: 16px 18px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.2);
+}
+
+.fidget.right .fidget-body {
+  border-right: none;
+  border-radius: 11px 0 0 11px;
+}
+
+.fidget.left .fidget-body {
+  border-left: none;
+  border-radius: 0 11px 11px 0;
+}
+
+.fidget-line {
+  margin: 0;
+  font-family: 'mencken-std-text', serif;
+  font-size: 15px;
+  line-height: 1.35;
+  color: var(--ink);
+}
+
+.fidget-line.dim {
+  color: var(--faint);
+}
+
+.fidget-rail {
+  position: relative;
+  width: 100%;
+  height: 28px;
+}
+
+.fidget-rail::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: 50%;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--line);
+}
+
+.fidget-bead {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: grab;
+  touch-action: none;
+}
+
+.fidget-bead:active {
+  cursor: grabbing;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fidget {
+    transition: none;
+  }
+}
