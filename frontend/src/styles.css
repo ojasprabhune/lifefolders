@@ -229,6 +229,12 @@ header {
   text-decoration: none;
 }
 
+@property --sweep {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 0%;
+}
+
 /* The bleed and the swipe are one gesture: the ink front crosses the word in
    240ms and the rule under it draws in the same 240ms, so they land together.
    The bleed is a clipped gradient slid across one element rather than a colour
@@ -252,10 +258,22 @@ header {
   --bleed-y: 17px;
   padding: var(--bleed-y) var(--bleed-x);
   margin: calc(var(--bleed-y) * -1) calc(var(--bleed-x) * -1);
-  background-image: linear-gradient(100deg, var(--accent) 0 30%, var(--muted) 38% 100%);
-  background-size: 320% 100%;
-  background-position: 100% 0;
-  transition: background-position 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* Sliding an oversized gradient was the obvious way to do this and it is
+     the wrong one: how far the front has travelled then depends on the ratio
+     between the image and the box, so the sweep sat still for half its
+     duration and then crossed the whole word at once. Animating the stop
+     position instead makes the numbers plain box percentages — 0% is all
+     muted, 122% is all red, and the 22% band between the stops is the soft
+     front. --sweep carries a fallback so that a browser without @property
+     renders a valid gradient and merely snaps, rather than losing the
+     background and painting transparent text on nothing. */
+  --sweep: 0%;
+  background-image: linear-gradient(
+    100deg,
+    var(--accent) 0 calc(var(--sweep, 0%) - 22%),
+    var(--muted) var(--sweep, 0%) 100%
+  );
+  transition: --sweep 320ms cubic-bezier(0.3, 0.7, 0.3, 1);
 }
 
 @supports (background-clip: text) or (-webkit-background-clip: text) {
@@ -267,7 +285,7 @@ header {
 }
 
 .brand-link:hover .brand-sub {
-  background-position: 0 0;
+  --sweep: 122%;
 }
 
 .brand-sub::after {
@@ -280,7 +298,7 @@ header {
   background: var(--accent);
   transform: scaleX(0);
   transform-origin: right;
-  transition: transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition: transform 320ms cubic-bezier(0.3, 0.7, 0.3, 1);
 }
 
 .brand-link:hover .brand-sub::after {
@@ -4181,43 +4199,46 @@ header > .brand {
   cursor: pointer;
 }
 
-/* The drawer. A tab on one edge of the window that you pull out, sitting at a
-   different spot on every page (SPOTS in Drawer.tsx) so finding it is part of
-   it. Only the wrapper ever moves: the tab and the body sit side by side and
-   the whole pair slides, which is why the body needs no position of its own.
-   The bezier overshoots slightly - a drawer that stops dead feels stuck. */
+@property --peel-size {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+
+/* The drawer. A tab on the bottom edge that you pull upward, sitting at a
+   different spot along that edge on every page (SPOTS in Drawer.tsx) so
+   finding it is part of it. Only the wrapper moves: the tab and the body are
+   stacked and slide as a pair, which is why the body needs no position of its
+   own and why the travel is exactly the body's height. The bezier overshoots
+   a little - a drawer that stops dead feels stuck. */
 .fidget {
   position: fixed;
+  bottom: 0;
   z-index: 30;
   display: flex;
+  flex-direction: column;
   align-items: center;
+  /* half the body, so the left percentage centres the drawer rather than
+     starting it. */
+  margin-left: -110px;
+  transform: translateY(var(--travel));
   transition: transform 320ms cubic-bezier(0.2, 1.25, 0.35, 1);
 }
 
-.fidget.right {
-  right: 0;
-  transform: translateX(var(--travel));
-}
-
-.fidget.left {
-  left: 0;
-  flex-direction: row-reverse;
-  transform: translateX(calc(var(--travel) * -1));
-}
-
-/* After the side rules, so it wins at equal specificity. A drag beats both
-   with an inline transform, then hands back to these on release. */
+/* A drag beats this with an inline transform, then hands back on release. */
 .fidget.open {
-  transform: translateX(0);
+  transform: translateY(0);
 }
 
 .fidget-tab {
   flex: none;
   position: relative;
-  width: 17px;
-  height: 58px;
+  width: 62px;
+  height: 17px;
   padding: 0;
   border: 1px solid var(--line);
+  border-bottom: none;
+  border-radius: 7px 7px 0 0;
   background: var(--bg);
   cursor: grab;
   touch-action: none;
@@ -4227,49 +4248,31 @@ header > .brand {
   cursor: grabbing;
 }
 
-.fidget.right .fidget-tab {
-  border-right: none;
-  border-radius: 7px 0 0 7px;
-}
-
-.fidget.left .fidget-tab {
-  border-left: none;
-  border-radius: 0 7px 7px 0;
-}
-
-/* The grip. */
 .fidget-tab::before {
   content: '';
   position: absolute;
-  left: 4px;
-  right: 4px;
-  top: 50%;
-  height: 13px;
-  transform: translateY(-50%);
-  background: repeating-linear-gradient(to bottom, var(--faint) 0 1px, transparent 1px 6px);
+  top: 4px;
+  bottom: 4px;
+  left: 50%;
+  width: 15px;
+  transform: translateX(-50%);
+  background: repeating-linear-gradient(to right, var(--faint) 0 1px, transparent 1px 6px);
 }
 
 /* Wear. Nothing says how many times you have pulled it - the tab just stops
-   looking new: a nick out of the outer edge, then the grip rubbed smooth,
-   then the thing is simply red. */
+   looking new: a nick bitten out of the top edge, then the grip rubbed
+   smooth, then the thing is simply red. */
 .fidget-tab.wear-1::after,
 .fidget-tab.wear-2::after,
 .fidget-tab.wear-3::after {
   content: '';
   position: absolute;
-  top: 13px;
+  top: -3px;
+  left: 12px;
   width: 5px;
   height: 5px;
   border-radius: 50%;
   background: var(--bg);
-}
-
-.fidget.right .fidget-tab::after {
-  left: -3px;
-}
-
-.fidget.left .fidget-tab::after {
-  right: -3px;
 }
 
 .fidget-tab.wear-2::before,
@@ -4283,29 +4286,21 @@ header > .brand {
 }
 
 .fidget-tab.wear-3::before {
-  background: repeating-linear-gradient(to bottom, var(--paper) 0 1px, transparent 1px 6px);
+  background: repeating-linear-gradient(to right, var(--paper) 0 1px, transparent 1px 6px);
   opacity: 0.55;
 }
 
 .fidget-body {
-  width: var(--travel);
-  min-height: 118px;
+  width: 220px;
+  height: var(--travel);
   display: flex;
   align-items: center;
-  padding: 16px 18px;
+  padding: 14px 17px;
   background: var(--bg);
   border: 1px solid var(--line);
-  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.2);
-}
-
-.fidget.right .fidget-body {
-  border-right: none;
-  border-radius: 11px 0 0 11px;
-}
-
-.fidget.left .fidget-body {
-  border-left: none;
-  border-radius: 0 11px 11px 0;
+  border-bottom: none;
+  border-radius: 11px 11px 0 0;
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.2);
 }
 
 .fidget-line {
@@ -4353,8 +4348,189 @@ header > .brand {
   cursor: grabbing;
 }
 
+/* The corner of the page. The only one of these you have to find: it is not
+   drawn at all until the pointer comes near the bottom right, and the size
+   the fold springs back to is the whole animation - width and height are what
+   move, so the triangle and the text it uncovers stay in step. */
+.peel {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  width: var(--peel-size);
+  height: var(--peel-size);
+  z-index: 24;
+  transition: --peel-size 420ms cubic-bezier(0.2, 1.55, 0.35, 1);
+}
+
+.peel-curl {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+  background: linear-gradient(
+    315deg,
+    color-mix(in srgb, var(--line) 92%, var(--ink)) 0%,
+    var(--line) 38%,
+    color-mix(in srgb, var(--line) 45%, var(--bg)) 100%
+  );
+  cursor: grab;
+  touch-action: none;
+  filter: drop-shadow(-3px -3px 9px rgba(0, 0, 0, 0.3));
+}
+
+.peel-curl:active {
+  cursor: grabbing;
+}
+
+/* The line is printed on the back of the corner, so it lives inside the
+   triangle and is uncovered by the fold rather than revealed all at once.
+   Narrow enough to sit in the widest part of it. */
+.peel-line {
+  position: absolute;
+  right: 7px;
+  bottom: 6px;
+  width: 104px;
+  text-align: right;
+  font-family: 'mencken-std-text', serif;
+  font-size: 11px;
+  line-height: 1.25;
+  color: color-mix(in srgb, var(--ink) 70%, var(--line));
+  pointer-events: none;
+}
+
+/* The stamp, in the same place on every page. */
+.stamp-spot {
+  position: fixed;
+  right: 24px;
+  top: 50%;
+  z-index: 24;
+}
+
+.stamp {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  transition: transform 110ms cubic-bezier(0.3, 0.9, 0.4, 1);
+}
+
+.stamp.down {
+  transform: translateY(7px);
+}
+
+.stamp-grip {
+  display: block;
+  width: 13px;
+  height: 15px;
+  border-radius: 4px 4px 2px 2px;
+  background: var(--muted);
+}
+
+.stamp-plate {
+  display: block;
+  width: 27px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--accent);
+  transition: transform 110ms cubic-bezier(0.3, 0.9, 0.4, 1);
+}
+
+.stamp.down .stamp-plate {
+  transform: scaleY(0.75);
+}
+
+/* The rotation is inline and the fade is a keyframe, so the keyframes have to
+   carry the rotation too - an animation outranks an inline style, and a mark
+   that straightened itself as it faded would be worse than no mark. */
+.stamp-mark {
+  position: absolute;
+  font-family: 'calling-code', monospace;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  border: 1.5px solid var(--accent);
+  border-radius: 3px;
+  padding: 3px 7px;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: stamp-mark 3800ms ease-out both;
+}
+
+@keyframes stamp-mark {
+  0% {
+    opacity: 0;
+    transform: rotate(var(--rot)) scale(1.3);
+  }
+  9% {
+    opacity: 1;
+    transform: rotate(var(--rot)) scale(1);
+  }
+  72% {
+    opacity: 1;
+    transform: rotate(var(--rot)) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(var(--rot)) scale(1);
+  }
+}
+
+/* The ink drop keeps its weight: the drag hands it a velocity and nothing
+   after that is state, just a transform written every frame until it stops. */
+.ink-drop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 2px 7px rgba(0, 0, 0, 0.28);
+  z-index: 24;
+  cursor: grab;
+  touch-action: none;
+}
+
+.ink-drop:active {
+  cursor: grabbing;
+}
+
+/* Opacity only. The size and angle of a splat are inline, and a keyframe that
+   touched transform would overwrite both. */
+.ink-splat {
+  position: fixed;
+  width: 18px;
+  height: 18px;
+  border-radius: 46% 54% 40% 60% / 55% 45% 58% 42%;
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+  pointer-events: none;
+  z-index: 23;
+  animation: ink-splat 1400ms ease-out both;
+}
+
+@keyframes ink-splat {
+  from {
+    opacity: 0.9;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .fidget {
+  .fidget,
+  .peel,
+  .stamp,
+  .stamp-plate {
     transition: none;
+  }
+
+  .stamp-mark,
+  .ink-splat {
+    animation: none;
   }
 }

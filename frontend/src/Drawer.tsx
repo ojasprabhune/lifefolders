@@ -1,62 +1,35 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { listLogs, listSleep, listTasks } from './api'
+import { COUNTED, NONSENSE, pickNot } from './remarks'
 import type { Category, SleepData } from './types'
 
 // How far the drawer travels, and how much of that you have to pull before
 // letting go commits to open. Short of it, it snaps back.
-const TRAVEL = 216
+const TRAVEL = 132
 const SNAP = 0.42
 const PULLS_KEY = 'life_drawer_pulls'
 
-// The tab moves per page - finding it again is part of the toy. Nothing sits
-// below 74% because the clock, the focus pill and the sleep nag all live along
-// the bottom edge.
-type Side = 'left' | 'right'
-const SPOTS: { prefix: string; side: Side; top: number }[] = [
-  { prefix: '#/music', side: 'right', top: 27 },
-  { prefix: '#/soma', side: 'right', top: 63 },
-  { prefix: '#/places', side: 'left', top: 31 },
-  { prefix: '#/travel', side: 'right', top: 38 },
-  { prefix: '#/sleep', side: 'right', top: 71 },
-  { prefix: '#/cadences', side: 'left', top: 68 },
-  { prefix: '#/learning', side: 'left', top: 58 },
-  { prefix: '#/tasks', side: 'left', top: 36 },
-  { prefix: '#/search', side: 'left', top: 47 },
-  { prefix: '#/wishlist', side: 'right', top: 44 },
-  { prefix: '#/guide', side: 'right', top: 54 },
-  { prefix: '#/focus', side: 'left', top: 26 },
+// The tab slides along the bottom edge from page to page - finding it is part
+// of it. Nothing sits outside 26%-74%: the clock holds the bottom left corner
+// and the focus pill the bottom right.
+const SPOTS: { prefix: string; left: number }[] = [
+  { prefix: '#/music', left: 62 },
+  { prefix: '#/soma', left: 35 },
+  { prefix: '#/places', left: 71 },
+  { prefix: '#/travel', left: 29 },
+  { prefix: '#/sleep', left: 47 },
+  { prefix: '#/cadences', left: 66 },
+  { prefix: '#/learning', left: 32 },
+  { prefix: '#/tasks', left: 57 },
+  { prefix: '#/search', left: 44 },
+  { prefix: '#/wishlist', left: 69 },
+  { prefix: '#/guide', left: 27 },
+  { prefix: '#/focus', left: 74 },
 ]
 
-function spotFor(route: string) {
-  return SPOTS.find((s) => route.startsWith(s.prefix)) ?? { side: 'right' as Side, top: 46 }
+function leftFor(route: string) {
+  return (SPOTS.find((s) => route.startsWith(s.prefix)) ?? { left: 52 }).left
 }
-
-const NONSENSE = [
-  'the drawer is empty. it was empty before you looked.',
-  'a key. no idea what it opens.',
-  "someone else's list: eggs, twine, a small hammer.",
-  'one (1) spare hour. non-transferable.',
-  'a button that came off something.',
-  'half a thought. the other half is in the other drawer.',
-  'there is no other drawer.',
-  'a paperclip, straightened. someone was thinking hard.',
-  'two AA batteries, probably dead.',
-  'an olive pit. rude.',
-  'a receipt for something you did not buy.',
-  'your own handwriting, unreadable.',
-  'the sound of a drawer opening, written down.',
-  'IOU: one good night of sleep.',
-  'a stamp for a country that no longer exists.',
-  'lint, mostly.',
-]
-
-const COUNTED = [
-  (n: number) => `that is ${n} pulls.`,
-  (n: number) => `${n} times now. i do keep count.`,
-  (n: number) => `${n}. you have other things to do.`,
-  (n: number) => `pull ${n}. the drawer is holding up well.`,
-  (n: number) => `${n} and nothing has changed in here.`,
-]
 
 const ROUTE_CATEGORY: { prefix: string; category: Category; label: string }[] = [
   { prefix: '#/music', category: 'music', label: 'music' },
@@ -110,7 +83,11 @@ async function factFor(route: string): Promise<string | null> {
   }
 }
 
-type Filling = { kind: 'line'; text: string } | { kind: 'toy' } | { kind: 'waiting' }
+type Filling =
+  | { kind: 'line'; text: string }
+  | { kind: 'toy' }
+  | { kind: 'empty' }
+  | { kind: 'waiting' }
 
 // A bead on a rail. Position and velocity are written straight to the DOM,
 // never through state - the whole point is that it keeps moving after you let
@@ -192,15 +169,13 @@ function Bead() {
 }
 
 export function Drawer({ route }: { route: string }) {
-  const { side, top } = spotFor(route)
+  const left = leftFor(route)
   const [open, setOpen] = useState(false)
-  const [filling, setFilling] = useState<Filling>({ kind: 'waiting' })
+  const [filling, setFilling] = useState<Filling>({ kind: 'empty' })
   const [pulls, setPulls] = useState(() => Number(localStorage.getItem(PULLS_KEY) ?? 0))
   const boxRef = useRef<HTMLDivElement>(null)
-  const dragRef = useRef<{ startX: number; from: number; moved: boolean } | null>(null)
-  const lastLine = useRef('')
-
-  const dir = side === 'right' ? 1 : -1
+  const dragRef = useRef<{ startY: number; from: number; moved: boolean } | null>(null)
+  const lastLine = useRef<string | null>(null)
 
   // Moving the tab means finding it again, so a route change always closes it.
   useEffect(() => setOpen(false), [route])
@@ -212,35 +187,42 @@ export function Drawer({ route }: { route: string }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [open])
 
+  const nonsense = () => {
+    const line = pickNot(NONSENSE, lastLine.current)
+    lastLine.current = line
+    return line
+  }
+
   const fill = (n: number) => {
     // The count stays out of it until pulling this thing is clearly a habit.
-    if (n >= 25 && Math.random() < 0.34) {
+    if (n >= 25 && Math.random() < 0.3) {
       setFilling({ kind: 'line', text: COUNTED[Math.floor(Math.random() * COUNTED.length)](n) })
       return
     }
     const roll = Math.random()
-    if (roll < 0.25) {
+    if (roll < 0.08) {
+      setFilling({ kind: 'empty' })
+      return
+    }
+    if (roll < 0.3) {
       setFilling({ kind: 'toy' })
       return
     }
-    if (roll < 0.6) {
+    if (roll < 0.62) {
       setFilling({ kind: 'waiting' })
       void factFor(route).then((line) =>
-        setFilling(line ? { kind: 'line', text: line } : { kind: 'line', text: nonsense() }),
+        setFilling({ kind: 'line', text: line ?? nonsense() }),
       )
       return
     }
     setFilling({ kind: 'line', text: nonsense() })
   }
 
-  const nonsense = () => {
-    let line = lastLine.current
-    while (line === lastLine.current) line = NONSENSE[Math.floor(Math.random() * NONSENSE.length)]
-    lastLine.current = line
-    return line
-  }
-
+  // Only a drawer that was all the way shut gets restocked. Nudging one that
+  // is already open, or pulling it half out and letting it fall back, leaves
+  // whatever is inside alone.
   const commit = (next: boolean) => {
+    if (next === open) return
     setOpen(next)
     if (!next) return
     const n = pulls + 1
@@ -255,25 +237,27 @@ export function Drawer({ route }: { route: string }) {
   const onDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return
     e.currentTarget.setPointerCapture(e.pointerId)
-    dragRef.current = { startX: e.clientX, from: open ? 0 : TRAVEL, moved: false }
+    dragRef.current = { startY: e.clientY, from: open ? 0 : TRAVEL, moved: false }
+  }
+
+  const offsetFor = (d: { startY: number; from: number }, clientY: number) => {
+    const pulled = d.startY - clientY
+    // Rubber band: the further you pull, the less you get, so the drawer
+    // stiffens toward the end of its travel instead of stopping dead.
+    const give = TRAVEL * (1 - Math.exp(-Math.abs(pulled) / TRAVEL)) * Math.sign(pulled)
+    return Math.max(0, Math.min(TRAVEL, d.from - give))
   }
 
   const onMove = (e: React.PointerEvent) => {
     const d = dragRef.current
     const box = boxRef.current
     if (!d || !box) return
-    const pulled = (e.clientX - d.startX) * -dir
     if (!d.moved) {
-      if (Math.abs(pulled) < 4) return
+      if (Math.abs(e.clientY - d.startY) < 4) return
       d.moved = true
       box.style.transition = 'none'
     }
-    // Rubber band: the further you pull, the less you get, so the drawer
-    // stiffens toward the end of its travel instead of stopping dead.
-    const from = d.from
-    const give = TRAVEL * (1 - Math.exp(-Math.abs(pulled) / TRAVEL)) * Math.sign(pulled)
-    const offset = Math.max(0, Math.min(TRAVEL, from - give))
-    box.style.transform = `translateX(${offset * dir}px)`
+    box.style.transform = `translateY(${offsetFor(d, e.clientY)}px)`
   }
 
   const onUp = (e: React.PointerEvent) => {
@@ -287,18 +271,15 @@ export function Drawer({ route }: { route: string }) {
       commit(!open)
       return
     }
-    const pulled = (e.clientX - d.startX) * -dir
-    const give = TRAVEL * (1 - Math.exp(-Math.abs(pulled) / TRAVEL)) * Math.sign(pulled)
-    const offset = Math.max(0, Math.min(TRAVEL, d.from - give))
-    commit(offset < TRAVEL * (1 - SNAP))
+    commit(offsetFor(d, e.clientY) < TRAVEL * (1 - SNAP))
   }
 
   const wear = pulls >= 100 ? 3 : pulls >= 50 ? 2 : pulls >= 10 ? 1 : 0
 
   return (
     <div
-      className={`fidget ${side}${open ? ' open' : ''}`}
-      style={{ top: `${top}%`, ['--travel' as string]: `${TRAVEL}px` }}
+      className={`fidget${open ? ' open' : ''}`}
+      style={{ left: `${left}%`, ['--travel' as string]: `${TRAVEL}px` }}
       ref={boxRef}
     >
       <button
@@ -314,6 +295,8 @@ export function Drawer({ route }: { route: string }) {
           <Bead />
         ) : filling.kind === 'line' ? (
           <p className="fidget-line">{filling.text}</p>
+        ) : filling.kind === 'empty' ? (
+          <p className="fidget-line dim">(empty)</p>
         ) : (
           <p className="fidget-line dim">…</p>
         )}
