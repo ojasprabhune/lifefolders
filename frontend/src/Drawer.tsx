@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { listLogs, listSleep, listTasks } from './api'
 import { COUNTED, NONSENSE, pickNot } from './remarks'
 import type { Category, SleepData } from './types'
@@ -65,8 +65,7 @@ async function factFor(route: string): Promise<string | null> {
     if (!logs.length) {
       return spot ? `nothing in ${spot.label} today.` : 'nothing logged today. the drawer matches.'
     }
-    const said = logs[0].raw_input
-    return `the last thing you told me: "${said.length > 44 ? said.slice(0, 43).trimEnd() + '…' : said}"`
+    return `the last thing you told me: "${logs[0].raw_input}"`
   } catch {
     return null
   }
@@ -84,6 +83,9 @@ export function Drawer({ route }: { route: string }) {
   const [filling, setFilling] = useState<Filling>({ kind: 'empty' })
   const [pulls, setPulls] = useState(() => Number(localStorage.getItem(PULLS_KEY) ?? 0))
   const boxRef = useRef<HTMLDivElement>(null)
+  const lineRef = useRef<HTMLParagraphElement>(null)
+  const sheetRef = useRef<HTMLParagraphElement>(null)
+  const [sheetH, setSheetH] = useState(0)
   const dragRef = useRef<{ startX: number; from: number; moved: boolean } | null>(null)
   const lastLine = useRef<string | null>(null)
   const modeRef = useRef<Mode>('shut')
@@ -222,17 +224,47 @@ export function Drawer({ route }: { route: string }) {
     commit(offsetFor(d, e.clientX) < TRAVEL * (1 - SNAP))
   }
 
+  // Anything too long for the drawer's two lines gets a scroll instead, cut to
+  // exactly the height that text needs. The measured copy is absolutely
+  // positioned inside the rolled-up sheet, so it can be measured at the right
+  // width without giving the sheet a height of its own.
+  useLayoutEffect(() => {
+    const line = lineRef.current
+    const sheet = sheetRef.current
+    if (!line || !sheet) {
+      setSheetH(0)
+      return
+    }
+    setSheetH(line.scrollHeight > line.clientHeight + 1 ? sheet.offsetHeight : 0)
+  }, [filling])
+
   const wear = pulls >= 100 ? 3 : pulls >= 50 ? 2 : pulls >= 10 ? 1 : 0
 
   return (
     <div
-      className={`fidget ${mode}`}
+      className={`fidget ${mode}${sheetH ? ' has-scroll' : ''}`}
       style={{ ['--travel' as string]: `${TRAVEL}px`, ['--leak' as string]: `${LEAK_MS}ms` }}
       ref={boxRef}
     >
+      {filling.kind === 'line' && (
+        <div
+          className={`scroll${sheetH && open ? ' out' : ''}`}
+          style={{ ['--h' as string]: `${sheetH}px` }}
+          aria-hidden={!sheetH}
+        >
+          <div className="scroll-roll" />
+          <div className="scroll-sheet">
+            <p className="scroll-text" ref={sheetRef}>
+              {filling.text}
+            </p>
+          </div>
+        </div>
+      )}
       <div className="fidget-body">
         {filling.kind === 'line' ? (
-          <p className="fidget-line">{filling.text}</p>
+          <p className="fidget-line" ref={lineRef}>
+            {filling.text}
+          </p>
         ) : filling.kind === 'empty' ? (
           <p className="fidget-line dim">(empty)</p>
         ) : (
