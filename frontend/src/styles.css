@@ -2003,23 +2003,6 @@ header > .brand {
   }
 }
 
-.did-undone::before {
-  content: '';
-  position: absolute;
-  left: -8px;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  border-radius: 2px;
-  background: var(--focus);
-  transform-origin: center;
-  animation: edge-wipe 520ms cubic-bezier(0.33, 1, 0.68, 1) both;
-}
-
-.did-undone {
-  position: relative;
-}
-
 /* --- what just happened to a sidequest -------------------------------------
    Every one of these is triggered by a `did-*` class the panel puts on the row
    after diffing the list against the one before it, so a change made by a
@@ -3667,9 +3650,11 @@ header > .brand {
   .list.slide-forward,
   .did-reschedule .task-due-now,
   .task-due-was,
+  .planner-block,
+  .planner-block::before,
+  .planner-list,
   .did-recategorize::before,
   .did-recategorize,
-  .did-undone::before,
   .did-undone .task-title,
   .did-note .task-note,
   .did-note .task-note > span,
@@ -3681,7 +3666,6 @@ header > .brand {
 
   .task-due-was,
   .did-recategorize::before,
-  .did-undone::before,
   .did-done .task-title::after {
     display: none;
   }
@@ -3696,4 +3680,299 @@ header > .brand {
   .task-row {
     transition: none;
   }
+}
+
+/* --- the day planner -------------------------------------------------------
+   Sits above the day's sections in the sidequests panel. Blocks store a length
+   and an order, never a clock time - the times come back from the server,
+   which walks the list from the start time, so inserting something in the
+   middle re-times everything below it without touching a single other row. */
+.planner {
+  margin: 18px 0 26px;
+}
+
+.planner-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.planner-head .section-title {
+  margin: 0;
+}
+
+.planner-range {
+  margin-left: auto;
+  font-family: 'calling-code', monospace;
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.planner-body {
+  margin-top: 10px;
+}
+
+.planner-bounds {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.planner-time-field {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--faint);
+}
+
+/* A native time input brings its own chrome - a boxed field, a clock glyph,
+   and the platform's own type - none of which belongs next to this page's
+   type. The control keeps working; it just stops announcing itself. */
+.planner-time-field input {
+  font-family: 'calling-code', monospace;
+  font-size: 11px;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  padding: 2px 0;
+  width: 68px;
+}
+
+.planner-time-field input::-webkit-calendar-picker-indicator {
+  display: none;
+}
+
+.planner-time-field input::-webkit-datetime-edit-ampm-field {
+  color: var(--faint);
+}
+
+.planner-time-field input:hover,
+.planner-time-field input:focus {
+  border-bottom-color: var(--muted);
+  outline: none;
+}
+
+.planner-generate {
+  margin-left: auto;
+  font-family: 'calling-code', monospace;
+  font-size: 11px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.planner-generate:hover:not(:disabled) {
+  color: var(--ink);
+  border-color: var(--muted);
+}
+
+.planner-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  /* The spine the blocks hang off, which is what makes this read as a day
+     rather than a list of rows. */
+  border-left: 1px solid var(--line);
+  padding-left: 14px;
+}
+
+.planner-block {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 0;
+  /* Each line drops out from under the one above it. The stagger is capped so
+     a long day doesn't take a second and a half to finish arriving. */
+  animation: block-drop 240ms cubic-bezier(0.33, 1, 0.68, 1) both;
+  animation-delay: calc(min(var(--i, 0), 12) * 38ms);
+}
+
+@keyframes block-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-9px);
+  }
+}
+
+/* The dot on the spine arrives with its line rather than being there first. */
+.planner-block::before {
+  animation: block-dot 240ms ease-out both;
+  animation-delay: calc(min(var(--i, 0), 12) * 38ms + 60ms);
+}
+
+@keyframes block-dot {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+}
+
+.planner-block::before {
+  content: '';
+  position: absolute;
+  left: -18px;
+  top: 14px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--line);
+}
+
+.planner-list {
+  /* The spine draws itself down as the lines arrive. */
+  animation: spine-draw 320ms ease-out both;
+  transform-origin: top;
+}
+
+@keyframes spine-draw {
+  from {
+    clip-path: inset(0 0 100% 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+.planner-block.now::before {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.planner-block.now .planner-label {
+  color: var(--ink);
+}
+
+.planner-block.break .planner-label {
+  color: var(--faint);
+  font-style: italic;
+}
+
+.planner-time {
+  font-family: 'calling-code', monospace;
+  font-size: 11px;
+  color: var(--faint);
+  width: 54px;
+  flex-shrink: 0;
+}
+
+.planner-label {
+  flex: 1;
+  min-width: 0;
+  color: var(--muted);
+}
+
+.planner-minutes,
+.planner-minutes-input {
+  font-family: 'calling-code', monospace;
+  font-size: 11px;
+  color: var(--faint);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  width: 44px;
+  text-align: right;
+}
+
+.planner-minutes:hover {
+  color: var(--ink);
+}
+
+.planner-minutes-input {
+  cursor: text;
+  color: var(--ink);
+  border-bottom: 1px solid var(--line);
+}
+
+/* On the seam below each block, so "put something between these two" is a
+   click where you are already looking. Hidden until the row is hovered. */
+.planner-insert {
+  position: absolute;
+  left: -22px;
+  bottom: -8px;
+  width: 15px;
+  height: 15px;
+  line-height: 1;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--faint);
+  font-size: 10px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.planner-block:hover .planner-insert,
+.planner-insert:focus-visible {
+  opacity: 1;
+}
+
+.planner-add,
+.planner-add-end {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-family: 'calling-code', monospace;
+  font-size: 11px;
+  color: var(--faint);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.planner-add button,
+.planner-add select {
+  font-family: 'calling-code', monospace;
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.planner-overflow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding: 9px 11px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+
+.planner-push {
+  font-family: 'calling-code', monospace;
+  font-size: 11px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.due-col {
+  cursor: pointer;
 }

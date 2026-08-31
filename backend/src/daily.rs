@@ -31,28 +31,6 @@ async fn ensure_row(state: &AppState, date: NaiveDate) -> Result<(), AppError> {
     Ok(())
 }
 
-/// Put `text` at the top of a day's "today" box, keeping whatever is already
-/// written below it. Used by the plan_today command, which is answering a
-/// question rather than replacing the day's own notes.
-pub async fn prepend_today(
-    state: &AppState,
-    date: NaiveDate,
-    text: &str,
-) -> Result<(), AppError> {
-    ensure_row(state, date).await?;
-    sqlx::query(
-        "UPDATE daily_notes SET \
-            today_text = CASE WHEN today_text = '' THEN $2 ELSE $2 || E'\\n' || today_text END, \
-            updated_at = now() \
-         WHERE date = $1",
-    )
-    .bind(date)
-    .bind(text)
-    .execute(&state.pool)
-    .await?;
-    Ok(())
-}
-
 #[derive(Debug, Deserialize)]
 pub struct ListQuery {
     pub days: Option<i64>,

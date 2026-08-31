@@ -11,6 +11,7 @@ import {
 } from './api'
 import { dayLabel, dueLabel } from './dates'
 import { Expand } from './Expand'
+import { DayPlanner } from './DayPlanner'
 import { strikeOut, unfold, useFlipList } from './motion'
 import { Panel, usePanelState } from './Panel'
 import type { FocusSession, TaskCheckpoint, TaskWithCheckpoints } from './types'
@@ -218,6 +219,14 @@ export function Tasks({ open }: { open: boolean }) {
         selected={selected}
         onSelect={(date) => setSelected((d) => (d === date ? null : date))}
       />
+
+      {/* Above the day's sections, exactly where you look before deciding what
+          to start. Always today's: a plan for a day you aren't in has no "now"
+          to work forward from. Hidden only while you're looking at some other
+          day, where it would be answering a question you didn't ask. */}
+      {(selected === null || selected === todayStr) && (
+        <DayPlanner date={todayStr} isToday tasks={tasks} onChanged={refresh} />
+      )}
 
       <main className="list" ref={listRef}>
         {selected ? (

@@ -176,6 +176,35 @@ fn build_summary(nights: &[SleepData], offset_min: i32) -> String {
 /// whichever figure was most dramatic - usually the longest night, often a
 /// week and a half old - and open with it as if it were news. The sentence is
 /// supposed to be about how the last few nights are going.
+/// The time you'd have to be asleep by tonight to get the full goal and still
+/// be up at your usual hour, as minutes past midnight. Extracted so the day
+/// planner and the coach's TONIGHT block cannot drift apart - they sit inches
+/// from each other on screen, and disagreeing would be worse than either
+/// alone. None until there are enough nights to have a usual hour at all.
+pub async fn bedtime_target(
+    state: &AppState,
+    goal_min: i64,
+    offset_min: i32,
+) -> Result<Option<i64>, AppError> {
+    let rows: Vec<(serde_json::Value,)> = sqlx::query_as(
+        "SELECT data FROM logs \
+         WHERE parsed_type = 'sleep' AND deleted_at IS NULL \
+           AND data->>'sleep_end' IS NOT NULL \
+         ORDER BY data->>'night_date' DESC, created_at DESC LIMIT 7",
+    )
+    .fetch_all(&state.pool)
+    .await?;
+    let nights: Vec<SleepData> =
+        rows.into_iter().filter_map(|(v,)| serde_json::from_value(v).ok()).collect();
+    if nights.len() < 3 {
+        return Ok(None);
+    }
+    let wake = median(
+        nights.iter().filter_map(|n| n.sleep_end.map(|t| minute_of_day(t, offset_min))).collect(),
+    );
+    Ok(wake.map(|w| (w - goal_min).rem_euclid(1440)))
+}
+
 fn build_facts(nights: &[SleepData], goal_min: i64, offset_min: i32) -> String {
     // Oldest-first, only nights with a real duration, only parseable dates.
     let mut closed: Vec<(NaiveDate, i64)> = nights
@@ -342,7 +371,7 @@ fn format_duration(min: i64) -> String {
 
 /// Gaps and deltas, where "0h36m" reads like a typo and invites the model to
 /// repeat it back that way.
-fn format_span(min: i64) -> String {
+pub(crate) fn format_span(min: i64) -> String {
     if min < 60 {
         format!("{min}m")
     } else {

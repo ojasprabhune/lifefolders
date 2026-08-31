@@ -573,3 +573,92 @@ export async function deleteFocusSession(id: string): Promise<void> {
   })
   await check(res)
 }
+
+export interface PlanBlock {
+  id: string
+  position: number
+  kind: 'task' | 'break' | 'custom'
+  task_id: string | null
+  label: string
+  minutes: number
+  pinned_start: string | null
+  start: string
+  end: string
+}
+
+export interface DayPlan {
+  plan_date: string
+  starts_at: string
+  ends_at: string | null
+  blocks: PlanBlock[]
+  overflow_minutes: number
+  push_suggestion: { task_id: string; label: string; minutes: number; due_date: string | null } | null
+}
+
+// Every one of these returns the whole plan back, because a single edit
+// re-times every block below it - there is no useful partial response.
+function planParams(date: string): string {
+  return new URLSearchParams({
+    date,
+    tz_offset_min: String(new Date().getTimezoneOffset()),
+    goal_min: String(getSleepGoalMin()),
+  }).toString()
+}
+
+export async function getDayPlan(date: string): Promise<DayPlan> {
+  const res = await fetch(`${API}/api/day-plan?${planParams(date)}`, { headers: authHeaders() })
+  return (await check(res)).json()
+}
+
+export async function generateDayPlan(date: string): Promise<DayPlan> {
+  const res = await fetch(`${API}/api/day-plan/generate?${planParams(date)}`, {
+    method: 'POST',
+    headers: authHeaders(),
+  })
+  return (await check(res)).json()
+}
+
+export async function patchDayPlan(
+  date: string,
+  body: Partial<{ starts_at: string; ends_at: string; clear_ends_at: boolean }>,
+): Promise<DayPlan> {
+  const res = await fetch(`${API}/api/day-plan?${planParams(date)}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(body),
+  })
+  return (await check(res)).json()
+}
+
+export async function addPlanBlock(
+  date: string,
+  body: Partial<{ kind: string; task_id: string; label: string; minutes: number; after: string }>,
+): Promise<DayPlan> {
+  const res = await fetch(`${API}/api/day-plan/blocks?${planParams(date)}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(body),
+  })
+  return (await check(res)).json()
+}
+
+export async function patchPlanBlock(
+  date: string,
+  id: string,
+  body: Partial<{ label: string; minutes: number; pinned_start: string; clear_pin: boolean; position: number }>,
+): Promise<DayPlan> {
+  const res = await fetch(`${API}/api/day-plan/blocks/${id}?${planParams(date)}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(body),
+  })
+  return (await check(res)).json()
+}
+
+export async function deletePlanBlock(date: string, id: string): Promise<DayPlan> {
+  const res = await fetch(`${API}/api/day-plan/blocks/${id}?${planParams(date)}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  })
+  return (await check(res)).json()
+}

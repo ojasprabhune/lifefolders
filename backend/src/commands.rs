@@ -3,10 +3,11 @@ use uuid::Uuid;
 
 use crate::focus::{self, StartedSession};
 use crate::models::{CommandRequest, Log, TaskData};
+use crate::dayplan;
 use crate::routes::AppError;
 use crate::tasks::{self, Task};
 use crate::undo::{self, Effect};
-use crate::{cadences, daily, groq, AppState};
+use crate::{cadences, sleep, AppState};
 
 /// A command changes existing state and reports back in words - it never
 /// writes a logs row of its own, so `create_log` gets a notice and an empty
@@ -62,11 +63,6 @@ async fn write_history_from(
     .fetch_one(&state.pool)
     .await?)
 }
-
-// Stated as data rather than baked into the prompt, so moving a meal is an
-// edit here rather than a reworded instruction the model may or may not honour.
-const MEAL_BREAKS: [(&str, &str, &str); 2] =
-    [("12:30pm", "1:30pm", "lunch"), ("8:30pm", "9:00pm", "dinner")];
 
 fn pretty_date(d: NaiveDate) -> String {
     d.format("%a %b %-d").to_string()
@@ -325,70 +321,24 @@ pub async fn apply(
         CommandRequest::PlanToday => {
             let now_local = Utc::now() - Duration::minutes(tz_offset as i64);
             let today = now_local.date_naive();
-            let open = tasks::open_tasks(state).await?;
-            if open.is_empty() {
+            if tasks::open_tasks(state).await?.is_empty() {
                 return Ok(say("nothing open to plan around."));
             }
-
-            let spent = focus::minutes_by_task(state, 14).await?;
-            let line = |t: &Task| {
-                let due = match (t.due_date, t.due_time) {
-                    (Some(d), Some(time)) => format!("due {d} at {}", time.format("%-I:%M%p")),
-                    (Some(d), None) if d == today => "due today".into(),
-                    (Some(d), None) => format!("due {d}"),
-                    (None, _) => "no deadline".into(),
-                };
-                // An estimate typed into the note counts, because that is where
-                // people put them before the field existed.
-                let effort = t
-                    .effort_minutes
-                    .or_else(|| t.note.as_deref().and_then(tasks::effort_from_text))
-                    .map(|m| format!(", takes about {m} minutes"))
-                    .unwrap_or_else(|| ", no estimate".into());
-                let history = match spent.iter().find(|(id, ..)| *id == t.id) {
-                    Some((_, mins, count, last)) => format!(
-                        ", {mins}m of focus across {count} sessions, last on {}",
-                        (*last - Duration::minutes(tz_offset as i64)).format("%Y-%m-%d")
-                    ),
-                    None => ", never worked on".into(),
-                };
-                format!("- {} [{}] {due}, {}{effort}{history}\n", t.title, t.category, t.status)
+            // Same path the panel's button takes. The plan is structured rows
+            // in the sidequests panel now, not text shoved into today's box -
+            // it used to prepend itself on top of whatever you had written.
+            let plan = dayplan::regenerate(state, today, tz_offset, 480).await?;
+            let blocks = plan.blocks.len();
+            let notice = match plan.blocks.last() {
+                Some(last) if plan.overflow_minutes > 0 => format!(
+                    "planned {blocks} blocks, running to {} - {} past your bedtime. open sidequests to shuffle it.",
+                    last.end,
+                    sleep::format_span(plan.overflow_minutes as i64)
+                ),
+                Some(last) => format!("planned {blocks} blocks, done by {}.", last.end),
+                None => "nothing to plan.".into(),
             };
-
-            // Split rather than sorted: the model kept spreading the whole open
-            // list across the evening, so which side of the line a sidequest
-            // falls on has to be stated rather than inferred from its date.
-            let (now_due, later): (Vec<&Task>, Vec<&Task>) =
-                open.iter().partition(|t| t.due_date.is_some_and(|d| d <= today));
-            let mut brief = format!(
-                "It is {} on {}.\n",
-                now_local.format("%-I:%M%p").to_string().to_lowercase(),
-                now_local.format("%A %Y-%m-%d")
-            );
-            brief.push_str("\nDUE TODAY OR ALREADY LATE - plan these:\n");
-            if now_due.is_empty() {
-                brief.push_str("(nothing)\n");
-            }
-            for t in &now_due {
-                brief.push_str(&line(t));
-            }
-            brief.push_str("\nKEEP FREE:\n");
-            for (from, to, what) in MEAL_BREAKS {
-                brief.push_str(&format!("- {from} to {to} ({what})\n"));
-            }
-            brief.push_str("\nNOT DUE YET - only if everything above is placed:\n");
-            if later.is_empty() {
-                brief.push_str("(nothing)\n");
-            }
-            for t in &later {
-                brief.push_str(&line(t));
-            }
-
-            let Some(plan) = groq::plan_today(&state.http, &state.groq_key, &brief).await else {
-                return Ok(say("couldn't put a plan together right now."));
-            };
-            daily::prepend_today(state, today, &plan).await?;
-            Ok(say("added to today's plan"))
+            Ok(say(notice))
         }
 
         CommandRequest::DeleteLastEntry => {

@@ -36,7 +36,7 @@ pub struct Checkpoint {
     pub status: String,
 }
 
-const TASK_COLUMNS: &str =
+pub(crate) const TASK_COLUMNS: &str =
     "id, title, category, due_date, due_time, effort_minutes, status, is_exam, note, created_at, completed_at";
 
 pub(crate) async fn open_tasks(state: &AppState) -> Result<Vec<Task>, AppError> {

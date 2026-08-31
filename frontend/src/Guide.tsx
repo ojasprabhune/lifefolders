@@ -355,14 +355,20 @@ export function Guide() {
           says so and changes nothing rather than guessing at the wrong one.
         </p>
         <p>
-          Asking what to do with the day is a command too. "what should i do first" reads the
-          clock, your open sidequests and how much clarity time each has already had, then writes
-          a plan &mdash; real times, one line a block &mdash; to the top of today's box below,
-          keeping whatever you'd already written there. Each block is as long as that sidequest's
-          estimate says it is, lunch and dinner are left free, and it plans what's actually due
-          today first. Anything not due yet only appears once all of that fits, under an "if
-          there's time" line. If the day runs out it stops and says what didn't fit rather than
-          squeezing everything in.
+          Asking what to do with the day is a command too. "what should i do first" lays out{' '}
+          <em>the script</em> &mdash; today's day plan, at the top of the sidequests panel. Each
+          block is as long as that sidequest's estimate says it is, lunch and dinner are left
+          free, and it plans what's actually due today before anything that isn't. The same thing
+          happens from the <em>plan it</em> button on the section itself.
+        </p>
+        <p>
+          The script is yours to rearrange after that. Change how long a block runs and everything
+          under it shifts to match; the &plus; on any block drops something in right after it, a
+          break or another sidequest; the &times; takes one out. Set the times it runs between at
+          the top &mdash; the finish-by time starts at the bedtime solace is already asking you
+          for. Run past that and it says by how much, and offers the one thing worth dropping:
+          work that isn't due today before anything that is, never an exam if there's an
+          alternative, and the smallest thing that actually gets you under the line.
         </p>
         <ul>
           <li>push everything due tomorrow to friday</li>

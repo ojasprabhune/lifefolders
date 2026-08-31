@@ -16,6 +16,7 @@ use tower_http::trace::TraceLayer;
 mod caldav;
 mod commands;
 mod daily;
+mod dayplan;
 mod focus;
 mod groq;
 mod recap;
@@ -205,6 +206,13 @@ async fn main() -> anyhow::Result<()> {
         )
         .route("/api/cadences/{id}/completions", get(cadences::completions))
         .route("/api/cadence-completions", get(cadences::all_completions))
+        .route("/api/day-plan", get(dayplan::get).patch(dayplan::patch))
+        .route("/api/day-plan/generate", post(dayplan::generate))
+        .route("/api/day-plan/blocks", post(dayplan::add_block))
+        .route(
+            "/api/day-plan/blocks/{id}",
+            axum::routing::patch(dayplan::patch_block).delete(dayplan::delete_block),
+        )
         .route("/api/daily-notes", get(daily::list))
         .route("/api/daily-notes/{date}", axum::routing::patch(daily::patch))
         .route("/api/focus-sessions", post(focus::create_session))

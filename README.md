@@ -34,13 +34,20 @@ estimates and a null usda_fdc_id.
 
 ## Development
 
-Backend (needs Docker for the database):
+Backend (needs a local Postgres):
 
-    docker run -d --name life-pg -e POSTGRES_PASSWORD=life \
-      -e POSTGRES_DB=life -p 5433:5432 postgres:16-alpine
+    brew install postgresql@16
+    initdb -D /tmp/lifepg -U life --auth=trust
+    pg_ctl -D /tmp/lifepg -o "-p 5433" start
+    createdb -h 127.0.0.1 -p 5433 -U life life
+
     cd backend
-    cp .env.example .env   # fill in GROQ_API_KEY
-    cargo run --bin life-api
+    cp .env.example .env   # fill in GROQ_API_KEY, DATABASE_URL
+    cargo run --bin life-api   # runs the migrations itself on boot
+
+Docker works too (`postgres:16-alpine` on 5433) but isn't needed for anything
+here — Render builds the image in the cloud from the Dockerfile, so nothing
+about deploying requires a local daemon.
 
 Test the parse loop:
 
