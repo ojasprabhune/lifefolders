@@ -456,15 +456,63 @@ fn explicit_note(raw: &str) -> Option<String> {
 
 // The LLM is told to leave any "#tag"/"@time"/"note:" out of the title, but
 // strip them here too as a backstop in case it echoes one back verbatim.
+fn is_unit_word(w: &str) -> bool {
+    matches!(w, "h" | "hr" | "hrs" | "hour" | "hours" | "m" | "min" | "mins" | "minute" | "minutes")
+}
+
+fn is_number(w: &str) -> bool {
+    !w.is_empty()
+        && w.chars().all(|c| c.is_ascii_digit() || c == '.')
+        && w.chars().any(|c| c.is_ascii_digit())
+}
+
+/// A duration written as one word: "40min", "1hr", "2h30". A word that merely
+/// ends in digits is not one - "ps5" and "1968" have to survive.
+fn is_glued_duration(w: &str) -> bool {
+    let digits: String = w.chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
+    if digits.is_empty() {
+        return false;
+    }
+    let rest = &w[digits.len()..];
+    is_unit_word(rest) || rest.strip_prefix('h').is_some_and(is_number)
+}
+
+/// How long the user said something takes, written inline the way `#tag` and
+/// `@time` are: "physics ps5 1 hr", "email coach 20min". Read from the head of
+/// the entry only - a duration inside a `note:` is time spent, not an estimate.
+fn explicit_effort(raw: &str) -> Option<i32> {
+    let head = match note_marker(raw) {
+        Some(idx) => &raw[..idx],
+        None => raw,
+    };
+    effort_from_text(head)
+}
+
 fn strip_markers(title: &str) -> String {
     let head = match note_marker(title) {
         Some(idx) => &title[..idx],
         None => title,
     };
-    head.split_whitespace()
-        .filter(|w| !w.starts_with('#') && !w.starts_with('@'))
-        .collect::<Vec<_>>()
-        .join(" ")
+    let words: Vec<&str> = head.split_whitespace().collect();
+    let mut out: Vec<&str> = Vec::with_capacity(words.len());
+    let mut i = 0;
+    while i < words.len() {
+        let w = words[i];
+        let lower = w.to_lowercase();
+        if w.starts_with('#') || w.starts_with('@') || is_glued_duration(&lower) {
+            i += 1;
+            continue;
+        }
+        // A bare number is only a duration when the word after it is a unit,
+        // which is what keeps "read 30 pages" intact.
+        if is_number(&lower) && words.get(i + 1).is_some_and(|n| is_unit_word(&n.to_lowercase())) {
+            i += 2;
+            continue;
+        }
+        out.push(w);
+        i += 1;
+    }
+    out.join(" ")
 }
 
 pub async fn apply(state: &AppState, raw: &str, mut req: TaskRequest) -> Result<Log, AppError> {
@@ -476,6 +524,10 @@ pub async fn apply(state: &AppState, raw: &str, mut req: TaskRequest) -> Result<
     }
     if let Some(note) = explicit_note(raw) {
         req.note = Some(note);
+    }
+    // Beats whatever the model guessed, the same way #tag beats its category.
+    if let Some(minutes) = explicit_effort(raw) {
+        req.effort_minutes = Some(minutes);
     }
     req.title = strip_markers(&req.title);
 
@@ -935,7 +987,27 @@ pub(crate) fn effort_from_text(s: &str) -> Option<i32> {
 
 #[cfg(test)]
 mod tests {
-    use super::{effort_from_text, explicit_note, strip_markers};
+    use super::{effort_from_text, explicit_effort, explicit_note, strip_markers};
+
+    #[test]
+    fn a_duration_typed_into_an_entry_becomes_the_estimate() {
+        assert_eq!(explicit_effort("physics ps5 1 hr"), Some(60));
+        assert_eq!(explicit_effort("email coach 20min"), Some(20));
+        assert_eq!(explicit_effort("research compilation 2.5 hours #homework @5pm"), Some(150));
+        assert_eq!(explicit_effort("lit paragraph"), None);
+        // Inside a note it is time already spent, not an estimate.
+        assert_eq!(explicit_effort("psych notes note: took me 3 hours"), None);
+    }
+
+    #[test]
+    fn stripping_a_duration_leaves_the_title_alone() {
+        assert_eq!(strip_markers("physics ps5 1 hr"), "physics ps5");
+        assert_eq!(strip_markers("email coach 20min"), "email coach");
+        assert_eq!(strip_markers("write up the 1968 paper"), "write up the 1968 paper");
+        assert_eq!(strip_markers("read 30 pages"), "read 30 pages");
+        assert_eq!(strip_markers("finish level 2 of the course"), "finish level 2 of the course");
+        assert_eq!(strip_markers("research 2h30 #homework @5pm"), "research");
+    }
 
     #[test]
     fn durations_are_read_out_of_free_text() {

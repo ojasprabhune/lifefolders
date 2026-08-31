@@ -237,7 +237,13 @@ export function Guide() {
           time instead of the usual afternoon placeholder; add <em>@time</em> anywhere (e.g.
           "dentist tuesday @3pm") to pin the time exactly, the same idea as #tag for category.
           The third marker is <em>note:</em> — everything after it becomes the note, word for
-          word, instead of leaving the model to decide what counts as one. Say "remove the due
+          word, instead of leaving the model to decide what counts as one. The fourth is a
+          length: write <em>1 hr</em>, <em>40min</em> or <em>2h30</em> anywhere in the entry and
+          it becomes the estimate, and drops out of the title. Only a number with a unit counts,
+          so "read 30 pages" and "the 1968 paper" stay as they are. You can also set or change it
+          from the pill next to the title when a card is expanded. The estimate is what the day
+          plan builds its blocks out of — without one everything gets a flat half hour, which is
+          how three hours of work ends up scheduled into thirty minutes. Say "remove the due
           date on X" to take a deadline off without touching the sidequest itself.
           Marking one done tucks it into the <em>resolved</em> dropdown at the bottom of the
           panel instead of cluttering the open sections. Expand a card to see its clarity
@@ -253,6 +259,7 @@ export function Guide() {
           <li>psych notes note: started module 4</li>
           <li>remove the due date on the ptsa award</li>
           <li>dentist appointment tuesday @3pm</li>
+          <li>physics ps5 1 hr</li>
         </ul>
         <p className="schema">
           fields: title, category, due date, due time, effort minutes, status, is exam, note
@@ -350,8 +357,12 @@ export function Guide() {
         <p>
           Asking what to do with the day is a command too. "what should i do first" reads the
           clock, your open sidequests and how much clarity time each has already had, then writes
-          a short plan &mdash; real times, what to start on, where a break fits &mdash; to the top
-          of today's box below, keeping whatever you'd already written there.
+          a plan &mdash; real times, one line a block &mdash; to the top of today's box below,
+          keeping whatever you'd already written there. Each block is as long as that sidequest's
+          estimate says it is, lunch and dinner are left free, and it plans what's actually due
+          today first. Anything not due yet only appears once all of that fits, under an "if
+          there's time" line. If the day runs out it stops and says what didn't fit rather than
+          squeezing everything in.
         </p>
         <ul>
           <li>push everything due tomorrow to friday</li>
