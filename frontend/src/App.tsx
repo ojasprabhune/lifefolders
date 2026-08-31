@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createLog, getHiddenDomains, getShowClock, getToken, listLogs, setToken, transcribe, undoLast } from './api'
 import { getBackendState, markBackendOffline, markBackendOnline, type BackendState } from './backendStatus'
 import type { Category, Log, PendingLog } from './types'
@@ -210,20 +210,12 @@ export default function App() {
 // The Render backend sleeps after 15 min idle, so a cold start can take
 // well past a normal request timeout - this surfaces that state instead of
 // letting an entry just silently fail to parse.
-const BRAND_SUB = 'folders.'
-
 function Brand() {
   return (
     <h1 className="brand">
       <a className="brand-link" href="#/">
         life
-        <span className="brand-sub">
-          {BRAND_SUB.split('').map((c, i) => (
-            <span key={i} style={{ '--i': i } as CSSProperties}>
-              {c}
-            </span>
-          ))}
-        </span>
+        <span className="brand-sub">folders.</span>
       </a>
     </h1>
   )
