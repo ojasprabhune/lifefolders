@@ -1657,29 +1657,71 @@ header > .brand {
   max-width: 160px;
 }
 
-/* The clock is an object on the shelf: a small digital one standing at the far
-   end of the plank. A flex item rather than a fixed corner element, so it rests
-   on the plank without any arithmetic about where the plank is - and so it can
-   never drift out of agreement with it. The corner version it used to be still
-   exists, in the narrow media query where there is no shelf to stand on. */
+/* The clock is an object on the shelf: an alarm clock, case and all, taking
+   whatever width the books and the ball box leave it. A flex item rather than
+   a fixed element placed to look like it is on the plank, so the two can never
+   drift apart. The corner version it used to be still exists, in the narrow
+   media query where there is no shelf to stand on. */
 .pst-clock {
-  flex: none;
-  display: flex;
-  align-items: baseline;
-  padding: 3px 4px 4px;
-  border: 1px solid var(--line);
-  border-radius: 3px 3px 1px 1px;
+  flex: 1;
+  position: relative;
+  min-width: 0;
+  /* the 3px is the feet, which hang below the case onto the plank */
+  margin: 0 0 3px 11px;
+  padding: 3px;
+  border: 1.5px solid var(--line);
+  border-radius: 5px 5px 3px 3px;
   background: var(--bg);
-  box-shadow: inset 0 -2px 4px -2px rgba(0, 0, 0, 0.28);
-  font-family: 'calling-code', monospace;
-  font-weight: 400;
-  font-size: 11px;
-  line-height: 1;
-  letter-spacing: 0.02em;
-  color: var(--accent);
-  font-variant-numeric: tabular-nums;
   pointer-events: none;
   user-select: none;
+}
+
+.pst-clock::before,
+.pst-clock::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  width: 9px;
+  height: 3px;
+  background: var(--line);
+  border-radius: 0 0 2px 2px;
+}
+
+.pst-clock::before {
+  left: 8px;
+}
+
+.pst-clock::after {
+  right: 8px;
+}
+
+/* Three nubs on the lid. Drawn as a striped strip rather than three elements,
+   because they are three pixels tall and nobody is counting them. */
+.pst-clock-buttons {
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 33px;
+  height: 3px;
+  background: repeating-linear-gradient(90deg, var(--line) 0 7px, transparent 7px 13px);
+}
+
+.pst-clock-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 6px 6px;
+  border-radius: 2px;
+  background: #17120f;
+  box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.7);
+  font-family: 'calling-code', monospace;
+  font-weight: 400;
+  font-size: 18px;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  color: var(--paper);
+  font-variant-numeric: tabular-nums;
 }
 
 .pst-clock-char {
@@ -4264,14 +4306,15 @@ header > .brand {
 }
 
 /* The shelf. Bottom left, low down - it used to stand 60px up to clear the
-   corner clock, and the clock is on it now, so it has the corner back.
+   corner clock, and the clock is on it now. What is left below it is floor,
+   which is where a book that falls off ends up.
    Everything on it is drawn the way the rest of the app is: a hairline in
    --line, a fill in --bg, and the badge palette for the only real colour. */
 .shelf {
   position: fixed;
   left: 20px;
-  bottom: calc(max(20px, env(safe-area-inset-bottom, 0px) + 12px) + 10px);
-  width: 206px;
+  bottom: calc(max(20px, env(safe-area-inset-bottom, 0px) + 12px) + 22px);
+  width: 214px;
   z-index: 22;
   user-select: none;
   -webkit-user-select: none;
@@ -4284,10 +4327,6 @@ header > .brand {
   padding: 0 8px;
 }
 
-.shelf-gap {
-  flex: 1;
-}
-
 /* Books stand on the plank, so they are sized from the bottom up. The leaning
    one tips onto its neighbour and needs the overlap to look like it is
    resting rather than floating. */
@@ -4296,12 +4335,15 @@ header > .brand {
   background: var(--c);
   border-radius: 1.5px 1.5px 0 0;
   box-shadow: inset -1.5px 0 0 rgba(0, 0, 0, 0.22);
+  transform: rotate(var(--lean, 0deg));
+  transform-origin: 100% 100%;
+  transition: transform 620ms cubic-bezier(0.3, 1.1, 0.4, 1);
 }
 
-.book.leaning {
-  transform: rotate(var(--lean));
-  transform-origin: 100% 100%;
-  margin-left: -2px;
+/* The one on the floor. Its slot keeps its width so the shelf does not close
+   up behind it - what you see is the gap it left. */
+.book.gone {
+  visibility: hidden;
 }
 
 .plant {
@@ -4357,133 +4399,6 @@ header > .brand {
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.22);
 }
 
-/* Under the plank: a hairline seam, and a small handle. That is the whole of
-   a shut drawer. Pull the handle right and a paper slip comes with it - the
-   window it lives in is what widens, so nothing has to be hidden behind
-   anything, and the slip is uncovered from its first word rather than its
-   last. The row is a fixed height so a taller remark never shifts the books
-   above it; the empty part of it draws nothing. */
-.shelf-seam {
-  height: 1px;
-  margin: 3px 0 0;
-  background: color-mix(in srgb, var(--line) 60%, transparent);
-}
-
-.fidget {
-  display: flex;
-  align-items: flex-start;
-  height: 56px;
-}
-
-.fidget-window {
-  /* Not allowed to shrink: it is a flex item in a row the width of the shelf,
-     and a wide slip has to be able to overhang it rather than be squeezed. */
-  flex: none;
-  width: 0;
-  overflow: hidden;
-  transition: width 300ms cubic-bezier(0.2, 0.9, 0.3, 1);
-}
-
-.fidget.pulled .fidget-window,
-.fidget.leaking .fidget-window {
-  width: var(--w);
-}
-
-/* Pulled open, it still comes out slowly - the release finishes the pull
-   rather than firing the drawer across the shelf. */
-.fidget.pulled .fidget-window {
-  transition: width 620ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-/* The leak has to be slow enough that you notice it only once it is already
-   half out. Shutting is not: the base transition takes it back, and a
-   transition interrupted mid-flight starts from wherever it had got to. */
-.fidget.leaking .fidget-window {
-  transition: width var(--leak) linear;
-}
-
-/* max-content up to the cap, so a short remark makes a short drawer. The
-   right edge is open - the handle is the drawer's front. */
-.fidget-slip {
-  width: max-content;
-  max-width: var(--maxw);
-  margin: 0;
-  padding: 7px 10px 8px 9px;
-  border: 1px solid var(--line);
-  border-right: none;
-  border-radius: 0 0 0 4px;
-  background: var(--bg);
-  font-family: 'mencken-std-text', serif;
-  font-size: 11.5px;
-  line-height: 1.35;
-  color: var(--ink);
-}
-
-.fidget-slip.dim {
-  color: var(--faint);
-}
-
-.fidget-pull {
-  flex: none;
-  position: relative;
-  width: 11px;
-  height: 22px;
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 0 4px 4px 0;
-  background: var(--bg);
-  cursor: grab;
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
-}
-
-.fidget-pull:active {
-  cursor: grabbing;
-}
-
-.fidget-pull::before {
-  content: '';
-  position: absolute;
-  top: 6px;
-  bottom: 6px;
-  left: 50%;
-  width: 3px;
-  transform: translateX(-50%);
-  background: repeating-linear-gradient(to right, var(--faint) 0 1px, transparent 1px 3px);
-}
-
-/* Wear. Nothing says how many times you have pulled it - the handle just
-   stops looking new: a nick out of its edge, then the grip rubbed smooth,
-   then the thing is simply red. */
-.fidget-pull.wear-1::after,
-.fidget-pull.wear-2::after,
-.fidget-pull.wear-3::after {
-  content: '';
-  position: absolute;
-  top: -3px;
-  right: 2px;
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: var(--bg);
-}
-
-.fidget-pull.wear-2::before,
-.fidget-pull.wear-3::before {
-  opacity: 0.4;
-}
-
-.fidget-pull.wear-3 {
-  background: var(--accent);
-  border-color: var(--accent);
-}
-
-.fidget-pull.wear-3::before {
-  background: repeating-linear-gradient(to right, var(--paper) 0 1px, transparent 1px 3px);
-  opacity: 0.55;
-}
-
 /* The box the ball goes in, standing open on the plank beside the plant. */
 .ball-box {
   flex: none;
@@ -4536,7 +4451,202 @@ header > .brand {
   }
 }
 
-/* Not enough width for the shelf and a drawer pulled out beside it. The one
+/* The book that fell. It keeps its standing geometry and is turned onto its
+   side by the animation, so the shelf and the floor are the same object seen
+   at two angles. The hit area is padded well past it - a book on its side is
+   six pixels tall. */
+.book-fallen {
+  position: fixed;
+  z-index: 26;
+  padding: 0;
+  border: none;
+  border-radius: 1.5px 1.5px 0 0;
+  box-shadow: inset -1.5px 0 0 rgba(0, 0, 0, 0.22);
+  cursor: pointer;
+  animation: book-fall 900ms cubic-bezier(0.35, 0, 0.4, 1) both;
+}
+
+.book-fallen::after {
+  content: '';
+  position: absolute;
+  inset: -11px;
+}
+
+.book-fallen:hover {
+  filter: brightness(1.2);
+}
+
+.book-fallen.going-back {
+  animation: book-return 520ms cubic-bezier(0.4, 0, 0.3, 1) both;
+}
+
+@keyframes book-fall {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  50% {
+    transform: translate(calc(var(--dx) * 0.55), calc(var(--dy) - 7px)) rotate(64deg);
+  }
+  72% {
+    transform: translate(var(--dx), var(--dy)) rotate(98deg);
+  }
+  86% {
+    transform: translate(var(--dx), calc(var(--dy) - 4px)) rotate(86deg);
+  }
+  100% {
+    transform: translate(var(--dx), var(--dy)) rotate(90deg);
+  }
+}
+
+@keyframes book-return {
+  from {
+    transform: translate(var(--dx), var(--dy)) rotate(90deg);
+  }
+  to {
+    transform: translate(0, 0) rotate(0deg);
+  }
+}
+
+/* Opened, in the corner it fell into. The two leaves swing off the spine on a
+   real rotateY, which is the whole reason there is a perspective here. The
+   close needs its own keyframes rather than these run backwards: a finished
+   animation only re-runs when its name changes. */
+.book-spread {
+  position: fixed;
+  left: 20px;
+  bottom: max(20px, calc(env(safe-area-inset-bottom, 0px) + 12px));
+  z-index: 31;
+  display: flex;
+  height: 136px;
+  perspective: 800px;
+  perspective-origin: 50% 55%;
+  filter: drop-shadow(0 7px 16px rgba(0, 0, 0, 0.38));
+  animation: spread-rise 300ms cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+
+.book-spread.closing {
+  animation: spread-sink 260ms ease-in both;
+}
+
+@keyframes spread-rise {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes spread-sink {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+}
+
+.book-leaf {
+  box-sizing: border-box;
+  width: 132px;
+  padding: 13px 13px 11px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  backface-visibility: hidden;
+}
+
+.book-leaf.left {
+  border-right: none;
+  border-radius: 3px 0 0 3px;
+  border-left-width: 3px;
+  border-left-color: var(--c);
+  transform-origin: 100% 50%;
+  box-shadow: inset -12px 0 14px -14px rgba(0, 0, 0, 0.8);
+  animation: leaf-open-l 420ms cubic-bezier(0.2, 0.85, 0.25, 1) both;
+}
+
+/* Only when nothing is written on it. A long page runs across the spread, and
+   ruled lines under the words would be a different kind of book. */
+.book-leaf.left.ruled {
+  background-image: repeating-linear-gradient(
+    transparent 0 15px,
+    color-mix(in srgb, var(--line) 70%, transparent) 15px 16px
+  );
+}
+
+.book-leaf.right {
+  border-left: none;
+  border-radius: 0 3px 3px 0;
+  border-right-width: 3px;
+  border-right-color: var(--c);
+  transform-origin: 0 50%;
+  box-shadow: inset 12px 0 14px -14px rgba(0, 0, 0, 0.8);
+  animation: leaf-open-r 420ms cubic-bezier(0.2, 0.85, 0.25, 1) both;
+}
+
+.book-leaf p {
+  margin: 0;
+  font-family: 'mencken-std-text', serif;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+/* Past two full pages the type gives before the words do. */
+.book-spread.small .book-leaf p {
+  font-size: 10px;
+  line-height: 1.42;
+}
+
+@keyframes leaf-open-l {
+  from {
+    transform: rotateY(-84deg);
+  }
+  to {
+    transform: rotateY(0deg);
+  }
+}
+
+@keyframes leaf-open-r {
+  from {
+    transform: rotateY(84deg);
+  }
+  to {
+    transform: rotateY(0deg);
+  }
+}
+
+.book-spread.closing .book-leaf.left {
+  animation: leaf-shut-l 260ms ease-in both;
+}
+
+.book-spread.closing .book-leaf.right {
+  animation: leaf-shut-r 260ms ease-in both;
+}
+
+@keyframes leaf-shut-l {
+  from {
+    transform: rotateY(0deg);
+  }
+  to {
+    transform: rotateY(-84deg);
+  }
+}
+
+@keyframes leaf-shut-r {
+  from {
+    transform: rotateY(0deg);
+  }
+  to {
+    transform: rotateY(84deg);
+  }
+}
+
+/* Not enough width for the shelf and a book opening in front of it. The one
    thing on it that is not a toy stays: the shelf empties out and the clock goes
    back to being the big serif one in the corner. */
 @media (max-width: 540px) {
@@ -4546,9 +4656,7 @@ header > .brand {
   }
 
   .shelf-top > *:not(.pst-clock),
-  .shelf-plank,
-  .shelf-seam,
-  .fidget {
+  .shelf-plank {
     display: none;
   }
 
@@ -4561,8 +4669,23 @@ header > .brand {
     left: 20px;
     bottom: max(20px, calc(env(safe-area-inset-bottom, 0px) + 12px));
     z-index: 40;
+    margin: 0;
     padding: 0;
     border: none;
+    border-radius: 0;
+    background: none;
+  }
+
+  /* No case, no screen, no feet - just the time, the way it was before there
+     was a shelf to stand it on. */
+  .pst-clock::before,
+  .pst-clock::after,
+  .pst-clock-buttons {
+    display: none;
+  }
+
+  .pst-clock-screen {
+    padding: 0;
     border-radius: 0;
     background: none;
     box-shadow: none;
@@ -4747,7 +4870,7 @@ html.paddle-out * {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .fidget-window,
+  .book,
   .ball-box,
   .send-btn.stamp,
   .stamp-plate {
@@ -4757,7 +4880,17 @@ html.paddle-out * {
   .stamp-mark,
   .ink-splat,
   .ball-box.caught,
-  .pst-clock-char.colon {
+  .pst-clock-char.colon,
+  .book-spread,
+  .book-leaf {
     animation: none;
+  }
+
+  /* The fallen book is the one thing whose resting place is the end of its
+     own animation, so without the animation it has to be told where it
+     landed. */
+  .book-fallen {
+    animation: none;
+    transform: translate(var(--dx), var(--dy)) rotate(90deg);
   }
 }

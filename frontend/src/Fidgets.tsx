@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { FallenBook, pageFor, type Fallen, type Phase } from './Book'
 import { Clock } from './Clock'
-import { Drawer } from './Drawer'
 
 // A bead of ink with weight. Fling it and it keeps going, bounces off the
 // window and slows down; hit an edge hard enough and it leaves a splat that
@@ -494,12 +494,28 @@ function InkDrop({
   )
 }
 
-// The shelf, bottom left. The clock stands on it now, at the far end of the
-// plank - the flexible gap in front of it is what keeps the books and the box
-// where they are, so hiding the clock moves nothing else. The books are the
-// badge colours off the timeline. The drawer is the cabinet
-// below the plank: shut, it sits exactly behind the face, and only its pull
-// shows past the right edge.
+// The shelf, bottom left. The clock is the alarm clock at the end of the
+// plank, taking whatever width the books and the box leave it. The books are
+// the badge colours off the timeline, and one of them falls off now and then.
+
+// Every so often a book gives up and lands on the floor. Same shape as the
+// drawer's leak this replaces: a coin flipped every ten seconds rather than a
+// timer, so it is never on the beat, and never twice inside a minute.
+const DROP_CHECK_MS = 10000
+const DROP_CHANCE = 0.22
+const DROP_COOLDOWN_MS = 60000
+// Where a book lying on the floor rests, measured from the bottom of the
+// window - the floor is the bottom edge, not the underside of the shelf.
+const FLOOR = 16
+const READS_KEY = 'life_books_read'
+// Open, then held open, then shut. The whole visit is over in four seconds.
+const OPEN_MS = 420
+const HOLD_MS = 3000
+const CLOSE_MS = 280
+const RETURN_MS = 520
+// How far a book tips into the gap left by the one that fell.
+const TIP = 11
+
 const BOOKS: { domain: string; h: number; w: number; lean?: number }[] = [
   { domain: 'music', h: 24, w: 6 },
   { domain: 'task', h: 20, w: 5 },
@@ -518,35 +534,120 @@ function Shelf({
   showClock: boolean
   boxRef: React.RefObject<HTMLDivElement | null>
 }) {
+  const [fallen, setFallen] = useState<Fallen | null>(null)
+  const [phase, setPhase] = useState<Phase>('floor')
+  const bookRefs = useRef<(HTMLSpanElement | null)[]>([])
+  const reads = useRef(Number(localStorage.getItem(READS_KEY) ?? 0))
+  const lastDrop = useRef(Date.now())
+  const timers = useRef<number[]>([])
+
+  // Mounted once, through a ref. An effect with no dependency list tears its
+  // own interval down on every render, and this renders more often than it
+  // polls - which is how the drawer this replaces ended up never leaking.
+  const dropRef = useRef(() => {})
+  dropRef.current = () => {
+    if (fallen) return
+    if (Date.now() - lastDrop.current < DROP_COOLDOWN_MS) return
+    if (Math.random() > DROP_CHANCE) return
+    const i = Math.floor(Math.random() * BOOKS.length)
+    const el = bookRefs.current[i]
+    const r = el?.getBoundingClientRect()
+    if (!r || !r.width) return
+    lastDrop.current = Date.now()
+    // It keeps its standing geometry and is turned onto its side, so where it
+    // lands is worked out against the centre it rotates about rather than
+    // against its box, which is a different shape by the time it stops.
+    const dy = window.innerHeight - FLOOR - (r.top + r.height / 2 + r.width / 2)
+    // The page is worked out before it falls, not when you open it: the
+    // backend sleeps, and three seconds is not long enough to wait for it.
+    void pageFor(route, reads.current).then((text) => {
+      setPhase('floor')
+      setFallen({
+        i,
+        color: getComputedStyle(el!).backgroundColor,
+        left: r.left,
+        top: r.top,
+        w: r.width,
+        h: r.height,
+        dx: 6 + Math.random() * 20,
+        dy,
+        text,
+      })
+    })
+  }
+
+  useEffect(() => {
+    const t = window.setInterval(() => dropRef.current(), DROP_CHECK_MS)
+    return () => {
+      window.clearInterval(t)
+      timers.current.forEach(window.clearTimeout)
+    }
+  }, [])
+
+  const open = () => {
+    const n = reads.current + 1
+    reads.current = n
+    localStorage.setItem(READS_KEY, String(n))
+    setPhase('open')
+    timers.current = [
+      window.setTimeout(() => setPhase('closing'), OPEN_MS + HOLD_MS),
+      window.setTimeout(() => setPhase('back'), OPEN_MS + HOLD_MS + CLOSE_MS),
+      window.setTimeout(
+        () => {
+          setFallen(null)
+          setPhase('floor')
+        },
+        OPEN_MS + HOLD_MS + CLOSE_MS + RETURN_MS,
+      ),
+    ]
+  }
+
+  // The gap stays open the whole time the book is away - its slot keeps its
+  // width and only goes invisible - and the two books either side tip into it
+  // until they meet. Which of them is really holding the other up is not worth
+  // working out at five pixels wide.
+  const tipOf = (idx: number) => {
+    if (!fallen) return 0
+    if (idx === fallen.i - 1) return TIP
+    if (idx === fallen.i + 1) return -TIP
+    return 0
+  }
+
+  // The book leaves the shelf in the DOM too, not just visually: .shelf sets a
+  // z-index, and anything inside it is stuck in that stacking context - the
+  // open spread would have been painted under the ball.
   return (
-    <div className="shelf">
-      <div className="shelf-top">
-        {BOOKS.map((b, i) => (
-          <span
-            key={i}
-            className={`book${b.lean ? ' leaning' : ''}`}
-            style={{
-              ['--c' as string]: `var(--${b.domain})`,
-              height: `${b.h}px`,
-              width: `${b.w}px`,
-              ['--lean' as string]: `${b.lean ?? 0}deg`,
-            }}
-          />
-        ))}
-        <span className="plant">
-          <i className="leaf a" />
-          <i className="leaf b" />
-          <i className="leaf c" />
-          <i className="pot" />
-        </span>
-        <div className="ball-box" ref={boxRef} />
-        <span className="shelf-gap" />
-        {showClock && <Clock />}
+    <>
+      <div className="shelf">
+        <div className="shelf-top">
+          {BOOKS.map((b, i) => (
+            <span
+              key={i}
+              ref={(el) => {
+                bookRefs.current[i] = el
+              }}
+              className={`book${fallen?.i === i ? ' gone' : ''}`}
+              style={{
+                ['--c' as string]: `var(--${b.domain})`,
+                height: `${b.h}px`,
+                width: `${b.w}px`,
+                ['--lean' as string]: `${(b.lean ?? 0) + tipOf(i)}deg`,
+              }}
+            />
+          ))}
+          <span className="plant">
+            <i className="leaf a" />
+            <i className="leaf b" />
+            <i className="leaf c" />
+            <i className="pot" />
+          </span>
+          <div className="ball-box" ref={boxRef} />
+          {showClock && <Clock />}
+        </div>
+        <div className="shelf-plank" />
       </div>
-      <div className="shelf-plank" />
-      <div className="shelf-seam" />
-      <Drawer route={route} />
-    </div>
+      {fallen && <FallenBook fallen={fallen} phase={phase} onOpen={open} />}
+    </>
   )
 }
 
