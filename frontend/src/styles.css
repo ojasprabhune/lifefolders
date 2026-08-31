@@ -4082,6 +4082,22 @@ header > .brand {
   color: var(--muted);
 }
 
+.planner-label-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  padding: 0;
+}
+
+.planner-label-input:focus {
+  outline: none;
+  border-bottom-color: var(--accent);
+}
+
 .planner-minutes,
 .planner-minutes-input {
   font-family: 'calling-code', monospace;

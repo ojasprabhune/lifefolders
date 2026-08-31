@@ -10,21 +10,34 @@ export function prefersReducedMotion(): boolean {
  * explicitly - `auto` is not an animatable value, and the row's height depends
  * on its content.
  */
-export function collapseAndRemove(el: HTMLElement | null, remove: () => void) {
+export function collapseAndRemove(
+  el: HTMLElement | null,
+  remove: () => void,
+  // A deleted row wants to be gone; a notice that has simply timed out wants
+  // to be let go of, so it gets longer and an ease-out - the whole complaint
+  // about the old behaviour was the snap at the end.
+  { ms = 160, easing = 'cubic-bezier(0.4, 0, 1, 1)' } = {},
+) {
   if (!el || prefersReducedMotion()) {
     remove()
     return
   }
   const height = el.getBoundingClientRect().height
+  // The padding has to come down with the height. `box-sizing: border-box` is
+  // set globally, so `height` counts the padding, and the used height can't go
+  // below it - the element stalls at padding-top + padding-bottom and then
+  // vanishes, which is a snap of exactly that many pixels at the very end.
+  const style = getComputedStyle(el)
+  const { paddingTop, paddingBottom } = style
   el.style.overflow = 'hidden'
   const anim = el.animate(
     [
-      { height: `${height}px`, opacity: 1 },
-      { height: '0px', opacity: 0 },
+      { height: `${height}px`, paddingTop, paddingBottom, opacity: 1 },
+      { height: '0px', paddingTop: '0px', paddingBottom: '0px', opacity: 0 },
     ],
     // `fill: forwards` matters: without it the row springs back to full height
     // for the frame between the animation finishing and React unmounting it.
-    { duration: 160, easing: 'cubic-bezier(0.4, 0, 1, 1)', fill: 'forwards' },
+    { duration: ms, easing, fill: 'forwards' },
   )
   anim.onfinish = remove
   anim.oncancel = remove

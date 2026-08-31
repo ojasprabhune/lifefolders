@@ -328,6 +328,30 @@ pub async fn patch(
     .bind(body.clear_ends_at)
     .fetch_one(&state.pool)
     .await?;
+
+    // Moving the day's bounds can strand a meal outside them. Generation
+    // already refuses to place one there; this is the same rule applied after
+    // the fact, because the usual way you end up with lunch at quarter to four
+    // is planning at lunchtime and then pushing the start back.
+    let keep = meals_in_window(minutes_of(row.starts_at), window_end(row.starts_at, row.ends_at));
+    let stranded: Vec<&str> = MEAL_BREAKS
+        .iter()
+        .map(|(_, _, what)| *what)
+        .filter(|what| !keep.iter().any(|(_, _, k)| k == what))
+        .collect();
+    if !stranded.is_empty() {
+        let hit = sqlx::query(
+            "DELETE FROM plan_blocks WHERE plan_date = $1 AND kind = 'break' AND label = ANY($2)",
+        )
+        .bind(date)
+        .bind(&stranded)
+        .execute(&state.pool)
+        .await?;
+        if hit.rows_affected() > 0 {
+            renumber(&state, date).await?;
+        }
+    }
+
     Ok(Json(view(&state, date, row).await?))
 }
 
@@ -562,11 +586,13 @@ pub(crate) async fn regenerate(
     // Re-planning today starts from now, not from whenever the plan was first
     // opened - an afternoon start time on an evening re-plan is just wrong.
     // Rounded up to the next five minutes because "start at 6:31" is a time
-    // nobody starts at.
+    // nobody starts at. Only when the stored start has already gone by, though:
+    // a start time in the future was typed on purpose, and dragging it back to
+    // now isn't re-planning the day, it's overruling you about when it begins.
     let now = Utc::now() - Duration::minutes(offset as i64);
     if date == now.date_naive() {
         let from_now = at_minute(round_up_5(now.hour() as i32 * 60 + now.minute() as i32));
-        if from_now != row.starts_at {
+        if row.starts_at < from_now {
             sqlx::query("UPDATE day_plans SET starts_at = $2, updated_at = now() WHERE plan_date = $1")
                 .bind(date)
                 .bind(from_now)
@@ -588,7 +614,7 @@ pub(crate) async fn regenerate(
         .bind(date)
         .execute(&state.pool)
         .await?;
-    let drafted = insert_meals(row.starts_at, drafted);
+    let drafted = insert_meals(row.starts_at, row.ends_at, drafted);
     for (i, b) in drafted.iter().enumerate() {
         let label = clean_label(&b.label);
         // The model names sidequests by title; resolving here rather than
@@ -622,6 +648,36 @@ pub(crate) async fn regenerate(
 /// it past this gets split.
 const MEAL_SHIFT_MAX: i32 = 45;
 
+/// The plan's end in the same frame as its start: a bedtime is routinely past
+/// midnight from the day's point of view, so it has to be counted on the far
+/// side of it rather than compared as a smaller number.
+fn window_end(starts_at: NaiveTime, ends_at: Option<NaiveTime>) -> Option<i32> {
+    let start = minutes_of(starts_at);
+    ends_at.map(|e| {
+        let m = minutes_of(e);
+        if m < start {
+            m + 1440
+        } else {
+            m
+        }
+    })
+}
+
+/// Which meals belong to a day running from `start` to `end`. A meal already
+/// over before the day begins isn't a break, and neither is one whose hour
+/// falls after the day is meant to be finished - planning quarter to four
+/// until seven shouldn't hand you lunch.
+fn meals_in_window(start: i32, end: Option<i32>) -> Vec<(i32, i32, &'static str)> {
+    MEAL_BREAKS
+        .iter()
+        .filter_map(|(from, to, what)| {
+            let f = minutes_of(parse_hhmm(from)?);
+            let t = minutes_of(parse_hhmm(to)?);
+            (t > start && end.is_none_or(|e| f < e)).then_some((f, t, *what))
+        })
+        .collect()
+}
+
 /// Meals are placed here rather than by the model. Asked to position them by
 /// arithmetic it drifted - dinner landed at 10:53pm in one run - and there is
 /// nothing to reason about: a meal happens at its hour, give or take.
@@ -630,17 +686,13 @@ const MEAL_SHIFT_MAX: i32 = 45;
 /// one is left whole and the meal slides after it, unless that would push the
 /// meal more than MEAL_SHIFT_MAX late, in which case the block is split and the
 /// halves still add up to the original length.
-fn insert_meals(starts_at: NaiveTime, drafted: Vec<groq::DraftBlock>) -> Vec<groq::DraftBlock> {
+fn insert_meals(
+    starts_at: NaiveTime,
+    ends_at: Option<NaiveTime>,
+    drafted: Vec<groq::DraftBlock>,
+) -> Vec<groq::DraftBlock> {
     let start = minutes_of(starts_at);
-    let mut meals: Vec<(i32, i32, &str)> = MEAL_BREAKS
-        .iter()
-        .filter_map(|(from, to, what)| {
-            let f = minutes_of(parse_hhmm(from)?);
-            let t = minutes_of(parse_hhmm(to)?);
-            // A meal already over by the time the day starts is not a break.
-            (t > start).then_some((f, t, *what))
-        })
-        .collect();
+    let mut meals = meals_in_window(start, window_end(starts_at, ends_at));
     meals.sort();
     meals.reverse(); // popped from the back, so earliest first
 
@@ -919,7 +971,7 @@ mod tests {
         let start = NaiveTime::parse_from_str("17:44", "%H:%M").unwrap();
         // 17:44 + 180 runs to 20:44, fourteen minutes past dinner at 20:30.
         // Eating at 20:44 beats cutting the task in two to eat on the dot.
-        let out = super::insert_meals(start, vec![draft("task", "research", 180)]);
+        let out = super::insert_meals(start, None, vec![draft("task", "research", 180)]);
         let shape: Vec<_> = out.iter().map(|b| (b.kind.as_str(), b.label.as_str(), b.minutes)).collect();
         assert_eq!(shape, vec![("task", "research", 180), ("break", "dinner", 30)]);
     }
@@ -928,7 +980,7 @@ mod tests {
     fn a_block_that_would_hold_a_meal_up_for_hours_is_split() {
         let start = NaiveTime::parse_from_str("18:00", "%H:%M").unwrap();
         // 18:00 + 240 would run to 22:00 - an hour and a half past dinner.
-        let out = super::insert_meals(start, vec![draft("task", "essay", 240)]);
+        let out = super::insert_meals(start, None, vec![draft("task", "essay", 240)]);
         let shape: Vec<_> = out.iter().map(|b| (b.kind.as_str(), b.label.as_str(), b.minutes)).collect();
         assert_eq!(
             shape,
@@ -942,7 +994,7 @@ mod tests {
         let start = NaiveTime::parse_from_str("20:00", "%H:%M").unwrap();
         // Starts half an hour before dinner, runs 60 - dinner lands at 21:00
         // and still lasts its full half hour rather than being trimmed.
-        let out = super::insert_meals(start, vec![draft("task", "reading", 60)]);
+        let out = super::insert_meals(start, None, vec![draft("task", "reading", 60)]);
         let dinner = out.iter().find(|b| b.label == "dinner").expect("dinner");
         assert_eq!(dinner.minutes, 30);
     }
@@ -950,7 +1002,7 @@ mod tests {
     #[test]
     fn a_meal_already_over_is_not_a_break() {
         let start = NaiveTime::parse_from_str("17:44", "%H:%M").unwrap();
-        let out = super::insert_meals(start, vec![draft("task", "short", 20)]);
+        let out = super::insert_meals(start, None, vec![draft("task", "short", 20)]);
         assert!(!out.iter().any(|b| b.label == "lunch"), "lunch ended hours ago");
         assert_eq!(out.len(), 1, "a block that clears every meal is untouched");
     }
@@ -958,11 +1010,38 @@ mod tests {
     #[test]
     fn a_day_starting_before_lunch_gets_both_meals() {
         let start = NaiveTime::parse_from_str("09:00", "%H:%M").unwrap();
-        let out = super::insert_meals(start, vec![draft("task", "long", 12 * 60)]);
+        let out = super::insert_meals(start, None, vec![draft("task", "long", 12 * 60)]);
         let breaks: Vec<_> = out.iter().filter(|b| b.kind == "break").map(|b| b.label.as_str()).collect();
         assert_eq!(breaks, vec!["lunch", "dinner"]);
         let work: i32 = out.iter().filter(|b| b.kind == "task").map(|b| b.minutes).sum();
         assert_eq!(work, 12 * 60, "splitting must not lose or invent minutes");
+    }
+
+    #[test]
+    fn an_afternoon_start_gets_no_lunch() {
+        // The bug this exists for: plan the day at lunchtime, then push the
+        // start to quarter to four. Lunch has to go, not be re-timed to 3:45.
+        let start = NaiveTime::parse_from_str("15:45", "%H:%M").unwrap();
+        let out = super::insert_meals(start, None, vec![draft("task", "reading", 60)]);
+        assert!(!out.iter().any(|b| b.label == "lunch"), "lunch was over hours ago");
+    }
+
+    #[test]
+    fn a_day_that_ends_before_dinner_gets_no_dinner() {
+        let start = NaiveTime::parse_from_str("15:45", "%H:%M").unwrap();
+        let end = NaiveTime::parse_from_str("19:00", "%H:%M").unwrap();
+        // Four hours of work would run past 8:30 - but the day is meant to be
+        // over by seven, so dinner is not this plan's problem.
+        let out = super::insert_meals(start, Some(end), vec![draft("task", "essay", 240)]);
+        assert!(out.iter().all(|b| b.kind == "task"), "no meal belongs in a 3:45-7 day");
+    }
+
+    #[test]
+    fn a_bedtime_past_midnight_still_counts_dinner_as_inside_the_day() {
+        let start = NaiveTime::parse_from_str("15:45", "%H:%M").unwrap();
+        let end = NaiveTime::parse_from_str("00:30", "%H:%M").unwrap();
+        let out = super::insert_meals(start, Some(end), vec![draft("task", "essay", 360)]);
+        assert!(out.iter().any(|b| b.label == "dinner"), "8:30 is before a 12:30 bedtime");
     }
 
     #[test]

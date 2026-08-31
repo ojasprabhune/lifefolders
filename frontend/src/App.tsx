@@ -9,7 +9,7 @@ import { Clock } from './Clock'
 import { DailyPlan } from './DailyPlan'
 import { Fidgets } from './Fidgets'
 import { STAMP_WORDS, pickNot } from './remarks'
-import { useFlipList } from './motion'
+import { collapseAndRemove, useFlipList } from './motion'
 import { Guide } from './Guide'
 import { rememberPanel } from './lastPanel'
 import { Soma } from './Soma'
@@ -316,6 +316,12 @@ function Home() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [rateAlbum, setRateAlbum] = useState<Log | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const noticeRef = useRef<HTMLDivElement>(null)
+  const noticeTimer = useRef<number | undefined>(undefined)
+  // A notice that has been superseded must not be cleared by the run that is
+  // already on its way out - collapseAndRemove's cancel handler fires a beat
+  // after cancel() returns, which is after the new text has been set.
+  const noticeSeq = useRef(0)
   const [text, setText] = useState('')
   const [greeting] = useState(pickGreeting)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -388,10 +394,31 @@ function Home() {
     return () => window.removeEventListener('life-timeline-stale', onStale)
   }, [date, refresh, flashParsed])
 
-  const flash = (message: string) => {
+  // Shown, then let go of rather than yanked: it fades while its height comes
+  // down, so the day below rises to meet it instead of jumping up a line.
+  const showNotice = useCallback((message: string, ms: number) => {
+    window.clearTimeout(noticeTimer.current)
+    const seq = ++noticeSeq.current
+    const el = noticeRef.current
+    // Replacing a notice mid-fade: drop the old animation, which is holding
+    // the element at zero height under `fill: forwards`.
+    if (el) {
+      el.getAnimations().forEach((a) => a.cancel())
+      el.style.overflow = ''
+    }
     setNotice(message)
-    setTimeout(() => setNotice(null), 2500)
-  }
+    noticeTimer.current = window.setTimeout(() => {
+      collapseAndRemove(
+        noticeRef.current,
+        () => {
+          if (noticeSeq.current === seq) setNotice(null)
+        },
+        { ms: 300, easing: 'cubic-bezier(0.33, 1, 0.68, 1)' },
+      )
+    }, ms)
+  }, [])
+
+  const flash = (message: string) => showNotice(message, 2500)
 
   // Cmd/Ctrl+Z undoes the last logged entry's add/edit/delete, but only
   // when focus isn't in a text field - typing in the entry input should
@@ -457,10 +484,7 @@ function Home() {
         // Fires even when a command produced no logs at all - the sidequests
         // panel and any open dashboard still need to pick up the change.
         window.dispatchEvent(new Event('life-log-created'))
-        if (message) {
-          setNotice(message)
-          setTimeout(() => setNotice(null), 6000)
-        }
+        if (message) showNotice(message, 6000)
         if (focus_session) {
           adoptFocusSession(focus_session)
           window.location.hash = '#/focus'
@@ -752,7 +776,11 @@ function Home() {
         key={view.date}
         ref={listRef}
       >
-        {notice && <div className="notice">{notice}</div>}
+        {notice && (
+          <div className="notice" ref={noticeRef}>
+            {notice}
+          </div>
+        )}
         {isToday &&
           pendings.map((p) => (
             <div

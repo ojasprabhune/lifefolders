@@ -184,7 +184,10 @@ export function DayPlanner({
       el: rows[index],
       moved: false,
     }
-    e.currentTarget.setPointerCapture(e.pointerId)
+    // Capture is taken when the drag actually starts, not here. Capturing on
+    // press retargets every later mouse event to the row, so the click and
+    // dblclick that follow are delivered against the <li> rather than the
+    // label inside it - which quietly ate the double-click-to-reword.
   }
 
   const moveDrag = (e: React.PointerEvent) => {
@@ -195,6 +198,8 @@ export function DayPlanner({
     if (!d.moved) {
       if (Math.abs(dy) < 4) return
       d.moved = true
+      // Now that this is a drag, the pointer is allowed to leave the row.
+      d.el.setPointerCapture(e.pointerId)
       // Anything that got selected in the four pixels before we knew this was
       // a drag goes away now.
       window.getSelection()?.removeAllRanges()
@@ -337,7 +342,10 @@ export function DayPlanner({
                 onPointerCancel={endDrag}
               >
                 <span className="planner-time">{clockLabel(b.start)}</span>
-                <span className="planner-label">{b.label}</span>
+                <LabelField
+                  value={b.label}
+                  onSave={(v) => void run(() => patchPlanBlock(date, b.id, { label: v }))}
+                />
                 <MinutesField
                   value={b.minutes}
                   onSave={(m) => void run(() => patchPlanBlock(date, b.id, { minutes: m }))}
@@ -510,6 +518,55 @@ function TimeField({
         }}
       />
     </span>
+  )
+}
+
+// Double-click to reword a line of the plan. This only ever writes the block's
+// own label - the sidequest keeps its name - so "chem lab" can be "chem lab:
+// just the writeup" for today without renaming the thing you have to finish.
+// A re-plan is destructive by design and will put the title back.
+function LabelField({ value, onSave }: { value: string; onSave: (v: string) => void }) {
+  const [draft, setDraft] = useState<string | null>(null)
+
+  if (draft === null) {
+    return (
+      <span
+        className="planner-label"
+        title="double-click to reword this line"
+        onDoubleClick={() => {
+          // The double-click has already selected the word under the pointer;
+          // leaving it highlighted behind the input just looks like a mistake.
+          window.getSelection()?.removeAllRanges()
+          setDraft(value)
+        }}
+      >
+        {value}
+      </span>
+    )
+  }
+
+  const commit = () => {
+    const text = draft.trim()
+    setDraft(null)
+    if (text && text !== value) onSave(text)
+  }
+
+  return (
+    <input
+      className="planner-label-input"
+      autoFocus
+      value={draft}
+      // Caret at the end rather than the whole thing selected, unlike the
+      // number fields: the point of rewording a line is usually to add a
+      // detail to it, and selecting all means retyping the title to do that.
+      onFocus={(e) => e.currentTarget.setSelectionRange(draft.length, draft.length)}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur()
+        if (e.key === 'Escape') setDraft(null)
+      }}
+    />
   )
 }
 
