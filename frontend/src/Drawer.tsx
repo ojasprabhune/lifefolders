@@ -7,17 +7,21 @@ import type { Category, SleepData } from './types'
 // letting go commits to open. Short of it, it snaps back.
 // The body's width: shut, it is exactly hidden behind the cabinet face.
 const MAX_W = 270
-const SNAP = 0.42
+const SNAP = 0.4
+// The drawer sticks. This is the distance your hand covers, not the drawer's:
+// a fixed span rather than a multiple of the slip's width, so how hard the
+// thing is to open does not depend on how long the remark inside it happens to
+// be. With SNAP at 0.4 it takes a pull of about 330px to commit.
+const PULL_SPAN = 640
 const PULLS_KEY = 'life_drawer_pulls'
-// The leak is meant to be rare enough to be a surprise, so it is a coin the
-// app flips every so often rather than a timer that always fires: roughly once
-// every five minutes of the pointer staying out of the bottom half, never
-// twice inside a couple of minutes, and eighteen seconds to slide all the way
-// out once it does.
-const LEAK_CHECK_MS = 30000
-const LEAK_CHANCE = 0.1
-const LEAK_COOLDOWN_MS = 120000
-const LEAK_MS = 18000
+// It creeps open on its own about once a minute of the pointer staying out of
+// the bottom half, and takes ten seconds to do it, so it arrives in the corner
+// of your eye rather than announcing itself. Still a coin flip rather than a
+// timer, so it is never quite on the beat.
+const LEAK_CHECK_MS = 10000
+const LEAK_CHANCE = 0.3
+const LEAK_COOLDOWN_MS = 30000
+const LEAK_MS = 10000
 
 const ROUTE_CATEGORY: { prefix: string; category: Category; label: string }[] = [
   { prefix: '#/music', category: 'music', label: 'music' },
@@ -135,11 +139,26 @@ export function Drawer({ route }: { route: string }) {
     setFilling({ kind: 'line', text: nonsense() })
   }
 
-  // The drawer does not sit still. Rarely - a one-in-ten chance each half
-  // minute the pointer stays out of the bottom half, never twice inside two
-  // minutes - it slides itself open, and the moment the pointer comes near it
+  // The drawer does not sit still. Every so often - a coin flip each ten
+  // seconds the pointer stays out of the bottom half, never twice inside half
+  // a minute - it slides itself open, and the moment the pointer comes near it
   // is shut again. The poll is what makes a pointer that never moves work: a
   // cursor parked in the top half is away, and away is what arms the leak.
+  //
+  // Mounted exactly once, through a ref. An effect with no dependency list
+  // tears its own interval down and starts a new one on every render, so a
+  // drawer that renders more often than it polls never gets to the far end of
+  // a single tick and can never leak at all.
+  const leakRef = useRef(() => {})
+  leakRef.current = () => {
+    if (inBottom.current || modeRef.current !== 'shut') return
+    if (Date.now() - lastLeak.current < LEAK_COOLDOWN_MS) return
+    if (Math.random() > LEAK_CHANCE) return
+    lastLeak.current = Date.now()
+    fill(pulls)
+    setMode('leaking')
+  }
+
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
       const bottom = e.clientY > window.innerHeight * 0.52
@@ -149,19 +168,12 @@ export function Drawer({ route }: { route: string }) {
       setMode((m) => (m === 'leaking' ? 'shut' : m))
     }
     window.addEventListener('pointermove', onMove)
-    const tick = window.setInterval(() => {
-      if (inBottom.current || modeRef.current !== 'shut') return
-      if (Date.now() - lastLeak.current < LEAK_COOLDOWN_MS) return
-      if (Math.random() > LEAK_CHANCE) return
-      lastLeak.current = Date.now()
-      fill(pulls)
-      setMode('leaking')
-    }, LEAK_CHECK_MS)
+    const tick = window.setInterval(() => leakRef.current(), LEAK_CHECK_MS)
     return () => {
       window.removeEventListener('pointermove', onMove)
       window.clearInterval(tick)
     }
-  })
+  }, [])
 
   // Only a drawer that was all the way shut gets restocked, and only a pull
   // counts - a leak stocks itself but is not something you did.
@@ -183,7 +195,7 @@ export function Drawer({ route }: { route: string }) {
     const pulled = clientX - d.startX
     // Rubber band: the further you pull the less you get, so it stiffens
     // toward the end of its travel instead of stopping dead.
-    const give = width * (1 - Math.exp(-Math.abs(pulled) / Math.max(width, 1))) * Math.sign(pulled)
+    const give = width * (1 - Math.exp(-Math.abs(pulled) / PULL_SPAN)) * Math.sign(pulled)
     return Math.max(0, Math.min(width, d.from + give))
   }
 
@@ -216,8 +228,11 @@ export function Drawer({ route }: { route: string }) {
     if (!d || !win) return
     win.style.transition = ''
     win.style.width = ''
+    // A click does not open it. It is a stuck drawer, and the only thing that
+    // gets it out is pulling - clicking it open made the whole gesture
+    // pointless. Clicking one that is already out puts it away.
     if (!d.moved) {
-      commit(!open)
+      if (open) commit(false)
       return
     }
     commit(shownFor(d, e.clientX) > width * SNAP)
@@ -243,7 +258,7 @@ export function Drawer({ route }: { route: string }) {
       </div>
       <button
         className={`fidget-pull wear-${wear}`}
-        aria-label={open ? 'close the drawer' : 'open the drawer'}
+        aria-label={open ? 'close the drawer' : 'pull the drawer open'}
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}

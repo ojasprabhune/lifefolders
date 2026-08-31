@@ -16,6 +16,10 @@ const PADDLE_H = 6
 // Below this the bar counts as parked, and is a wall rather than a swing.
 const PADDLE_STILL = 30
 
+// Thrown home. Gravity is exaggerated so the hop is short and reads as a toss
+// across the room rather than a lob over a building.
+const THROW_G = 2600
+
 const DROP_HOMES: { prefix: string; x: number; y: number }[] = [
   { prefix: '#/music', x: 0.08, y: 0.34 },
   { prefix: '#/soma', x: 0.93, y: 0.28 },
@@ -32,6 +36,18 @@ const DROP_HOMES: { prefix: string; x: number; y: number }[] = [
 ]
 
 type Splat = { id: number; x: number; y: number; rot: number; scale: number }
+
+// An arc with a destination: solved once at the throw, then only read.
+type Fly = {
+  t0: number
+  dur: number
+  x0: number
+  y0: number
+  vx: number
+  vy: number
+  tx: number
+  ty: number
+}
 
 function InkDrop({
   route,
@@ -68,7 +84,20 @@ function InkDrop({
     // ball between two frames still catches it
     prevPx: -999,
     prevPy: -999,
+    // the throw home, and whether the cursor is over the box - where the
+    // paddle gives way to a real pointer, because the box is a thing you click
+    fly: null as Fly | null,
+    atBox: false,
   })
+
+  // The box's rect, cached. It is read on every pointer move to decide whether
+  // the paddle is out, and measuring a fixed element sixty times a second is a
+  // forced layout for something that only moves when the window does.
+  const boxRect = useRef<DOMRect | null>(null)
+  const syncBox = useCallback(() => {
+    const r = boxRef.current?.getBoundingClientRect()
+    boxRect.current = r && r.width ? r : null
+  }, [boxRef])
 
   const draw = () => {
     if (ref.current) ref.current.style.transform = `translate(${st.current.x}px, ${st.current.y}px)`
@@ -79,7 +108,7 @@ function InkDrop({
   // bug. Put the ball in its box and the cursor comes back.
   const showPaddle = () => {
     const s = st.current
-    const on = !s.parked && !s.dragging
+    const on = !s.parked && !s.dragging && !s.atBox
     padRef.current?.classList.toggle('up', on)
     document.documentElement.classList.toggle('paddle-out', on)
   }
@@ -108,6 +137,7 @@ function InkDrop({
 
   const park = (at: { x: number; y: number }) => {
     const s = st.current
+    s.fly = null
     s.x = at.x
     s.y = at.y
     s.vx = 0
@@ -127,6 +157,14 @@ function InkDrop({
     showPaddle()
   }
 
+  // Where in the box a ball ends up. Null when there is no box on screen at
+  // all, which is the narrow window where the shelf is hidden.
+  const boxSpot = () => {
+    const r = boxRef.current?.getBoundingClientRect()
+    if (!r || !r.width) return null
+    return { x: r.left + r.width / 2 - BALL_R, y: r.bottom - DROP - 4 }
+  }
+
   const stepRef = useRef<(t: number) => void>(() => {})
 
   const kick = useCallback(() => {
@@ -135,6 +173,36 @@ function InkDrop({
     s.lastT = performance.now()
     s.raf = requestAnimationFrame((t) => stepRef.current(t))
   }, [])
+
+  // Thrown home rather than teleported. The flight time is picked first and
+  // the velocity that lands the ball in the box at the end of it falls out of
+  // the arithmetic, so the arc ends on the box from wherever it started and
+  // always comes down into it rather than up at it.
+  const launch = () => {
+    const s = st.current
+    const at = boxSpot()
+    if (!at || s.parked || s.dragging) return
+    const dist = Math.hypot(at.x - s.x, at.y - s.y)
+    let dur = Math.min(1.05, 0.42 + dist / 1400)
+    let vy = (at.y - s.y) / dur - 0.5 * THROW_G * dur
+    // Keep the top of the arc on screen: a ball that leaves the window reads
+    // as deleted rather than thrown. A shorter flight is a flatter one.
+    while (dur > 0.34 && vy < 0 && s.y - (vy * vy) / (2 * THROW_G) < 12) {
+      dur -= 0.06
+      vy = (at.y - s.y) / dur - 0.5 * THROW_G * dur
+    }
+    s.fly = {
+      t0: performance.now(),
+      dur,
+      x0: s.x,
+      y0: s.y,
+      vx: (at.x - s.x) / dur,
+      vy,
+      tx: at.x,
+      ty: at.y,
+    }
+    kick()
+  }
 
   // Worked out in the bar's own frame - how far along the bar the ball sits,
   // and how far off it - rather than as a rectangle overlap, because the bar
@@ -146,7 +214,7 @@ function InkDrop({
   // bar was to where it is now is what gets tested instead.
   const paddleHit = (t: number) => {
     const s = st.current
-    if (s.dragging || s.parked || t - s.lastHit < 60) return
+    if (s.dragging || s.parked || s.fly || s.atBox || t - s.lastHit < 60) return
     const bx = s.x + BALL_R
     const by = s.y + BALL_R
     const dx = Math.cos(s.angle)
@@ -194,6 +262,24 @@ function InkDrop({
     s.raf = 0
     const dt = Math.min(32, t - s.lastT) / 1000
     s.lastT = t
+
+    // A throw ignores everything else - no drag, no walls, no paddle. It is
+    // on rails to the box and the only question is whether it has landed.
+    const f = s.fly
+    if (f) {
+      const e = (t - f.t0) / 1000
+      if (e >= f.dur) {
+        park({ x: f.tx, y: f.ty })
+        boxRef.current?.classList.add('caught')
+        window.setTimeout(() => boxRef.current?.classList.remove('caught'), 380)
+        return
+      }
+      s.x = f.x0 + f.vx * e
+      s.y = f.y0 + f.vy * e + 0.5 * THROW_G * e * e
+      draw()
+      kick()
+      return
+    }
 
     if (!s.dragging && !s.parked) {
       // Weighted: almost no drag, so it coasts and the bounces do the work.
@@ -264,6 +350,17 @@ function InkDrop({
         s.prevPx = e.clientX
         s.prevPy = e.clientY
       }
+      // Over the box the paddle stands down and the real cursor comes back:
+      // the box is something you click, and clicking needs a pointer to aim
+      // with. Padded, so the swap happens just before you are on it.
+      const r = boxRect.current
+      s.atBox =
+        !!r &&
+        e.clientX > r.left - 8 &&
+        e.clientX < r.right + 8 &&
+        e.clientY > r.top - 10 &&
+        e.clientY < r.bottom + 8
+
       const speed = Math.hypot(s.pvx, s.pvy)
       if (speed > PADDLE_STILL) s.angle = Math.atan2(s.pvy, s.pvx) + Math.PI / 2
       padRef.current?.style.setProperty(
@@ -281,22 +378,22 @@ function InkDrop({
   // cursor left behind by a teardown would be unfixable from the page.
   useEffect(() => () => document.documentElement.classList.remove('paddle-out'), [])
 
-  // Clicking the box puts the ball back, which is also how you get the cursor
-  // back without having to carry the ball there.
+  // Clicking the box throws the ball into it from wherever it is, which is
+  // also how you get the cursor back without having to carry it there.
   useEffect(() => {
     const box = boxRef.current
     if (!box) return
-    const onClick = () => {
-      const r = box.getBoundingClientRect()
-      if (!r.width) return
-      const s = st.current
-      cancelAnimationFrame(s.raf)
-      s.raf = 0
-      park({ x: r.left + r.width / 2 - BALL_R, y: r.bottom - DROP - 4 })
-    }
+    const onClick = () => launch()
     box.addEventListener('click', onClick)
     return () => box.removeEventListener('click', onClick)
   }, [boxRef])
+
+  // The cached box rect only goes stale when the window does.
+  useEffect(() => {
+    syncBox()
+    window.addEventListener('resize', syncBox)
+    return () => window.removeEventListener('resize', syncBox)
+  }, [syncBox])
 
   useEffect(() => {
     const s = st.current
@@ -304,6 +401,7 @@ function InkDrop({
     s.raf = 0
     s.vx = 0
     s.vy = 0
+    s.fly = null
     const home = DROP_HOMES.find((h) => route.startsWith(h.prefix)) ?? { x: 0.94, y: 0.42 }
     const goHome = () => {
       s.x = (window.innerWidth - DROP) * home.x
@@ -316,8 +414,9 @@ function InkDrop({
       // the shelf has no box at all, and a ball parked in nothing would sit in
       // the top left corner, so that falls back to the page's own spot.
       requestAnimationFrame(() => {
-        const at = boxRef.current?.getBoundingClientRect()
-        if (at && at.width) park({ x: at.left + at.width / 2 - BALL_R, y: at.bottom - DROP - 4 })
+        syncBox()
+        const at = boxSpot()
+        if (at) park(at)
         else {
           unpark()
           goHome()
@@ -355,6 +454,7 @@ function InkDrop({
           s.raf = 0
           s.vx = 0
           s.vy = 0
+          s.fly = null
           s.dragging = true
           s.gx = e.clientX - s.x
           s.gy = e.clientY - s.y

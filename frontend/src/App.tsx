@@ -85,6 +85,12 @@ const MIC_BARS = 5
 
 const RETRY_DELAYS_MS = [2000, 5000, 10000, 20000]
 
+// How long a stamped mark sits there before it has finished fading, and how
+// many are allowed to pile up at once. Must match the stamp-mark keyframes -
+// the node is removed on this timer, so a shorter one cuts the fade off.
+const STAMP_LIFE = 5200
+const STAMP_KEEP = 7
+
 const PANEL_ROUTE_PREFIXES = [
   '#/music',
   '#/soma',
@@ -484,20 +490,36 @@ function Home() {
   // The send button is a rubber stamp, so sending is a press: the plate thunks
   // down and leaves a crooked red mark beside the box that dries out on its
   // own. Enter goes through here too - the key and the button are one action.
+  // Marks stack rather than replace one another: the stamp works with nothing
+  // in the box, and hammering it should leave a mess, not one flickering word.
   const thunk = () => {
     const word = pickNot(STAMP_WORDS, lastStampWord.current)
     lastStampWord.current = word
     setStampDown(true)
     window.setTimeout(() => setStampDown(false), 130)
-    const id = Date.now()
-    setStampMark({ id, word, right: 74 + Math.random() * 34, rot: -8 + Math.random() * 16 })
-    window.setTimeout(() => setStampMark((cur) => (cur && cur.id === id ? null : cur)), 2400)
+    const id = stampId.current++
+    setStampMarks((cur) => [
+      ...cur.slice(-(STAMP_KEEP - 1)),
+      {
+        id,
+        word,
+        right: 74 + Math.random() * 46,
+        lift: Math.random() * 16,
+        rot: -8 + Math.random() * 16,
+      },
+    ])
+    // Outlasts the animation rather than cutting it: removing the node at the
+    // old 2.4s took the mark away mid-hold, which is the "it just disappears"
+    // the fade was supposed to prevent.
+    window.setTimeout(() => setStampMarks((cur) => cur.filter((m) => m.id !== id)), STAMP_LIFE + 200)
   }
 
+  // An empty box still gets a stamp. Nothing is parsed, nothing is sent - the
+  // stamp is a stamp before it is a submit button.
   const send = () => {
+    thunk()
     const value = text.trim()
     if (!value) return
-    thunk()
     setText('')
     void submit(value)
   }
@@ -507,12 +529,10 @@ function Home() {
   }
 
   const [stampDown, setStampDown] = useState(false)
-  const [stampMark, setStampMark] = useState<{
-    id: number
-    word: string
-    right: number
-    rot: number
-  } | null>(null)
+  const [stampMarks, setStampMarks] = useState<
+    { id: number; word: string; right: number; lift: number; rot: number }[]
+  >([])
+  const stampId = useRef(0)
   const lastStampWord = useRef<string | null>(null)
 
   const [recState, setRecState] = useState<'idle' | 'recording' | 'transcribing' | 'denied'>('idle')
@@ -673,24 +693,27 @@ function Home() {
             )}
           </button>
           <button
-            className={`send-btn stamp${stampDown ? ' down' : ''}`}
+            className={`send-btn stamp${stampDown ? ' down' : ''}${text.trim() ? '' : ' idle'}`}
             onClick={send}
-            disabled={!text.trim()}
             aria-label="log entry"
           >
             <span className="stamp-grip" />
             <span className="stamp-plate" />
           </button>
         </div>
-        {stampMark && (
+        {stampMarks.map((m) => (
           <span
-            key={stampMark.id}
+            key={m.id}
             className="stamp-mark"
-            style={{ right: `${stampMark.right}px`, ['--rot' as string]: `${stampMark.rot}deg` }}
+            style={{
+              right: `${m.right}px`,
+              bottom: `${5 + m.lift}px`,
+              ['--rot' as string]: `${m.rot}deg`,
+            }}
           >
-            {stampMark.word}
+            {m.word}
           </span>
-        )}
+        ))}
       </div>
 
       {!hiddenDomains.includes('dailyplan') && <DailyPlan />}
