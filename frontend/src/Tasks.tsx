@@ -221,10 +221,10 @@ export function Tasks({ open }: { open: boolean }) {
       />
 
       {/* Above the day's sections, exactly where you look before deciding what
-          to start. Always today's: a plan for a day you aren't in has no "now"
-          to work forward from. Hidden only while you're looking at some other
-          day, where it would be answering a question you didn't ask. */}
-      {(selected === null || selected === todayStr) && (
+          to start - but only once today is the day you've picked. A plan for a
+          day you aren't in has no "now" to work forward from, and the default
+          view isn't a day at all, it's the whole backlog. */}
+      {selected === todayStr && (
         <DayPlanner date={todayStr} isToday tasks={tasks} onChanged={refresh} />
       )}
 
