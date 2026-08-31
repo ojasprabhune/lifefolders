@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Clock } from './Clock'
 import { Drawer } from './Drawer'
 
 // A bead of ink with weight. Fling it and it keeps going, bounces off the
@@ -493,9 +494,10 @@ function InkDrop({
   )
 }
 
-// The shelf, bottom left, standing just above the clock - and in the same
-// place whether the clock is shown or not, so it never moves under you. The
-// books are the badge colours off the timeline. The drawer is the cabinet
+// The shelf, bottom left. The clock stands on it now, at the far end of the
+// plank - the flexible gap in front of it is what keeps the books and the box
+// where they are, so hiding the clock moves nothing else. The books are the
+// badge colours off the timeline. The drawer is the cabinet
 // below the plank: shut, it sits exactly behind the face, and only its pull
 // shows past the right edge.
 const BOOKS: { domain: string; h: number; w: number; lean?: number }[] = [
@@ -507,7 +509,15 @@ const BOOKS: { domain: string; h: number; w: number; lean?: number }[] = [
   { domain: 'learning', h: 19, w: 5, lean: -14 },
 ]
 
-function Shelf({ route, boxRef }: { route: string; boxRef: React.RefObject<HTMLDivElement | null> }) {
+function Shelf({
+  route,
+  showClock,
+  boxRef,
+}: {
+  route: string
+  showClock: boolean
+  boxRef: React.RefObject<HTMLDivElement | null>
+}) {
   return (
     <div className="shelf">
       <div className="shelf-top">
@@ -531,6 +541,7 @@ function Shelf({ route, boxRef }: { route: string; boxRef: React.RefObject<HTMLD
         </span>
         <div className="ball-box" ref={boxRef} />
         <span className="shelf-gap" />
+        {showClock && <Clock />}
       </div>
       <div className="shelf-plank" />
       <div className="shelf-seam" />
@@ -539,11 +550,11 @@ function Shelf({ route, boxRef }: { route: string; boxRef: React.RefObject<HTMLD
   )
 }
 
-export function Fidgets({ route }: { route: string }) {
+export function Fidgets({ route, showClock }: { route: string; showClock: boolean }) {
   const boxRef = useRef<HTMLDivElement>(null)
   return (
     <>
-      <Shelf route={route} boxRef={boxRef} />
+      <Shelf route={route} showClock={showClock} boxRef={boxRef} />
       <InkDrop route={route} boxRef={boxRef} />
     </>
   )

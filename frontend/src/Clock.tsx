@@ -17,11 +17,13 @@ function pstTime(): string {
   return `${hour}:${minute}`
 }
 
-// Corner clock, styled after the big focus-page countdown. Each character
-// is keyed by its position and value, so React only remounts the digits
-// that actually changed minute-to-minute (or on the hour flip) - that
-// remount is what triggers the per-character fade, the same way the
-// iPhone lock screen clock only animates the digit that ticked over.
+// A small digital clock standing at the end of the shelf. Each character is
+// keyed by its position and value, so React only remounts the digits that
+// actually changed minute-to-minute (or on the hour flip) - that remount is
+// what triggers the per-character fade, the same way the iPhone lock screen
+// clock only animates the digit that ticked over. The colon is its own case:
+// it blinks on a two-second cycle, which is most of what makes a clock read
+// as a digital one.
 export function Clock() {
   const [time, setTime] = useState(pstTime)
 
@@ -33,7 +35,7 @@ export function Clock() {
   return (
     <div className="pst-clock" aria-label={`${time} Pacific time`}>
       {[...time].map((ch, i) => (
-        <span key={`${i}-${ch}`} className="pst-clock-char">
+        <span key={`${i}-${ch}`} className={`pst-clock-char${ch === ':' ? ' colon' : ''}`}>
           {ch === ' ' ? ' ' : ch}
         </span>
       ))}

@@ -5,7 +5,6 @@ import type { Category, Log, PendingLog } from './types'
 import { DOMAINS } from './domains'
 import { Row } from './Row'
 import { adoptFocusSession, restoreFocusSession } from './focusEngine'
-import { Clock } from './Clock'
 import { DailyPlan } from './DailyPlan'
 import { Fidgets } from './Fidgets'
 import { STAMP_WORDS, pickNot } from './remarks'
@@ -210,8 +209,7 @@ export default function App() {
       {content}
       <SleepReminder />
       <FocusPill route={route} />
-      <Fidgets route={route} />
-      {showClock && <Clock />}
+      <Fidgets route={route} showClock={showClock} />
     </>
   )
 }
