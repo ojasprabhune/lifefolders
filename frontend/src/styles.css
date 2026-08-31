@@ -4225,9 +4225,18 @@ header > .brand {
   transition: transform 320ms cubic-bezier(0.2, 1.25, 0.35, 1);
 }
 
-/* A drag beats this with an inline transform, then hands back on release. */
-.fidget.open {
+/* A drag beats these with an inline transform, then hands back on release. */
+.fidget.pulled,
+.fidget.leaking {
   transform: translateY(0);
+}
+
+/* The leak is the whole joke, so it has to be slow enough that you notice it
+   only once it is already half out. Shutting is not slow: the base transition
+   above takes it back, and a transition interrupted mid-flight starts from
+   wherever it had got to, which is exactly the snatch we want. */
+.fidget.leaking {
+  transition: transform var(--leak) linear;
 }
 
 .fidget-tab {
@@ -4242,6 +4251,8 @@ header > .brand {
   background: var(--bg);
   cursor: grab;
   touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .fidget-tab:active {
@@ -4348,6 +4359,34 @@ header > .brand {
   cursor: grabbing;
 }
 
+/* A slot in the bottom edge, tucked in beside the drawer, for when you want
+   the drop out of the way. It sits under the drop rather than over it, so a
+   parked one shows inside the box rather than behind it. */
+.ball-box {
+  position: fixed;
+  bottom: 0;
+  width: 34px;
+  height: 22px;
+  z-index: 22;
+  border: 1px solid var(--line);
+  border-top: none;
+  border-radius: 0 0 7px 7px;
+  background: var(--bg);
+  user-select: none;
+  transition:
+    border-color 140ms ease,
+    transform 160ms cubic-bezier(0.3, 1.2, 0.4, 1);
+}
+
+.ball-box.over {
+  border-color: var(--accent);
+  transform: translateY(-4px);
+}
+
+.ball-box.full {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+}
+
 /* The corner of the page. The only one of these you have to find: it is not
    drawn at all until the pointer comes near the bottom right, and the size
    the fold springs back to is the whole animation - width and height are what
@@ -4375,6 +4414,8 @@ header > .brand {
   );
   cursor: grab;
   touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
   filter: drop-shadow(-3px -3px 9px rgba(0, 0, 0, 0.3));
 }
 
@@ -4398,49 +4439,42 @@ header > .brand {
   pointer-events: none;
 }
 
-/* The stamp, in the same place on every page. */
-.stamp-spot {
-  position: fixed;
-  right: 24px;
-  top: 50%;
-  z-index: 24;
-}
-
-.stamp {
-  display: flex;
+/* The send button is a stamp. The plate takes currentColor so the disabled
+   state the button already had still reads, and the press is a thunk rather
+   than the shrink every other button in here does. */
+.send-btn.stamp {
   flex-direction: column;
-  align-items: center;
   gap: 2px;
-  padding: 0;
-  border: none;
-  background: none;
-  cursor: pointer;
   transition: transform 110ms cubic-bezier(0.3, 0.9, 0.4, 1);
 }
 
-.stamp.down {
-  transform: translateY(7px);
+.send-btn.stamp:not(:disabled):active {
+  transform: translateY(3px);
+}
+
+.send-btn.stamp.down {
+  transform: translateY(3px);
 }
 
 .stamp-grip {
   display: block;
-  width: 13px;
-  height: 15px;
-  border-radius: 4px 4px 2px 2px;
+  width: 9px;
+  height: 9px;
+  border-radius: 3px 3px 1px 1px;
   background: var(--muted);
 }
 
 .stamp-plate {
   display: block;
-  width: 27px;
-  height: 8px;
+  width: 20px;
+  height: 6px;
   border-radius: 2px;
-  background: var(--accent);
+  background: currentColor;
   transition: transform 110ms cubic-bezier(0.3, 0.9, 0.4, 1);
 }
 
-.stamp.down .stamp-plate {
-  transform: scaleY(0.75);
+.send-btn.stamp.down .stamp-plate {
+  transform: scaleY(0.7);
 }
 
 /* The rotation is inline and the fade is a keyframe, so the keyframes have to
@@ -4448,6 +4482,7 @@ header > .brand {
    that straightened itself as it faded would be worse than no mark. */
 .stamp-mark {
   position: absolute;
+  bottom: 5px;
   font-family: 'calling-code', monospace;
   font-size: 13px;
   letter-spacing: 0.08em;
@@ -4493,6 +4528,12 @@ header > .brand {
   z-index: 24;
   cursor: grab;
   touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.ink-drop.parked {
+  box-shadow: none;
 }
 
 .ink-drop:active {
@@ -4524,7 +4565,8 @@ header > .brand {
 @media (prefers-reduced-motion: reduce) {
   .fidget,
   .peel,
-  .stamp,
+  .ball-box,
+  .send-btn.stamp,
   .stamp-plate {
     transition: none;
   }

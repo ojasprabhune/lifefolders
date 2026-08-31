@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { listLogs, listSleep, listTasks } from './api'
 import { COUNTED, NONSENSE, pickNot } from './remarks'
 import type { Category, SleepData } from './types'
@@ -8,6 +8,10 @@ import type { Category, SleepData } from './types'
 const TRAVEL = 132
 const SNAP = 0.42
 const PULLS_KEY = 'life_drawer_pulls'
+// How long the pointer has to stay out of the bottom half before the drawer
+// starts sliding open by itself, and how long it takes to get all the way out.
+const LEAK_DELAY_MS = 4000
+const LEAK_MS = 18000
 
 // The tab slides along the bottom edge from page to page - finding it is part
 // of it. Nothing sits outside 26%-74%: the clock holds the bottom left corner
@@ -83,106 +87,34 @@ async function factFor(route: string): Promise<string | null> {
   }
 }
 
-type Filling =
-  | { kind: 'line'; text: string }
-  | { kind: 'toy' }
-  | { kind: 'empty' }
-  | { kind: 'waiting' }
+type Filling = { kind: 'line'; text: string } | { kind: 'empty' } | { kind: 'waiting' }
 
-// A bead on a rail. Position and velocity are written straight to the DOM,
-// never through state - the whole point is that it keeps moving after you let
-// go, and re-rendering the app at 60fps to slide one bead would be absurd.
-function Bead() {
-  const railRef = useRef<HTMLDivElement>(null)
-  const beadRef = useRef<HTMLDivElement>(null)
-  const st = useRef({ x: 0, v: 0, grabX: 0, lastT: 0, raf: 0 })
-
-  const span = () => {
-    const r = railRef.current
-    const b = beadRef.current
-    if (!r || !b) return 0
-    return r.clientWidth - b.offsetWidth
-  }
-
-  const draw = () => {
-    if (beadRef.current) beadRef.current.style.transform = `translateX(${st.current.x}px)`
-  }
-
-  useEffect(() => {
-    st.current.x = span() / 2
-    draw()
-    const s = st.current
-    return () => cancelAnimationFrame(s.raf)
-  }, [])
-
-  const step = useCallback((t: number) => {
-    const s = st.current
-    const dt = Math.min(32, t - s.lastT) / 1000
-    s.lastT = t
-    s.v *= Math.pow(0.04, dt)
-    s.x += s.v * dt
-    const max = span()
-    if (s.x < 0) {
-      s.x = 0
-      s.v = -s.v * 0.55
-    }
-    if (s.x > max) {
-      s.x = max
-      s.v = -s.v * 0.55
-    }
-    draw()
-    if (Math.abs(s.v) > 6) s.raf = requestAnimationFrame(step)
-  }, [])
-
-  return (
-    <div className="fidget-rail" ref={railRef}>
-      <div
-        className="fidget-bead"
-        ref={beadRef}
-        onPointerDown={(e) => {
-          e.currentTarget.setPointerCapture(e.pointerId)
-          const s = st.current
-          cancelAnimationFrame(s.raf)
-          s.v = 0
-          s.grabX = e.clientX - s.x
-          s.lastT = performance.now()
-        }}
-        onPointerMove={(e) => {
-          const s = st.current
-          if (!e.currentTarget.hasPointerCapture(e.pointerId)) return
-          const now = performance.now()
-          const next = Math.max(0, Math.min(span(), e.clientX - s.grabX))
-          const dt = Math.max(8, now - s.lastT)
-          s.v = ((next - s.x) / dt) * 1000
-          s.x = next
-          s.lastT = now
-          draw()
-        }}
-        onPointerUp={() => {
-          const s = st.current
-          s.lastT = performance.now()
-          s.raf = requestAnimationFrame(step)
-        }}
-      />
-    </div>
-  )
-}
+// Shut, creeping open on its own, or pulled open by you. The difference
+// matters: a leak retreats the moment you come near it, a drawer you pulled
+// stays where you put it.
+type Mode = 'shut' | 'leaking' | 'pulled'
 
 export function Drawer({ route }: { route: string }) {
   const left = leftFor(route)
-  const [open, setOpen] = useState(false)
+  const [mode, setMode] = useState<Mode>('shut')
   const [filling, setFilling] = useState<Filling>({ kind: 'empty' })
   const [pulls, setPulls] = useState(() => Number(localStorage.getItem(PULLS_KEY) ?? 0))
   const boxRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<{ startY: number; from: number; moved: boolean } | null>(null)
   const lastLine = useRef<string | null>(null)
+  const modeRef = useRef<Mode>('shut')
+  const inBottom = useRef(false)
+  const awaySince = useRef(Date.now())
+  const open = mode !== 'shut'
+
+  modeRef.current = mode
 
   // Moving the tab means finding it again, so a route change always closes it.
-  useEffect(() => setOpen(false), [route])
+  useEffect(() => setMode('shut'), [route])
 
   useEffect(() => {
     if (!open) return
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setMode('shut')
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [open])
@@ -200,35 +132,64 @@ export function Drawer({ route }: { route: string }) {
       return
     }
     const roll = Math.random()
-    if (roll < 0.08) {
+    if (roll < 0.1) {
       setFilling({ kind: 'empty' })
       return
     }
-    if (roll < 0.3) {
-      setFilling({ kind: 'toy' })
-      return
-    }
-    if (roll < 0.62) {
+    if (roll < 0.55) {
       setFilling({ kind: 'waiting' })
-      void factFor(route).then((line) =>
-        setFilling({ kind: 'line', text: line ?? nonsense() }),
-      )
+      void factFor(route).then((line) => setFilling({ kind: 'line', text: line ?? nonsense() }))
       return
     }
     setFilling({ kind: 'line', text: nonsense() })
   }
 
-  // Only a drawer that was all the way shut gets restocked. Nudging one that
-  // is already open, or pulling it half out and letting it fall back, leaves
-  // whatever is inside alone.
+  // The drawer does not sit still. Left alone it slides open over most of a
+  // minute, and the moment the pointer enters the bottom half of the window it
+  // is shut again - so you only ever catch it out of the corner of your eye.
+  // The poll is what makes a pointer that never moves work: a cursor parked in
+  // the top half is away, and away is what arms the leak.
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      const bottom = e.clientY > window.innerHeight * 0.52
+      inBottom.current = bottom
+      if (!bottom) return
+      awaySince.current = Date.now()
+      setMode((m) => (m === 'leaking' ? 'shut' : m))
+    }
+    window.addEventListener('pointermove', onMove)
+    const tick = window.setInterval(() => {
+      if (inBottom.current || modeRef.current !== 'shut') return
+      if (Date.now() - awaySince.current < LEAK_DELAY_MS) return
+      fill(pulls)
+      setMode('leaking')
+    }, 900)
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      window.clearInterval(tick)
+    }
+  })
+
+  // Only a drawer that was all the way shut gets restocked, and only a pull
+  // counts - a leak stocks itself but is not something you did.
   const commit = (next: boolean) => {
-    if (next === open) return
-    setOpen(next)
-    if (!next) return
+    const wasShut = mode === 'shut'
+    setMode(next ? 'pulled' : 'shut')
+    if (!next || !wasShut) return
     const n = pulls + 1
     setPulls(n)
     localStorage.setItem(PULLS_KEY, String(n))
     fill(n)
+  }
+
+  // Where the drawer actually is this frame, which during a leak is neither
+  // open nor shut. Grabbing it has to start from there or it jumps.
+  const currentOffset = () => {
+    const box = boxRef.current
+    if (!box) return TRAVEL
+    const t = getComputedStyle(box).transform
+    if (!t || t === 'none') return 0
+    return new DOMMatrixReadOnly(t).m42
   }
 
   // The drag writes the transform straight to the box and turns the transition
@@ -236,8 +197,9 @@ export function Drawer({ route }: { route: string }) {
   // which is what makes the snap a snap rather than a follow.
   const onDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return
+    e.preventDefault()
     e.currentTarget.setPointerCapture(e.pointerId)
-    dragRef.current = { startY: e.clientY, from: open ? 0 : TRAVEL, moved: false }
+    dragRef.current = { startY: e.clientY, from: currentOffset(), moved: false }
   }
 
   const offsetFor = (d: { startY: number; from: number }, clientY: number) => {
@@ -278,8 +240,12 @@ export function Drawer({ route }: { route: string }) {
 
   return (
     <div
-      className={`fidget${open ? ' open' : ''}`}
-      style={{ left: `${left}%`, ['--travel' as string]: `${TRAVEL}px` }}
+      className={`fidget ${mode}`}
+      style={{
+        left: `${left}%`,
+        ['--travel' as string]: `${TRAVEL}px`,
+        ['--leak' as string]: `${LEAK_MS}ms`,
+      }}
       ref={boxRef}
     >
       <button
@@ -291,9 +257,7 @@ export function Drawer({ route }: { route: string }) {
         onPointerCancel={onUp}
       />
       <div className="fidget-body">
-        {filling.kind === 'toy' ? (
-          <Bead />
-        ) : filling.kind === 'line' ? (
+        {filling.kind === 'line' ? (
           <p className="fidget-line">{filling.text}</p>
         ) : filling.kind === 'empty' ? (
           <p className="fidget-line dim">(empty)</p>
@@ -304,3 +268,5 @@ export function Drawer({ route }: { route: string }) {
     </div>
   )
 }
+
+export { leftFor }

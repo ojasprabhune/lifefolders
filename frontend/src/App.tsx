@@ -8,6 +8,7 @@ import { adoptFocusSession, restoreFocusSession } from './focusEngine'
 import { Clock } from './Clock'
 import { DailyPlan } from './DailyPlan'
 import { Fidgets } from './Fidgets'
+import { STAMP_WORDS, pickNot } from './remarks'
 import { useFlipList } from './motion'
 import { Guide } from './Guide'
 import { rememberPanel } from './lastPanel'
@@ -480,9 +481,23 @@ function Home() {
     }
   }
 
+  // The send button is a rubber stamp, so sending is a press: the plate thunks
+  // down and leaves a crooked red mark beside the box that dries out on its
+  // own. Enter goes through here too - the key and the button are one action.
+  const thunk = () => {
+    const word = pickNot(STAMP_WORDS, lastStampWord.current)
+    lastStampWord.current = word
+    setStampDown(true)
+    window.setTimeout(() => setStampDown(false), 130)
+    const id = Date.now()
+    setStampMark({ id, word, right: 74 + Math.random() * 34, rot: -8 + Math.random() * 16 })
+    window.setTimeout(() => setStampMark((cur) => (cur && cur.id === id ? null : cur)), 2400)
+  }
+
   const send = () => {
     const value = text.trim()
     if (!value) return
+    thunk()
     setText('')
     void submit(value)
   }
@@ -490,6 +505,15 @@ function Home() {
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') send()
   }
+
+  const [stampDown, setStampDown] = useState(false)
+  const [stampMark, setStampMark] = useState<{
+    id: number
+    word: string
+    right: number
+    rot: number
+  } | null>(null)
+  const lastStampWord = useRef<string | null>(null)
 
   const [recState, setRecState] = useState<'idle' | 'recording' | 'transcribing' | 'denied'>('idle')
   const recorderRef = useRef<MediaRecorder | null>(null)
@@ -649,17 +673,24 @@ function Home() {
             )}
           </button>
           <button
-            className="send-btn"
+            className={`send-btn stamp${stampDown ? ' down' : ''}`}
             onClick={send}
             disabled={!text.trim()}
             aria-label="log entry"
           >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
-              <line x1="3" y1="12" x2="20" y2="12" />
-              <polyline points="13 5 20 12 13 19" />
-            </svg>
+            <span className="stamp-grip" />
+            <span className="stamp-plate" />
           </button>
         </div>
+        {stampMark && (
+          <span
+            key={stampMark.id}
+            className="stamp-mark"
+            style={{ right: `${stampMark.right}px`, ['--rot' as string]: `${stampMark.rot}deg` }}
+          >
+            {stampMark.word}
+          </span>
+        )}
       </div>
 
       {!hiddenDomains.includes('dailyplan') && <DailyPlan />}

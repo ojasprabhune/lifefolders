@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Drawer } from './Drawer'
-import { PEELS, STAMP_WORDS, pickNot } from './remarks'
+import { Drawer, leftFor } from './Drawer'
+import { PEELS, pickNot } from './remarks'
 
 // The corner of the page, which you can lift. It is not drawn until your
 // pointer comes near it - the only one of these you have to find rather than
@@ -44,6 +44,7 @@ function Peel() {
       <div
         className="peel-curl"
         onPointerDown={(e) => {
+          e.preventDefault()
           e.currentTarget.setPointerCapture(e.pointerId)
           drag.current = { x: e.clientX, y: e.clientY, from: PEEL_REST }
           setLine((cur) => {
@@ -66,69 +67,6 @@ function Peel() {
       >
         <span className="peel-line">{line}</span>
       </div>
-    </div>
-  )
-}
-
-// The stamp. Same place on every page, unlike everything else here. Press it
-// and it thunks down and leaves a crooked red mark that fades on its own.
-type Mark = { id: number; word: string; dx: number; dy: number; rot: number }
-
-function Stamp() {
-  const [down, setDown] = useState(false)
-  const [marks, setMarks] = useState<Mark[]>([])
-  const lastWord = useRef<string | null>(null)
-  const timers = useRef<number[]>([])
-
-  useEffect(() => {
-    const t = timers.current
-    return () => t.forEach(clearTimeout)
-  }, [])
-
-  const press = () => {
-    const word = pickNot(STAMP_WORDS, lastWord.current)
-    lastWord.current = word
-    const id = Date.now()
-    setMarks((cur) => [
-      ...cur,
-      {
-        id,
-        word,
-        dx: -90 - Math.random() * 90,
-        dy: -46 + Math.random() * 92,
-        rot: -9 + Math.random() * 18,
-      },
-    ])
-    timers.current.push(
-      window.setTimeout(() => setMarks((cur) => cur.filter((m) => m.id !== id)), 3800),
-    )
-  }
-
-  return (
-    <div className="stamp-spot">
-      {marks.map((m) => (
-        <span
-          key={m.id}
-          className="stamp-mark"
-          style={{ left: `${m.dx}px`, top: `${m.dy}px`, ['--rot' as string]: `${m.rot}deg` }}
-        >
-          {m.word}
-        </span>
-      ))}
-      <button
-        className={`stamp${down ? ' down' : ''}`}
-        aria-label="stamp the page"
-        onPointerDown={() => setDown(true)}
-        onPointerUp={() => {
-          setDown(false)
-          press()
-        }}
-        onPointerCancel={() => setDown(false)}
-        onPointerLeave={() => setDown(false)}
-      >
-        <span className="stamp-grip" />
-        <span className="stamp-plate" />
-      </button>
     </div>
   )
 }
@@ -157,8 +95,35 @@ type Splat = { id: number; x: number; y: number; rot: number; scale: number }
 
 function InkDrop({ route }: { route: string }) {
   const ref = useRef<HTMLDivElement>(null)
+  const boxRef = useRef<HTMLDivElement>(null)
   const [splats, setSplats] = useState<Splat[]>([])
-  const st = useRef({ x: 0, y: 0, vx: 0, vy: 0, gx: 0, gy: 0, lastT: 0, raf: 0 })
+  const st = useRef({ x: 0, y: 0, vx: 0, vy: 0, gx: 0, gy: 0, lastT: 0, raf: 0, parked: false })
+
+  // Whether the drop is sitting over the box, and where it would land. Both
+  // are read off live rects rather than kept in state: this runs every frame
+  // of a drag, and the only thing that has to change is a class.
+  const overBox = () => {
+    const box = boxRef.current
+    if (!box) return null
+    const r = box.getBoundingClientRect()
+    const cx = st.current.x + DROP / 2
+    const cy = st.current.y + DROP / 2
+    if (cx < r.left - 14 || cx > r.right + 14 || cy < r.top - 22 || cy > r.bottom + 14) return null
+    return { x: r.left + r.width / 2 - DROP / 2, y: r.bottom - DROP - 4 }
+  }
+
+  const park = (at: { x: number; y: number }) => {
+    const s = st.current
+    s.x = at.x
+    s.y = at.y
+    s.vx = 0
+    s.vy = 0
+    s.parked = true
+    ref.current?.classList.add('parked')
+    boxRef.current?.classList.add('full')
+    boxRef.current?.classList.remove('over')
+    draw()
+  }
 
   const draw = () => {
     if (ref.current) ref.current.style.transform = `translate(${st.current.x}px, ${st.current.y}px)`
@@ -213,19 +178,29 @@ function InkDrop({ route }: { route: string }) {
   )
 
   useEffect(() => {
-    const home = DROP_HOMES.find((h) => route.startsWith(h.prefix)) ?? { x: 0.94, y: 0.42 }
     const s = st.current
     cancelAnimationFrame(s.raf)
-    s.x = (window.innerWidth - DROP) * home.x
-    s.y = (window.innerHeight - DROP) * home.y
     s.vx = 0
     s.vy = 0
+    if (s.parked) {
+      // The box sits beside the drawer, which moves from page to page, so a
+      // parked drop has to be put back into it after the new one has laid out.
+      requestAnimationFrame(() => {
+        const at = boxRef.current?.getBoundingClientRect()
+        if (at) park({ x: at.left + at.width / 2 - DROP / 2, y: at.bottom - DROP - 4 })
+      })
+      return () => cancelAnimationFrame(s.raf)
+    }
+    const home = DROP_HOMES.find((h) => route.startsWith(h.prefix)) ?? { x: 0.94, y: 0.42 }
+    s.x = (window.innerWidth - DROP) * home.x
+    s.y = (window.innerHeight - DROP) * home.y
     draw()
     return () => cancelAnimationFrame(s.raf)
   }, [route])
 
   return (
     <>
+      <div className="ball-box" ref={boxRef} style={{ left: `calc(${leftFor(route)}% - 158px)` }} />
       {splats.map((s) => (
         <span
           key={s.id}
@@ -241,14 +216,19 @@ function InkDrop({ route }: { route: string }) {
         className="ink-drop"
         ref={ref}
         onPointerDown={(e) => {
+          // Without this the drag selects whatever text it passes over.
+          e.preventDefault()
           e.currentTarget.setPointerCapture(e.pointerId)
           const s = st.current
           cancelAnimationFrame(s.raf)
           s.vx = 0
           s.vy = 0
+          s.parked = false
           s.gx = e.clientX - s.x
           s.gy = e.clientY - s.y
           s.lastT = performance.now()
+          ref.current?.classList.remove('parked')
+          boxRef.current?.classList.remove('full')
         }}
         onPointerMove={(e) => {
           const s = st.current
@@ -263,9 +243,16 @@ function InkDrop({ route }: { route: string }) {
           s.y = ny
           s.lastT = now
           draw()
+          boxRef.current?.classList.toggle('over', overBox() !== null)
         }}
         onPointerUp={() => {
           const s = st.current
+          const at = overBox()
+          if (at) {
+            park(at)
+            return
+          }
+          boxRef.current?.classList.remove('over')
           s.lastT = performance.now()
           s.raf = requestAnimationFrame(step)
         }}
@@ -279,7 +266,6 @@ export function Fidgets({ route }: { route: string }) {
     <>
       <Drawer route={route} />
       <Peel />
-      <Stamp />
       <InkDrop route={route} />
     </>
   )
