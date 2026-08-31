@@ -77,6 +77,10 @@ fn minutes_of(t: NaiveTime) -> i32 {
     (t.hour() * 60 + t.minute()) as i32
 }
 
+fn round_up_5(m: i32) -> i32 {
+    ((m + 4) / 5) * 5
+}
+
 fn at_minute(m: i32) -> NaiveTime {
     let m = m.rem_euclid(1440);
     NaiveTime::from_hms_opt((m / 60) as u32, (m % 60) as u32, 0).unwrap()
@@ -273,7 +277,7 @@ async fn ensure_row(
     // is the bedtime the sleep coach is already asking for, so the two agree.
     let now = Utc::now() - Duration::minutes(offset as i64);
     let starts_at = if date == now.date_naive() {
-        at_minute(now.hour() as i32 * 60 + now.minute() as i32)
+        at_minute(round_up_5(now.hour() as i32 * 60 + now.minute() as i32))
     } else {
         at_minute(9 * 60)
     };
@@ -511,7 +515,24 @@ pub(crate) async fn regenerate(
     offset: i32,
     goal_min: i64,
 ) -> Result<DayPlanView, AppError> {
-    let row = ensure_row(state, date, offset, goal_min).await?;
+    let mut row = ensure_row(state, date, offset, goal_min).await?;
+
+    // Re-planning today starts from now, not from whenever the plan was first
+    // opened - an afternoon start time on an evening re-plan is just wrong.
+    // Rounded up to the next five minutes because "start at 6:31" is a time
+    // nobody starts at.
+    let now = Utc::now() - Duration::minutes(offset as i64);
+    if date == now.date_naive() {
+        let from_now = at_minute(round_up_5(now.hour() as i32 * 60 + now.minute() as i32));
+        if from_now != row.starts_at {
+            sqlx::query("UPDATE day_plans SET starts_at = $2, updated_at = now() WHERE plan_date = $1")
+                .bind(date)
+                .bind(from_now)
+                .execute(&state.pool)
+                .await?;
+            row.starts_at = from_now;
+        }
+    }
 
     let open = tasks::open_tasks(state).await?;
     let spent = focus::minutes_by_task(state, 14).await?;
@@ -854,6 +875,14 @@ mod tests {
         assert_eq!(breaks, vec!["lunch", "dinner"]);
         let work: i32 = out.iter().filter(|b| b.kind == "task").map(|b| b.minutes).sum();
         assert_eq!(work, 12 * 60, "splitting must not lose or invent minutes");
+    }
+
+    #[test]
+    fn a_start_time_rounds_up_to_the_next_five_minutes() {
+        assert_eq!(super::round_up_5(18 * 60 + 31), 18 * 60 + 35);
+        assert_eq!(super::round_up_5(18 * 60 + 35), 18 * 60 + 35);
+        assert_eq!(super::round_up_5(18 * 60 + 36), 18 * 60 + 40);
+        assert_eq!(super::round_up_5(0), 0);
     }
 
     #[test]

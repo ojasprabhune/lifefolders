@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   addPlanBlock,
   deletePlanBlock,
@@ -9,6 +9,7 @@ import {
   type DayPlan,
   type PlanBlock,
 } from './api'
+import { prefersReducedMotion } from './motion'
 import { formatEffort } from './Tasks'
 import type { TaskWithCheckpoints } from './types'
 
@@ -67,10 +68,11 @@ export function DayPlanner({
     getDayPlan(date).then(setPlan).catch(() => {})
   }, [date])
 
-  // Has to match the keyframes: one block's duration plus the capped stagger,
-  // and then a little slack - unmounting on the exact frame the last block
-  // finishes clips it whenever the timer drifts.
-  const closeMs = (n: number) => 240 + Math.min(Math.max(n - 1, 0), 12) * 38 + 60
+  // Has to match the keyframes: one block's duration plus the capped stagger.
+  const spanMs = (n: number) => 240 + Math.min(Math.max(n - 1, 0), 12) * 38
+  // Unmounting on the exact frame the last block finishes clips it whenever
+  // the timer drifts, so the close waits a little longer than the animation.
+  const closeMs = (n: number) => spanMs(n) + 60
 
   const toggle = () => {
     if (!open) {
@@ -83,6 +85,36 @@ export function DayPlanner({
       setOpen(false)
     }, closeMs(plan?.blocks.length ?? 0))
   }
+
+  // The section's own height is animated alongside the cascade, so whatever
+  // sits under it - the day's categories - slides rather than jumping to where
+  // the plan will finish. Measured rather than transitioned from `auto`, which
+  // isn't animatable.
+  const bodyRef = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const el = bodyRef.current
+    if (!el || prefersReducedMotion()) return
+    const ms = closing ? closeMs(plan?.blocks.length ?? 0) : spanMs(plan?.blocks.length ?? 0)
+    const height = closing ? el.getBoundingClientRect().height : el.scrollHeight
+    el.style.overflow = 'hidden'
+    // The margin has to travel with the height. Animating height alone leaves
+    // the body's 10px top margin standing at zero height, and it only vanishes
+    // when the element unmounts - which is the little snap at the very end.
+    const shut = { height: '0px', marginTop: '0px' }
+    const full = { height: `${height}px`, marginTop: '10px' }
+    const frames = closing ? [full, shut] : [shut, full]
+    const anim = el.animate(frames, {
+      duration: ms,
+      easing: 'cubic-bezier(0.33, 1, 0.68, 1)',
+      fill: closing ? 'forwards' : 'none',
+    })
+    const clear = () => {
+      if (!closing) el.style.overflow = ''
+    }
+    anim.onfinish = clear
+    anim.oncancel = clear
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, closing])
 
   const run = useCallback(
     async (work: () => Promise<DayPlan>) => {
@@ -116,7 +148,7 @@ export function DayPlanner({
       </button>
 
       {open && (
-        <div className={`planner-body ${closing ? 'closing' : ''}`}>
+        <div className={`planner-body ${closing ? 'closing' : ''}`} ref={bodyRef}>
           <div className="planner-bounds">
             <TimeField
               label="from"
@@ -142,8 +174,8 @@ export function DayPlanner({
             <div className="empty">nothing planned — hit plan it, or add a block below</div>
           )}
 
-          <ol className="planner-list">
-            {blocks.map((b, i) => (
+          <ol className="planner-list" style={{ ['--n' as string]: blocks.length }}>
+            {blocks.flatMap((b, i) => [
               // --i drives the stagger. The body unmounts when collapsed, so
               // the cascade runs on open; editing a block reuses its element
               // by key, so it doesn't replay on every change.
@@ -180,7 +212,9 @@ export function DayPlanner({
                 >
                   +
                 </button>
-                {adding === b.id && (
+              </li>,
+              adding === b.id ? (
+                <li className="planner-add-row" key={`${b.id}-add`}>
                   <AddRow
                     tasks={tasks}
                     onPick={(body) => {
@@ -189,9 +223,9 @@ export function DayPlanner({
                     }}
                     onCancel={() => setAdding(null)}
                   />
-                )}
-              </li>
-            ))}
+                </li>
+              ) : null,
+            ])}
           </ol>
 
           {adding !== 'end' ? (
@@ -242,6 +276,32 @@ export function DayPlanner({
   )
 }
 
+// A native <input type="time"> is segment-based: clicking the minutes and
+// typing "20" gets eaten unless you hit the segments in the right order, which
+// is what made setting a time feel broken. This is a plain text box that
+// accepts what people actually type - "6:20pm", "620", "18:20", "6pm" - and
+// prints back one canonical form.
+export function parseClock(text: string, current?: string | null): string | null {
+  const s = text.trim().toLowerCase().replace(/\s+/g, '')
+  if (!s) return null
+  const m = s.match(/^(\d{1,2})[:.]?(\d{2})?(am|pm|a|p)?$/)
+  if (!m) return null
+  let h = Number(m[1])
+  const min = m[2] === undefined ? 0 : Number(m[2])
+  if (min > 59) return null
+  let suffix = m[3]?.[0]
+  // Nudging 6:35pm to "620" means 6:20pm, not six in the morning: with no am
+  // or pm typed and an hour that could be either, the half of the day you were
+  // already in wins. Only 13-23 and an explicit suffix override that.
+  if (!suffix && h >= 1 && h <= 11 && current) {
+    suffix = Number(current.slice(0, 2)) >= 12 ? 'p' : 'a'
+  }
+  if (suffix === 'p' && h < 12) h += 12
+  if (suffix === 'a' && h === 12) h = 0
+  if (h > 23) return null
+  return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`
+}
+
 function TimeField({
   label,
   value,
@@ -253,18 +313,47 @@ function TimeField({
   onSave: (v: string) => void
   onClear?: () => void
 }) {
+  const [draft, setDraft] = useState<string | null>(null)
+  const shown = value ? clockLabel(value) : '—'
+
+  if (draft === null) {
+    return (
+      <button className="planner-time-field" onClick={() => setDraft(value ? clockLabel(value) : '')}>
+        <span>{label}</span>
+        <span className="planner-time-value">{shown}</span>
+      </button>
+    )
+  }
+
+  const commit = () => {
+    const raw = draft
+    setDraft(null)
+    if (raw.trim() === '') {
+      onClear?.()
+      return
+    }
+    const parsed = parseClock(raw, value)
+    // Something that isn't a time leaves the old one alone rather than wiping it.
+    if (parsed && parsed !== value) onSave(parsed)
+  }
+
   return (
-    <label className="planner-time-field">
+    <span className="planner-time-field editing">
       <span>{label}</span>
       <input
-        type="time"
-        value={value ?? ''}
-        onChange={(e) => {
-          if (e.target.value) onSave(e.target.value)
-          else onClear?.()
+        className="planner-time-input"
+        autoFocus
+        value={draft}
+        placeholder="6:20pm"
+        onFocus={(e) => e.currentTarget.select()}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur()
+          if (e.key === 'Escape') setDraft(null)
         }}
       />
-    </label>
+    </span>
   )
 }
 
@@ -299,6 +388,10 @@ function MinutesField({ value, onSave }: { value: number; onSave: (m: number) =>
   )
 }
 
+// Its own row rather than something crammed into the block's flex line, which
+// squeezed the label to one letter per line and pushed the controls off the
+// right edge. Anything can go in: a walk, a snack, a shower - it doesn't have
+// to be a sidequest or one of the two words the old version offered.
 function AddRow({
   tasks,
   onPick,
@@ -308,23 +401,49 @@ function AddRow({
   onPick: (body: { kind: string; task_id?: string; label?: string; minutes?: number }) => void
   onCancel: () => void
 }) {
-  const ref = useRef<HTMLDivElement>(null)
+  const [label, setLabel] = useState('')
+  const [minutes, setMinutes] = useState('15')
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onCancel()
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onCancel])
 
+  const submit = () => {
+    const text = label.trim()
+    if (!text) return
+    const n = Number(minutes)
+    onPick({ kind: 'break', label: text, minutes: Number.isFinite(n) && n > 0 ? Math.round(n) : 15 })
+  }
+
   return (
-    <div className="planner-add" ref={ref}>
-      <button onClick={() => onPick({ kind: 'break', label: 'break', minutes: 15 })}>break</button>
+    <div className="planner-add">
+      <input
+        className="planner-add-label"
+        autoFocus
+        value={label}
+        placeholder="walk, snack, shower…"
+        onChange={(e) => setLabel(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && submit()}
+      />
+      <input
+        className="planner-add-mins"
+        value={minutes}
+        inputMode="numeric"
+        aria-label="minutes"
+        onChange={(e) => setMinutes(e.target.value.replace(/\D/g, '').slice(0, 3))}
+        onKeyDown={(e) => e.key === 'Enter' && submit()}
+      />
+      <button className="planner-add-go" onClick={submit} disabled={!label.trim()}>
+        add
+      </button>
       <select
-        defaultValue=""
+        className="planner-add-pick"
+        value=""
         onChange={(e) => e.target.value && onPick({ kind: 'task', task_id: e.target.value })}
       >
-        <option value="" disabled>
-          a sidequest…
-        </option>
+        <option value="">or a sidequest…</option>
         {tasks
           .filter((t) => t.status !== 'done')
           .map((t) => (
@@ -333,7 +452,7 @@ function AddRow({
             </option>
           ))}
       </select>
-      <button onClick={onCancel} aria-label="cancel">
+      <button className="planner-add-cancel" onClick={onCancel} aria-label="cancel">
         ✕
       </button>
     </div>

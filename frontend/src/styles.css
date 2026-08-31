@@ -3722,6 +3722,12 @@ header > .brand {
 
 .planner-body {
   margin-top: 10px;
+  /* The height animation needs overflow:hidden while it runs, and the dots on
+     the spine sit outside the content box - so the clip box is widened to the
+     left by exactly as much as they stick out, and pulled back with a matching
+     negative margin so nothing moves. */
+  margin-left: -22px;
+  padding-left: 22px;
 }
 
 .planner-bounds {
@@ -3739,32 +3745,33 @@ header > .brand {
   color: var(--faint);
 }
 
-/* A native time input brings its own chrome - a boxed field, a clock glyph,
-   and the platform's own type - none of which belongs next to this page's
-   type. The control keeps working; it just stops announcing itself. */
-.planner-time-field input {
+.planner-time-field {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.planner-time-value {
+  font-family: 'calling-code', monospace;
+  color: var(--ink);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 1px;
+}
+
+.planner-time-field:hover .planner-time-value {
+  border-bottom-color: var(--muted);
+}
+
+.planner-time-input {
   font-family: 'calling-code', monospace;
   font-size: 11px;
   color: var(--ink);
   background: transparent;
   border: none;
-  border-bottom: 1px solid var(--line);
-  border-radius: 0;
-  padding: 2px 0;
-  width: 68px;
-}
-
-.planner-time-field input::-webkit-calendar-picker-indicator {
-  display: none;
-}
-
-.planner-time-field input::-webkit-datetime-edit-ampm-field {
-  color: var(--faint);
-}
-
-.planner-time-field input:hover,
-.planner-time-field input:focus {
-  border-bottom-color: var(--muted);
+  border-bottom: 1px solid var(--muted);
+  padding: 1px 0;
+  width: 62px;
   outline: none;
 }
 
@@ -3847,7 +3854,7 @@ header > .brand {
 }
 
 .planner-body.closing .planner-list {
-  animation: spine-undraw 320ms ease-in both;
+  animation: spine-undraw calc(240ms + min(var(--n, 1) - 1, 12) * 38ms) linear both;
 }
 
 @keyframes spine-undraw {
@@ -3895,8 +3902,9 @@ header > .brand {
 }
 
 .planner-list {
-  /* The spine draws itself down as the lines arrive. */
-  animation: spine-draw 320ms ease-out both;
+  /* The spine draws down at the same rate the lines arrive - `--n` is the
+     block count, so it finishes with the last one rather than well before it. */
+  animation: spine-draw calc(240ms + min(var(--n, 1) - 1, 12) * 38ms) linear both;
   transform-origin: top;
 }
 
@@ -3984,7 +3992,6 @@ header > .brand {
   opacity: 1;
 }
 
-.planner-add,
 .planner-add-end {
   display: flex;
   align-items: center;
@@ -3999,16 +4006,56 @@ header > .brand {
   cursor: pointer;
 }
 
-.planner-add button,
-.planner-add select {
+.planner-add-row {
+  list-style: none;
+  padding: 4px 0 10px;
+}
+
+.planner-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.planner-add input,
+.planner-add select,
+.planner-add button {
   font-family: 'calling-code', monospace;
   font-size: 11px;
-  padding: 4px 8px;
+  padding: 5px 9px;
   border-radius: 999px;
   border: 1px solid var(--line);
   background: transparent;
+  color: var(--ink);
+}
+
+.planner-add-label {
+  flex: 1;
+  min-width: 110px;
+}
+
+.planner-add-mins {
+  width: 46px;
+  text-align: center;
+}
+
+.planner-add select,
+.planner-add button {
   color: var(--muted);
   cursor: pointer;
+  /* Long sidequest titles must not push the row off the panel's right edge. */
+  max-width: 160px;
+}
+
+.planner-add-go:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.planner-add-cancel {
+  border: none;
+  padding: 5px 4px;
 }
 
 .planner-overflow {
