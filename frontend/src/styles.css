@@ -3904,6 +3904,20 @@ header > .brand {
   }
 }
 
+/* The arrival animation is taken off the rows once it has run, and this is
+   load-bearing rather than tidiness. Reordering a keyed list moves the DOM node
+   with insertBefore, which takes it out of the tree and puts it back - and that
+   restarts any CSS animation still attached to it. So dropping a dragged row
+   replayed its own arrival. Freezing the delay was not enough; the animation
+   itself has to be gone.
+
+   This must stay ABOVE the .closing rules below, which set their own animation
+   at the same specificity and win on source order when the section shuts. */
+.planner-list.plan-settled .planner-block,
+.planner-list.plan-settled .planner-block::before {
+  animation: none;
+}
+
 /* Closing is the opening run backwards: the last line leaves first and goes
    back up behind the one above it. `--r` is the reverse index, so the delays
    mirror the opening ones.
@@ -4014,13 +4028,16 @@ header > .brand {
   font-style: italic;
 }
 
-/* Dragging. The entrance animation is switched off for the duration, because
-   its `both` fill sits in the cascade above an inline style and would win
-   against the transform the drag is writing. Rows other than the held one get
-   a transition, so the gap opens by sliding rather than jumping; the held one
-   must not have one, or it lags the pointer. */
+/* Dragging. The entrance animation is deliberately left alone: switching it
+   off for the duration changes the animation-name, and putting it back on
+   release changes it again - which is all it takes to make every row replay
+   its arrival the moment you let go. `block-drop` declares only a `from`, so
+   its implicit `to` is the element's own value, and the inline transform the
+   drag writes comes through underneath it.
+
+   Rows other than the held one get a transition, so the gap opens by sliding
+   rather than jumping; the held one must not have one, or it lags the pointer. */
 .planner-list.plan-dragging .planner-block {
-  animation: none;
   transition: transform 150ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 

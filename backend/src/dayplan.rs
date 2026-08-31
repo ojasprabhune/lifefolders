@@ -616,11 +616,20 @@ pub(crate) async fn regenerate(
     view(state, date, row).await
 }
 
+/// How late a meal may be pushed to let a block finish in one piece. Cutting a
+/// forty minute task in half to eat on the dot is worse than eating a quarter
+/// of an hour later, so the meal moves first and only a block that would delay
+/// it past this gets split.
+const MEAL_SHIFT_MAX: i32 = 45;
+
 /// Meals are placed here rather than by the model. Asked to position them by
 /// arithmetic it drifted - dinner landed at 10:53pm in one run - and there is
-/// nothing to reason about: a meal happens at its hour, and whatever block
-/// spans it gets split around it. Splitting keeps the two halves adding up to
-/// the original length, so the estimate is never quietly shortened.
+/// nothing to reason about: a meal happens at its hour, give or take.
+///
+/// A meal keeps its full length wherever it lands. A block that would run into
+/// one is left whole and the meal slides after it, unless that would push the
+/// meal more than MEAL_SHIFT_MAX late, in which case the block is split and the
+/// halves still add up to the original length.
 fn insert_meals(starts_at: NaiveTime, drafted: Vec<groq::DraftBlock>) -> Vec<groq::DraftBlock> {
     let start = minutes_of(starts_at);
     let mut meals: Vec<(i32, i32, &str)> = MEAL_BREAKS
@@ -642,17 +651,24 @@ fn insert_meals(starts_at: NaiveTime, drafted: Vec<groq::DraftBlock>) -> Vec<gro
         while left > 0 {
             let Some(&(from, to, what)) = meals.last() else { break };
             if clock >= from {
+                // Its hour has come, possibly late because the block before it
+                // was allowed to finish. It still lasts as long as it should.
                 out.push(groq::DraftBlock {
                     kind: "break".into(),
                     label: what.into(),
-                    minutes: (to - clock).max(1),
+                    minutes: to - from,
                 });
-                clock = to;
+                clock += to - from;
                 meals.pop();
                 continue;
             }
             let gap = from - clock;
             if left <= gap {
+                break;
+            }
+            // The block runs past the meal's hour. Delaying the meal a little
+            // beats cutting the block in two.
+            if left - gap <= MEAL_SHIFT_MAX {
                 break;
             }
             out.push(groq::DraftBlock { kind: b.kind.clone(), label: b.label.clone(), minutes: gap });
@@ -662,6 +678,17 @@ fn insert_meals(starts_at: NaiveTime, drafted: Vec<groq::DraftBlock>) -> Vec<gro
         if left > 0 {
             out.push(groq::DraftBlock { kind: b.kind.clone(), label: b.label.clone(), minutes: left });
             clock += left;
+        }
+    }
+    // A meal whose hour arrived after the last block still has to be eaten.
+    while let Some((from, to, what)) = meals.pop() {
+        if clock >= from {
+            out.push(groq::DraftBlock {
+                kind: "break".into(),
+                label: what.into(),
+                minutes: to - from,
+            });
+            clock += to - from;
         }
     }
     out
@@ -888,17 +915,36 @@ mod tests {
     }
 
     #[test]
-    fn a_block_spanning_a_meal_is_split_around_it() {
+    fn a_block_that_only_just_overruns_a_meal_moves_the_meal_instead() {
         let start = NaiveTime::parse_from_str("17:44", "%H:%M").unwrap();
-        // 17:44 + 180 would run to 20:44, straight through dinner at 20:30.
+        // 17:44 + 180 runs to 20:44, fourteen minutes past dinner at 20:30.
+        // Eating at 20:44 beats cutting the task in two to eat on the dot.
         let out = super::insert_meals(start, vec![draft("task", "research", 180)]);
+        let shape: Vec<_> = out.iter().map(|b| (b.kind.as_str(), b.label.as_str(), b.minutes)).collect();
+        assert_eq!(shape, vec![("task", "research", 180), ("break", "dinner", 30)]);
+    }
+
+    #[test]
+    fn a_block_that_would_hold_a_meal_up_for_hours_is_split() {
+        let start = NaiveTime::parse_from_str("18:00", "%H:%M").unwrap();
+        // 18:00 + 240 would run to 22:00 - an hour and a half past dinner.
+        let out = super::insert_meals(start, vec![draft("task", "essay", 240)]);
         let shape: Vec<_> = out.iter().map(|b| (b.kind.as_str(), b.label.as_str(), b.minutes)).collect();
         assert_eq!(
             shape,
-            vec![("task", "research", 166), ("break", "dinner", 30), ("task", "research", 14)]
+            vec![("task", "essay", 150), ("break", "dinner", 30), ("task", "essay", 90)]
         );
-        // The halves still add up to the estimate.
-        assert_eq!(166 + 14, 180);
+        assert_eq!(150 + 90, 240, "a split must not lose or invent minutes");
+    }
+
+    #[test]
+    fn a_meal_keeps_its_length_when_it_is_pushed_late() {
+        let start = NaiveTime::parse_from_str("20:00", "%H:%M").unwrap();
+        // Starts half an hour before dinner, runs 60 - dinner lands at 21:00
+        // and still lasts its full half hour rather than being trimmed.
+        let out = super::insert_meals(start, vec![draft("task", "reading", 60)]);
+        let dinner = out.iter().find(|b| b.label == "dinner").expect("dinner");
+        assert_eq!(dinner.minutes, 30);
     }
 
     #[test]

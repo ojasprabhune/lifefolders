@@ -54,6 +54,12 @@ export function DayPlanner({
   // out first, back up behind the one above it. Unmounting on the click would
   // just make it vanish.
   const [closing, setClosing] = useState(false)
+  // True once the arrival cascade has finished. It freezes the per-row stagger:
+  // `--i` changes whenever the list is reordered, and *increasing* a finished
+  // animation's delay shifts its active window back over the current time,
+  // which runs it again - so dropping a dragged row replayed the arrival of
+  // every row that moved down.
+  const [settled, setSettled] = useState(false)
   const [adding, setAdding] = useState<string | null>(null)
   // A drag is two values moving at different rates. The pointer offset changes
   // every frame and is written straight to the held row's style; the index it
@@ -124,6 +130,7 @@ export function DayPlanner({
       easing: 'cubic-bezier(0.33, 1, 0.68, 1)',
       fill: closing ? 'forwards' : 'none',
     })
+    if (closing) setSettled(false)
     const clear = () => {
       if (!closing) el.style.overflow = ''
     }
@@ -225,6 +232,18 @@ export function DayPlanner({
       })
   }
 
+  // Its own effect rather than a branch of the height one above: that runs only
+  // when the section is toggled, and the very first cascade happens when the
+  // plan arrives, long after. A little past the end of it, so the last row is
+  // not cut short by having its own delay zeroed out from under it.
+  const blockCount = plan?.blocks.length ?? 0
+  useEffect(() => {
+    if (!open || closing || settled || blockCount === 0) return
+    const t = window.setTimeout(() => setSettled(true), spanMs(blockCount) + 80)
+    return () => window.clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, closing, settled, blockCount])
+
   // How far a row that isn't the held one has to move to open the gap.
   const shiftOf = (i: number): number => {
     if (!held || overIndex === null || i === held.from) return 0
@@ -278,7 +297,7 @@ export function DayPlanner({
           )}
 
           <ol
-            className={`planner-list ${held ? 'plan-dragging' : ''}`}
+            className={`planner-list ${held ? 'plan-dragging' : ''} ${settled ? 'plan-settled' : ''}`}
             ref={listRef}
             style={{ ['--n' as string]: blocks.length }}
           >
