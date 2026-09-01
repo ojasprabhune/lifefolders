@@ -16,3 +16,22 @@ export function lastPanel(): string {
   const stored = sessionStorage.getItem(KEY)
   return stored && stored.startsWith('#/') ? stored : '#/'
 }
+
+// And which day the sidequests panel was pinned to. Same session-scoped
+// reasoning: a reload while you are looking at today should come back to
+// today, rather than dropping you on the backlog with the script gone.
+//
+// Today is stored as the word rather than the date, so a tab left open across
+// midnight comes back to the new today instead of pinning yesterday.
+const DAY_KEY = 'life_task_day'
+
+export function rememberTaskDay(day: string | null, today: string) {
+  if (day === null) sessionStorage.removeItem(DAY_KEY)
+  else sessionStorage.setItem(DAY_KEY, day === today ? 'today' : day)
+}
+
+export function lastTaskDay(today: string): string | null {
+  const stored = sessionStorage.getItem(DAY_KEY)
+  if (!stored) return null
+  return stored === 'today' ? today : stored
+}

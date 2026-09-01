@@ -9,6 +9,7 @@ import {
   patchTopic,
   savePlan,
 } from './api'
+import { collapseAndRemove } from './motion'
 import { Panel, usePanelState } from './Panel'
 import type { FieldDetail, FieldSummary, ProposedTopic, Resource, Topic } from './types'
 import { Quip } from './Quip'
@@ -153,9 +154,28 @@ function FieldPage({ id }: { id: string }) {
     void refresh()
   }, [refresh])
 
+  // Same fade-and-collapse the timeline's notice gets, so what sits under it
+  // rises to meet it rather than jumping a line. The counter guards against a
+  // second message landing mid-fade and being cleared by the first one's exit.
+  const noticeRef = useRef<HTMLDivElement>(null)
+  const noticeSeq = useRef(0)
   const flash = (message: string) => {
+    const seq = ++noticeSeq.current
+    const el = noticeRef.current
+    if (el) {
+      el.getAnimations().forEach((a) => a.cancel())
+      el.style.overflow = ''
+    }
     setNotice(message)
-    setTimeout(() => setNotice(''), 5000)
+    setTimeout(() => {
+      collapseAndRemove(
+        noticeRef.current,
+        () => {
+          if (noticeSeq.current === seq) setNotice('')
+        },
+        { ms: 300, easing: 'cubic-bezier(0.33, 1, 0.68, 1)' },
+      )
+    }, 5000)
   }
 
   const upload = async (form: FormData) => {
@@ -276,7 +296,11 @@ function FieldPage({ id }: { id: string }) {
       </header>
 
       {detail.goal_text && <p className="field-goal">{detail.goal_text}</p>}
-      {notice && <div className="notice">{notice}</div>}
+      {notice && (
+        <div className="notice" ref={noticeRef}>
+          {notice}
+        </div>
+      )}
 
       <section className="music-section">
         <h2 className="section-title">resources</h2>

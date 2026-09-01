@@ -181,7 +181,7 @@ export function FocusTimer() {
       </header>
 
       {mode === 'setup' && (
-        <div className="focus-setup">
+        <div className="focus-setup focus-view">
           <div className="focus-block">
             <span className="daily-label">focus on</span>
             <div className="status-buttons">
@@ -275,9 +275,14 @@ export function FocusTimer() {
       )}
 
       {mode === 'running' && active && (
-        <div className="focus-running">
+        <div className="focus-running focus-view">
           <div className={`focus-clock ${paused ? 'paused' : ''}`}>{mmss(remaining)}</div>
-          <div className="focus-task">{active.title}</div>
+          <div className={`focus-task live ${paused ? 'paused' : ''}`}>{active.title}</div>
+          {/* The clock counts down, so forty minutes in there is nothing left
+              on screen saying what you asked for in the first place. */}
+          <div className="focus-planned">
+            {Math.max(0, Math.floor((active.planned * 60 - remaining) / 60))}m of {active.planned}m
+          </div>
           {/* Stop and "finished early" both end the session but mean opposite
               things - one counts as done, the other doesn't - and stop sat
               right next to it with no way back. So it asks first. */}
@@ -316,7 +321,7 @@ export function FocusTimer() {
       )}
 
       {mode === 'done' && summary && (
-        <div className="focus-done">
+        <div className="focus-done focus-view">
           <div className={`focus-badge ${summary.completed ? 'complete' : 'stopped'}`}>
             {summary.completed ? 'completed' : 'stopped'}
           </div>

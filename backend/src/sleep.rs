@@ -202,7 +202,24 @@ pub async fn bedtime_target(
     let wake = median(
         nights.iter().filter_map(|n| n.sleep_end.map(|t| minute_of_day(t, offset_min))).collect(),
     );
-    Ok(wake.map(|w| (w - goal_min).rem_euclid(1440)))
+    Ok(wake.map(|w| sensible_bedtime((w - goal_min).rem_euclid(1440))))
+}
+
+/// The earliest hour worth calling a bedtime, and the latest.
+const BEDTIME_FLOOR: i64 = 23 * 60;
+const BEDTIME_CEILING: i64 = 6 * 60;
+
+/// Wake minus goal is arithmetic, and arithmetic will hand you "be asleep by
+/// 8pm" off a week of late mornings. That is not advice anyone takes, and it
+/// is also the day planner's finish-by line, so it makes an ordinary evening
+/// read as three hours of overflow. Anything outside 11pm-6am becomes 11pm:
+/// it's the earliest a bedtime is worth saying out loud.
+fn sensible_bedtime(minute: i64) -> i64 {
+    if minute >= BEDTIME_FLOOR || minute <= BEDTIME_CEILING {
+        minute
+    } else {
+        BEDTIME_FLOOR
+    }
 }
 
 fn build_facts(nights: &[SleepData], goal_min: i64, offset_min: i32) -> String {
@@ -406,6 +423,19 @@ fn local_time(ts: DateTime<Utc>, offset_min: i32) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_bedtime_before_eleven_is_pulled_up_to_eleven() {
+        assert_eq!(super::sensible_bedtime(20 * 60), super::BEDTIME_FLOOR);
+        assert_eq!(super::sensible_bedtime(22 * 60 + 59), super::BEDTIME_FLOOR);
+    }
+
+    #[test]
+    fn a_late_bedtime_is_left_exactly_where_it_is() {
+        assert_eq!(super::sensible_bedtime(23 * 60 + 32), 23 * 60 + 32);
+        assert_eq!(super::sensible_bedtime(30), 30, "half twelve is a bedtime");
+        assert_eq!(super::sensible_bedtime(5 * 60), 5 * 60, "so, unfortunately, is five am");
+    }
+
     use super::{angle_for, build_facts};
     use crate::models::SleepData;
     use chrono::{Duration, NaiveDate};

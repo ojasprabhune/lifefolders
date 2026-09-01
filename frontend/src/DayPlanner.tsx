@@ -100,6 +100,7 @@ export function DayPlanner({
   useEffect(() => {
     getDayPlan(date).then(setPlan).catch(() => {})
   }, [date])
+  const arrived = plan !== null
 
   // Has to match the keyframes: one block's duration plus the capped stagger.
   const spanMs = (n: number) => 240 + Math.min(Math.max(n - 1, 0), 12) * 38
@@ -147,8 +148,11 @@ export function DayPlanner({
     }
     anim.onfinish = clear
     anim.oncancel = clear
+    // `arrived` is in here so the body opens when the plan first lands, not
+    // only when you toggle the section: on mount there is no body to animate
+    // yet, and by the time there is, neither of the other two has changed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, closing])
+  }, [open, closing, arrived])
 
   const run = useCallback(
     async (work: () => Promise<DayPlan>) => {
@@ -273,24 +277,26 @@ export function DayPlanner({
     return 0
   }
 
-  if (!plan) return null
-  const blocks = plan.blocks
+  const blocks = plan?.blocks ?? []
   const last = blocks[blocks.length - 1]
 
   return (
     <section className="planner">
       {/* The title is the control, the same way `resolved` is - no separate
-          affordance to aim at. */}
+          affordance to aim at. It is drawn before the plan has loaded, so the
+          day's sections settle directly under it once and stay there - waiting
+          for the fetch and mounting the whole thing at once shoved them half a
+          screen down a moment after you had already started reading them. */}
       <button className="planner-head" onClick={toggle}>
         <h2 className="section-title">the script</h2>
         {last && (
           <span className="planner-range">
-            {clockLabel(plan.starts_at)} – {clockLabel(last.end)}
+            {clockLabel(plan!.starts_at)} – {clockLabel(last.end)}
           </span>
         )}
       </button>
 
-      {open && (
+      {plan && open && (
         <div className={`planner-body ${closing ? 'closing' : ''}`} ref={bodyRef}>
           <div className="planner-bounds">
             <TimeField

@@ -104,7 +104,13 @@ export function medianBedMinute(nights: SleepData[], count: number): number | nu
 
 /** The time to be asleep to hit the goal and still get up when you usually do. */
 export function bedtimeTarget(wakeMinute: number, goalMin: number): number {
-  return ((wakeMinute - goalMin) % 1440 + 1440) % 1440
+  const raw = (((wakeMinute - goalMin) % 1440) + 1440) % 1440
+  // Mirrors sensible_bedtime() in sleep.rs, which the coach's own blurb goes
+  // through - the ring and the sentence sit inches apart on this page. Wake
+  // minus goal is arithmetic, and a week of late mornings makes it say "be
+  // asleep by 8pm", which is not advice anyone takes.
+  const inNightHours = raw >= 23 * 60 || raw <= 6 * 60
+  return inNightHours ? raw : 23 * 60
 }
 
 /** Running total of minutes over/under goal, oldest first. */

@@ -840,8 +840,11 @@ Nothing else - no prose, no markdown fence. \
 The blocks are in order and each one's length is its minutes. Do not write clock times; they are \
 worked out from the order. \
 Plan the DUE TODAY OR ALREADY LATE group first, giving each sidequest exactly the number of \
-minutes it says it takes. Never shorten one to make the day fit. Use the sidequest's title \
-verbatim as the label. An entry marked [study session] is a spaced revision slot for an exam \
+minutes it says it takes. That group is already ordered longest first and you must keep it in \
+that order - the longest work belongs early, while there are still hours left for it. \
+Never shorten one to make the day fit. A label is the sidequest's title and nothing else - never \
+the bracketed category, the deadline, the status or the minutes, which are context for you to \
+read and belong in no label. An entry marked [study session] is a spaced revision slot for an exam \
 coming up - it is real work for today and belongs in the plan like any other, labelled exactly as \
 it is written. \
 Do not add meals or breaks of your own - the app puts those in afterwards, at fixed times. \

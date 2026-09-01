@@ -13,6 +13,7 @@ import { dayLabel, dueLabel } from './dates'
 import { Expand } from './Expand'
 import { DayPlanner } from './DayPlanner'
 import { strikeOut, unfold, useFlipList } from './motion'
+import { lastTaskDay, rememberTaskDay } from './lastPanel'
 import { Panel, usePanelState } from './Panel'
 import type { FocusSession, TaskCheckpoint, TaskWithCheckpoints } from './types'
 import { Quip } from './Quip'
@@ -51,8 +52,12 @@ function diffTask(before: TaskWithCheckpoints, after: TaskWithCheckpoints): Task
 export function Tasks({ open }: { open: boolean }) {
   const [tasks, setTasks] = useState<TaskWithCheckpoints[]>([])
   // Which day the list is pinned to (a yyyy-mm-dd), or null for everything
-  // grouped by category. The today button is just this set to today.
-  const [selected, setSelected] = useState<string | null>(null)
+  // grouped by category. The today button is just this set to today. Restored
+  // from the session so a reload, or a trip out to a full-page route, comes
+  // back to the day you were on rather than to the backlog.
+  const [selected, setSelected] = useState<string | null>(() =>
+    lastTaskDay(dateToStr(new Date())),
+  )
   const { mounted, closing } = usePanelState(open)
   const previous = useRef<Map<string, TaskWithCheckpoints>>(new Map())
   const [changes, setChanges] = useState<Map<string, TaskChange>>(new Map())
@@ -154,6 +159,9 @@ export function Tasks({ open }: { open: boolean }) {
   }, [tasks, leaving])
   const grouped = useMemo(() => groupByCategory(openTasks), [openTasks])
   const todayStr = dateToStr(new Date())
+  useEffect(() => {
+    rememberTaskDay(selected, todayStr)
+  }, [selected, todayStr])
   // "today's plate" is the task's own due date or one of its spaced-review
   // checkpoints (7d/3d/1d out from an exam) coming due - not just tasks due
   // today themselves. Anything with such a date already behind us is overdue

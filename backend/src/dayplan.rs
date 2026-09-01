@@ -751,9 +751,20 @@ fn insert_meals(
 /// than being asked for again.
 fn clean_label(label: &str) -> String {
     let trimmed = label.trim();
-    match (trimmed.rfind(" ["), trimmed.ends_with(']')) {
-        (Some(at), true) => trimmed[..at].trim().to_string(),
-        _ => trimmed.to_string(),
+    // Asked to keep the order it was given, the model started handing back the
+    // brief's whole line - "lit paragraph [homework] due today, not_started, 90
+    // minutes" - as the label, so the cut can't only happen at the end of the
+    // string any more. What makes it safe is testing the tail: only when the
+    // bracket is followed by nothing, or by the deadline the brief prints right
+    // after the category, is this our own line coming back. A title that simply
+    // has a bracket in it ("read [part 2] of the chapter") is left whole.
+    let Some(at) = trimmed.find(" [") else { return trimmed.to_string() };
+    let Some(close) = trimmed[at..].find(']') else { return trimmed.to_string() };
+    let tail = trimmed[at + close + 1..].trim_start();
+    if tail.is_empty() || tail.starts_with("due ") || tail.starts_with("no deadline") {
+        trimmed[..at].trim().to_string()
+    } else {
+        trimmed.to_string()
     }
 }
 
@@ -804,6 +815,14 @@ async fn due_reviews(state: &AppState, date: NaiveDate) -> Result<Vec<DueReview>
         .collect())
 }
 
+/// What a sidequest is expected to take: its own estimate, then one written
+/// into its note back before there was a field for it, then the default.
+fn estimate_of(t: &Task) -> i32 {
+    t.effort_minutes
+        .or_else(|| t.note.as_deref().and_then(tasks::effort_from_text))
+        .unwrap_or(NO_ESTIMATE_MIN)
+}
+
 fn build_brief(
     open: &[Task],
     reviews: &[DueReview],
@@ -831,8 +850,15 @@ fn build_brief(
         format!("- {} [{}] {due}, {}, {est}{history}\n", t.title, t.category, t.status)
     };
 
-    let (now_due, later): (Vec<&Task>, Vec<&Task>) =
+    let (mut now_due, mut later): (Vec<&Task>, Vec<&Task>) =
         open.iter().partition(|t| t.due_date.is_some_and(|d| d <= date));
+    // Longest first, within each group. The model left to itself works down
+    // the list it was handed, so a half-hour errand kept opening the day and
+    // the ninety-minute piece of actual work landed in the evening. The big
+    // thing wants the hours you still have, and if the day does overrun, what
+    // gets pushed off the end should be the small stuff.
+    now_due.sort_by_key(|t| std::cmp::Reverse(estimate_of(t)));
+    later.sort_by_key(|t| std::cmp::Reverse(estimate_of(t)));
 
     let mut brief = format!("The plan starts at {}.\n", starts_at.format("%H:%M"));
     if let Some(end) = ends_at {
@@ -1015,6 +1041,17 @@ mod tests {
         assert_eq!(breaks, vec!["lunch", "dinner"]);
         let work: i32 = out.iter().filter(|b| b.kind == "task").map(|b| b.minutes).sum();
         assert_eq!(work, 12 * 60, "splitting must not lose or invent minutes");
+    }
+
+    #[test]
+    fn a_label_keeps_only_the_title() {
+        assert_eq!(clean_label("lit paragraph [homework]"), "lit paragraph");
+        assert_eq!(
+            clean_label("lit paragraph [homework] due today, not_started, 90 minutes"),
+            "lit paragraph"
+        );
+        assert_eq!(clean_label("study for physics quiz 1 [study session] due today"), "study for physics quiz 1");
+        assert_eq!(clean_label("read up on history"), "read up on history");
     }
 
     #[test]
