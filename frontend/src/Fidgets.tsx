@@ -651,12 +651,31 @@ function Shelf({
   )
 }
 
+// Has to stay in step with the shelf's own breakpoint in styles.css. Below it
+// the shelf empties down to the clock, which means there is no box for the ball
+// to sit in - and the ball, finding none, unparked itself and went to live
+// loose on the page, with an invisible paddle chasing a cursor that phones do
+// not have. The whole toy comes out instead.
+const SHELF_HIDDEN = '(max-width: 540px)'
+
+function useNarrow(): boolean {
+  const [narrow, setNarrow] = useState(() => window.matchMedia(SHELF_HIDDEN).matches)
+  useEffect(() => {
+    const mq = window.matchMedia(SHELF_HIDDEN)
+    const onChange = () => setNarrow(mq.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+  return narrow
+}
+
 export function Fidgets({ route, showClock }: { route: string; showClock: boolean }) {
   const boxRef = useRef<HTMLDivElement>(null)
+  const narrow = useNarrow()
   return (
     <>
       <Shelf route={route} showClock={showClock} boxRef={boxRef} />
-      <InkDrop route={route} boxRef={boxRef} />
+      {!narrow && <InkDrop route={route} boxRef={boxRef} />}
     </>
   )
 }
