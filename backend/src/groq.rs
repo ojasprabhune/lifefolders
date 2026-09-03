@@ -834,13 +834,13 @@ pub struct DraftBlock {
 }
 
 const PLAN_BLOCKS_PROMPT: &str = "You draft the blocks of someone's day. You get a start time, \
-sometimes a finish-by time, their sidequests in two groups, and the meals to leave room for. \
+sometimes a finish-by time, and the sidequests that are theirs to do today. \
 Reply with JSON only: {\"blocks\": [{\"kind\": \"task\"|\"break\", \"label\": string, \"minutes\": number}]}. \
 Nothing else - no prose, no markdown fence. \
 The blocks are in order and each one's length is its minutes. Do not write clock times; they are \
 worked out from the order. \
-Plan the DUE TODAY OR ALREADY LATE group first, giving each sidequest exactly the number of \
-minutes it says it takes. That group is already ordered longest first and you must keep it in \
+Plan every sidequest you are given, giving each one exactly the number of \
+minutes it says it takes. They are already ordered longest first and you must keep them in \
 that order - the longest work belongs early, while there are still hours left for it. \
 Never shorten one to make the day fit. A label is the sidequest's title and nothing else - never \
 the bracketed category, the deadline, the status or the minutes, which are context for you to \
@@ -848,11 +848,12 @@ read and belong in no label. An entry marked [study session] is a spaced revisio
 coming up - it is real work for today and belongs in the plan like any other, labelled exactly as \
 it is written. \
 Do not add meals or breaks of your own - the app puts those in afterwards, at fixed times. \
-Every entry in the DUE TODAY OR ALREADY LATE group must appear in the plan, even if that runs the \
+Every sidequest you are given must appear in the plan, even if that runs the \
 day past the finish-by time. Do not drop one to make the day fit and do not shorten one - the app \
 works out the overflow and asks the user what to move. \
-Only reach into the NOT DUE YET group once everything above it is placed and there is room left \
-before the finish-by time; that group is the only one you may leave out.";
+The one exception is a brief that says nothing is due today: that list is a backlog to choose \
+from, so take as much of it as fits and leave the rest. \
+Invent nothing: if the day is short, it is short, and the hours left over are theirs.";
 
 pub async fn plan_blocks(
     http: &reqwest::Client,

@@ -1601,7 +1601,10 @@ header > .brand {
   border-radius: 10px;
   font-size: 14px;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.25);
-  animation: row-in 150ms ease both;
+  /* It lives in the bottom corner, so it comes up out of it - row-in dropped
+     it in from above, which reads as something falling onto the page. */
+  animation: focus-pill-in 260ms cubic-bezier(0.33, 1, 0.68, 1) both;
+  transition: background-color 260ms ease;
   max-width: calc(100% - 32px);
 }
 
@@ -1638,6 +1641,13 @@ header > .brand {
   animation: row-in 150ms ease both;
   max-width: calc(100% - 32px);
   cursor: pointer;
+}
+
+@keyframes focus-pill-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
 }
 
 .focus-pill.paused {
@@ -1934,6 +1944,9 @@ header > .brand {
   flex-direction: column;
   align-items: center;
   gap: 4px;
+  /* The day you pick lights up rather than switching on, and the bars grow
+     when a sidequest is moved onto another day instead of jumping there. */
+  transition: background-color 200ms ease;
 }
 
 .due-col.today .due-label,
@@ -1963,6 +1976,7 @@ header > .brand {
   font-size: 12px;
   font-weight: 600;
   height: 16px;
+  transition: color 200ms ease;
 }
 
 .due-bar {
@@ -1971,16 +1985,55 @@ header > .brand {
   min-height: 2px;
   background: var(--accent);
   border-radius: 1px;
+  transition: height 320ms cubic-bezier(0.33, 1, 0.68, 1);
 }
 
 .due-label {
   font-size: 11px;
   color: var(--muted);
+  transition: color 200ms ease;
 }
 
 .due-date {
   font-size: 11px;
   color: var(--muted);
+  transition: color 200ms ease;
+}
+
+/* Eighteen pixels, not the timeline's forty-two: the panel has 24px of
+   padding and nothing clipping it, so a bigger shift would slide the day's
+   rows out over the page behind. */
+.task-list-view {
+  animation: task-view-in 200ms cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+
+.task-list-view.slide-left {
+  animation-name: task-view-left;
+}
+
+.task-list-view.slide-right {
+  animation-name: task-view-right;
+}
+
+@keyframes task-view-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes task-view-left {
+  from {
+    opacity: 0;
+    transform: translateX(-18px);
+  }
+}
+
+@keyframes task-view-right {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
 }
 
 .task-row {
@@ -2030,6 +2083,7 @@ header > .brand {
   font-size: 14px;
   color: var(--muted);
   margin-top: 2px;
+  transition: border-color 200ms ease, background-color 200ms ease, color 200ms ease;
 }
 
 .task-status.not_started {
@@ -2337,13 +2391,13 @@ header > .brand {
   margin-top: 28px;
 }
 
-.resolved-section > summary {
+.resolved-summary {
   cursor: pointer;
-  list-style: none;
-}
-
-.resolved-section > summary::-webkit-details-marker {
-  display: none;
+  display: block;
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
 }
 
 .resolved-list {
@@ -3273,6 +3327,8 @@ header > .brand {
 }
 
 .solace-insight {
+  /* Its own request, so it lands a second or two after everything around it. */
+  animation: row-in 320ms ease both;
   margin: 0 0 12px;
   font-size: 13px;
   color: var(--ink);
@@ -3901,8 +3957,20 @@ header > .brand {
   }
 
   .mic-bar,
-  .task-row {
+  .task-row,
+  .task-status,
+  .due-col,
+  .due-bar,
+  .due-label,
+  .due-date,
+  .due-count,
+  .focus-pill {
     transition: none;
+  }
+
+  .focus-pill,
+  .solace-insight {
+    animation: none;
   }
 }
 
@@ -4346,7 +4414,14 @@ header > .brand {
   padding: 5px 4px;
 }
 
+/* It arrives after the plan does - a re-plan, or one edit too many - so it
+   has to push the page down rather than appear in it. */
 .planner-overflow {
+  /* `backwards`, not `both`: a forwards fill would leave the ceiling standing
+     at 140px, and a third line of text on a narrow screen would be cut off by
+     an animation that finished half a second ago. */
+  animation: planner-overflow-in 260ms cubic-bezier(0.33, 1, 0.68, 1) backwards;
+  overflow: hidden;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -4357,6 +4432,39 @@ header > .brand {
   font-size: 12px;
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+
+@keyframes planner-overflow-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+    /* Grown rather than faded in place, so what sits under it slides. The
+       height is a hand-set ceiling because the box is one or two lines and
+       CSS can't measure it; overflow keeps the second line out of sight
+       until there's room for it. */
+    max-height: 0;
+    margin-top: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    max-height: 140px;
+    margin-top: 14px;
+    padding-top: 9px;
+    padding-bottom: 9px;
+  }
+}
+
+/* Its own block rather than the shared reduced-motion list further up: that
+   one sits above these rules in the file at the same specificity, so it would
+   lose on source order. */
+@media (prefers-reduced-motion: reduce) {
+  .planner-overflow,
+  .task-list-view {
+    animation: none;
+  }
 }
 
 .planner-push {

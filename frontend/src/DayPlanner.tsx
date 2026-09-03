@@ -9,7 +9,7 @@ import {
   type DayPlan,
   type PlanBlock,
 } from './api'
-import { prefersReducedMotion } from './motion'
+import { collapseAndRemove, prefersReducedMotion } from './motion'
 import { formatEffort } from './Tasks'
 import type { TaskWithCheckpoints } from './types'
 
@@ -153,6 +153,34 @@ export function DayPlanner({
     // yet, and by the time there is, neither of the other two has changed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, closing, arrived])
+
+  // The overflow warning is held on screen for its own collapse. Pressing
+  // "drop x" takes the overflow to nothing in the same response that removes
+  // the block, so letting the banner vanish on that frame is a hole opening
+  // under the list - which is the snap. Kept as a snapshot rather than read
+  // off `plan`, because by then the plan no longer overflows.
+  type Note = Pick<DayPlan, 'overflow_minutes' | 'ends_at' | 'push_suggestion'>
+  const [note, setNote] = useState<Note | null>(null)
+  const noteRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!plan) return
+    if (plan.overflow_minutes > 0) {
+      // A banner caught mid-collapse is still carrying that animation, filled
+      // forwards at zero height; it has to be let go of before it can show
+      // the new figure.
+      const el = noteRef.current
+      if (el) {
+        el.getAnimations().forEach((a) => a.cancel())
+        el.style.overflow = ''
+      }
+      setNote(plan)
+      return
+    }
+    setNote((current) => {
+      if (current) collapseAndRemove(noteRef.current, () => setNote(null), { ms: 260, easing: 'cubic-bezier(0.33, 1, 0.68, 1)' })
+      return current
+    })
+  }, [plan])
 
   const run = useCallback(
     async (work: () => Promise<DayPlan>) => {
@@ -413,17 +441,17 @@ export function DayPlanner({
             />
           )}
 
-          {plan.overflow_minutes > 0 && (
-            <div className="planner-overflow">
+          {note && (
+            <div className="planner-overflow" ref={noteRef}>
               <span>
-                {formatEffort(plan.overflow_minutes)} past {clockLabel(plan.ends_at ?? '00:00')}, when
+                {formatEffort(note.overflow_minutes)} past {clockLabel(note.ends_at ?? '00:00')}, when
                 you wanted to be asleep.
               </span>
-              {plan.push_suggestion && (
+              {note.push_suggestion && (
                 <button
                   className="planner-push"
                   onClick={() => {
-                    const s = plan.push_suggestion!
+                    const s = note.push_suggestion!
                     // Dropping it from the plan is the reversible half; moving
                     // its deadline is the user's call, so it stays a sentence
                     // they can type rather than something done to them.
@@ -435,7 +463,7 @@ export function DayPlanner({
                     })
                   }}
                 >
-                  drop {plan.push_suggestion.label} ({formatEffort(plan.push_suggestion.minutes)})
+                  drop {note.push_suggestion.label} ({formatEffort(note.push_suggestion.minutes)})
                 </button>
               )}
             </div>

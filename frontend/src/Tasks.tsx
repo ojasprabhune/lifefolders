@@ -188,6 +188,26 @@ export function Tasks({ open }: { open: boolean }) {
     () => buildDayCounts(openTasks, DUE_STRIP_DAYS_BEFORE, DUE_STRIP_DAYS_AFTER),
     [openTasks],
   )
+  // The list under the strip is entirely different content on a different day,
+  // so it arrives as one block rather than swapping in place. Same reasoning
+  // as the timeline's day slide, including the important part: the class and
+  // the key are set in the same handler as the day itself, so the animation is
+  // committed in the render that first shows the rows it belongs to.
+  const [showResolved, setShowResolved] = useState(false)
+  const [view, setView] = useState<{ key: string; dir: 'left' | 'right' | 'in' }>({
+    key: selected ?? 'all',
+    dir: 'in',
+  })
+  const pick = (day: string | null) => {
+    const next = selected === day ? null : day
+    if (next === selected) return
+    setView({
+      key: next ?? 'all',
+      dir: selected && next ? (next > selected ? 'right' : 'left') : 'in',
+    })
+    setSelected(next)
+  }
+
   const resolvedTasks = useMemo(
     () =>
       tasks
@@ -208,7 +228,7 @@ export function Tasks({ open }: { open: boolean }) {
         <div className="header-nav">
           <button
             className={`guide-link today-filter-btn ${selected === todayStr ? 'active' : ''}`}
-            onClick={() => setSelected((d) => (d === todayStr ? null : todayStr))}
+            onClick={() => pick(todayStr)}
           >
             today
           </button>
@@ -225,7 +245,7 @@ export function Tasks({ open }: { open: boolean }) {
         days={dayCounts}
         todayIndex={DUE_STRIP_DAYS_BEFORE}
         selected={selected}
-        onSelect={(date) => setSelected((d) => (d === date ? null : date))}
+        onSelect={pick}
       />
 
       {/* Above the day's sections, exactly where you look before deciding what
@@ -237,6 +257,7 @@ export function Tasks({ open }: { open: boolean }) {
       )}
 
       <main className="list" ref={listRef}>
+        <div className={`task-list-view slide-${view.dir}`} key={view.key}>
         {selected ? (
           <>
             {overdue.length > 0 && (
@@ -311,15 +332,26 @@ export function Tasks({ open }: { open: boolean }) {
         {!selected && openTasks.length === 0 && <div className="empty">nothing due</div>}
 
         {!selected && resolvedTasks.length > 0 && (
-          <details className="resolved-section">
-            <summary className="section-title">resolved ({resolvedTasks.length})</summary>
-            <div className="resolved-list">
-              {resolvedTasks.map((t) => (
-                <ResolvedRow key={t.id} task={t} onCycle={() => void cycleStatus(t)} onDelete={() => void remove(t.id)} />
-              ))}
-            </div>
-          </details>
+          <div className="resolved-section">
+            {/* A <details> here for the markup's sake, but its open and close
+                are both instant - and this is a long list, so it snapped a
+                screenful of rows into place. */}
+            <button
+              className="section-title resolved-summary"
+              onClick={() => setShowResolved((v) => !v)}
+            >
+              resolved ({resolvedTasks.length})
+            </button>
+            <Expand open={showResolved}>
+              <div className="resolved-list">
+                {resolvedTasks.map((t) => (
+                  <ResolvedRow key={t.id} task={t} onCycle={() => void cycleStatus(t)} onDelete={() => void remove(t.id)} />
+                ))}
+              </div>
+            </Expand>
+          </div>
         )}
+        </div>
       </main>
     </Panel>
   )

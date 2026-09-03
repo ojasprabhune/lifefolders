@@ -860,6 +860,18 @@ fn build_brief(
     now_due.sort_by_key(|t| std::cmp::Reverse(estimate_of(t)));
     later.sort_by_key(|t| std::cmp::Reverse(estimate_of(t)));
 
+    // Backlog only fills a day that has nothing of its own. Offered both
+    // groups the model took the second one as permission rather than as a
+    // reserve: an evening with three hours of work due today came back with
+    // the whole backlog stacked behind it, running past bedtime, and the
+    // app's own answer was to suggest dropping the work it had just added.
+    // "What am I doing today" is answered by today. An hour left over at the
+    // end is a real answer, not a gap that needs filling.
+    let backlog_only = now_due.is_empty() && reviews.is_empty();
+    if !backlog_only {
+        later.clear();
+    }
+
     let mut brief = format!("The plan starts at {}.\n", starts_at.format("%H:%M"));
     if let Some(end) = ends_at {
         brief.push_str(&format!("It has to be finished by {}.\n", end.format("%H:%M")));
@@ -882,12 +894,14 @@ fn build_brief(
     for t in &now_due {
         brief.push_str(&line(t));
     }
-    brief.push_str("\nNOT DUE YET - only if everything above fits:\n");
-    if later.is_empty() {
-        brief.push_str("(nothing)\n");
-    }
-    for t in &later {
-        brief.push_str(&line(t));
+    if backlog_only {
+        brief.push_str("\nNOTHING IS DUE TODAY. Pick from these instead:\n");
+        if later.is_empty() {
+            brief.push_str("(nothing)\n");
+        }
+        for t in &later {
+            brief.push_str(&line(t));
+        }
     }
     brief
 }
@@ -1079,6 +1093,71 @@ mod tests {
         let end = NaiveTime::parse_from_str("00:30", "%H:%M").unwrap();
         let out = super::insert_meals(start, Some(end), vec![draft("task", "essay", 360)]);
         assert!(out.iter().any(|b| b.label == "dinner"), "8:30 is before a 12:30 bedtime");
+    }
+
+    fn task(title: &str, due: Option<&str>, minutes: i32) -> crate::tasks::Task {
+        crate::tasks::Task {
+            id: Uuid::new_v4(),
+            title: title.into(),
+            category: "homework".into(),
+            due_date: due.map(|d| d.parse().unwrap()),
+            due_time: None,
+            effort_minutes: Some(minutes),
+            status: "not_started".into(),
+            is_exam: false,
+            note: None,
+            created_at: chrono::Utc::now(),
+            completed_at: None,
+        }
+    }
+
+    fn brief_for(open: &[crate::tasks::Task], reviews: &[super::DueReview]) -> String {
+        super::build_brief(
+            open,
+            reviews,
+            &[],
+            today(),
+            NaiveTime::parse_from_str("17:00", "%H:%M").unwrap(),
+            NaiveTime::parse_from_str("23:00", "%H:%M").ok(),
+        )
+    }
+
+    #[test]
+    fn a_day_with_work_of_its_own_is_never_offered_the_backlog() {
+        let open = vec![
+            task("ch 1-6", Some("2026-08-30"), 130),
+            task("ptsa award", Some("2026-09-12"), 30),
+            task("visit VA", None, 30),
+        ];
+        let brief = brief_for(&open, &[]);
+        assert!(brief.contains("ch 1-6"));
+        assert!(!brief.contains("ptsa award"), "work due in a fortnight is not today's plan");
+        assert!(!brief.contains("visit VA"), "and neither is work with no deadline at all");
+    }
+
+    #[test]
+    fn a_review_that_has_come_due_counts_as_work_of_its_own() {
+        // Nothing is due, but tomorrow's quiz needs revising tonight - that is
+        // a real day, so the backlog stays out of it.
+        let open = vec![task("ptsa award", Some("2026-09-12"), 30)];
+        let reviews = vec![super::DueReview {
+            title: "physics quiz 1".into(),
+            offset_days: 1,
+            effort_minutes: Some(30),
+        }];
+        let brief = brief_for(&open, &reviews);
+        assert!(brief.contains("study for physics quiz 1"));
+        assert!(!brief.contains("ptsa award"));
+    }
+
+    #[test]
+    fn an_empty_day_falls_back_to_the_backlog_rather_than_planning_nothing() {
+        let open = vec![task("ptsa award", Some("2026-09-12"), 30), task("visit VA", None, 45)];
+        let brief = brief_for(&open, &[]);
+        assert!(brief.contains("NOTHING IS DUE TODAY"));
+        assert!(brief.contains("ptsa award") && brief.contains("visit VA"));
+        // Still longest first.
+        assert!(brief.find("visit VA") < brief.find("ptsa award"));
     }
 
     #[test]

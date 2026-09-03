@@ -28,12 +28,22 @@ export function collapseAndRemove(
   // below it - the element stalls at padding-top + padding-bottom and then
   // vanishes, which is a snap of exactly that many pixels at the very end.
   const style = getComputedStyle(el)
-  const { paddingTop, paddingBottom } = style
+  const { paddingTop, paddingBottom, marginTop, marginBottom } = style
   el.style.overflow = 'hidden'
   const anim = el.animate(
     [
-      { height: `${height}px`, paddingTop, paddingBottom, opacity: 1 },
-      { height: '0px', paddingTop: '0px', paddingBottom: '0px', opacity: 0 },
+      { height: `${height}px`, paddingTop, paddingBottom, marginTop, marginBottom, opacity: 1 },
+      {
+        height: '0px',
+        paddingTop: '0px',
+        paddingBottom: '0px',
+        // And the margins, for the same reason one step out: an element at
+        // zero height still holds its neighbours apart by its margin, so the
+        // gap it leaves behind closes all at once when it finally unmounts.
+        marginTop: '0px',
+        marginBottom: '0px',
+        opacity: 0,
+      },
     ],
     // `fill: forwards` matters: without it the row springs back to full height
     // for the frame between the animation finishing and React unmounting it.
