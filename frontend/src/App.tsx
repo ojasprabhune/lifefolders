@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createLog, getHiddenDomains, getShowClock, getToken, listLogs, setToken, transcribe, undoLast } from './api'
 import { getBackendState, markBackendOffline, markBackendOnline, type BackendState } from './backendStatus'
 import type { Category, Log, PendingLog } from './types'
@@ -8,7 +8,7 @@ import { adoptFocusSession, restoreFocusSession } from './focusEngine'
 import { DailyPlan } from './DailyPlan'
 import { Fidgets } from './Fidgets'
 import { STAMP_WORDS, pickNot } from './remarks'
-import { collapseAndRemove, useFlipList } from './motion'
+import { collapseAndRemove, prefersReducedMotion, useFlipList } from './motion'
 import { Guide } from './Guide'
 import { rememberPanel } from './lastPanel'
 import { Soma } from './Soma'
@@ -133,6 +133,48 @@ export default function App() {
     if (anyPanelOpen) rememberPanel(route)
   }, [anyPanelOpen, route])
 
+  // The shell is centred, so a panel opening or closing changes where the
+  // whole of Home sits - about 220px of it - and the column jumped there and
+  // back. FLIP: the position is measured every render, and on the render that
+  // adds or removes the slot the column is put back where it was and glided
+  // to where it now belongs. Nothing about the layout changes, so this can't
+  // fight the panel's own entrance, and on a narrow screen the panel goes
+  // `position: fixed` and the column doesn't move at all - the delta is zero
+  // and no animation runs.
+  const shellRef = useRef<HTMLDivElement>(null)
+  const homeLeft = useRef<number | null>(null)
+  const wasSlotted = useRef(slotMounted)
+  useLayoutEffect(() => {
+    const home = shellRef.current?.firstElementChild as HTMLElement | null
+    if (!home) {
+      homeLeft.current = null
+      return
+    }
+    const left = home.getBoundingClientRect().left
+    const previous = homeLeft.current
+    const toggled = wasSlotted.current !== slotMounted
+    homeLeft.current = left
+    wasSlotted.current = slotMounted
+    if (!toggled || previous === null || prefersReducedMotion()) return
+    const delta = previous - left
+    if (Math.abs(delta) < 1) return
+    home.animate([{ transform: `translateX(${delta}px)` }, { transform: 'none' }], {
+      duration: 300,
+      easing: 'cubic-bezier(0.33, 1, 0.68, 1)',
+    })
+  })
+
+  // A resize moves the column without a panel having anything to do with it,
+  // and a stale reading would be replayed as a glide the next time one opens.
+  useEffect(() => {
+    const onResize = () => {
+      const home = shellRef.current?.firstElementChild as HTMLElement | null
+      homeLeft.current = home ? home.getBoundingClientRect().left : null
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
   useEffect(() => {
     const onUnauthorized = () => setAuthed(false)
     window.addEventListener('life-unauthorized', onUnauthorized)
@@ -185,7 +227,7 @@ export default function App() {
   else if (route.startsWith('#/focus')) content = <FocusTimer />
   else
     content = (
-      <div className="shell">
+      <div className="shell" ref={shellRef}>
         <Home />
         {slotMounted && (
           <div className="panel-slot">
