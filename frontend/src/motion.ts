@@ -188,3 +188,65 @@ export function unfold(el: HTMLElement | null) {
   anim.onfinish = clear
   anim.oncancel = clear
 }
+
+/**
+ * A sidequest that has just been moved off the day you are looking at. It has
+ * nowhere to go in this list, so rather than vanishing it leaves sideways at
+ * full opacity and the gap it was holding open closes behind it, which is what
+ * carries the rows below up.
+ *
+ * Two animations rather than one keyframe list, because they overlap: the
+ * collapse starts while the row is still travelling, and a single list of
+ * keyframes can't say that. The measured height is the same reasoning as
+ * everywhere else here - `auto` is not animatable.
+ */
+export function flingOut(el: HTMLElement | null, done: () => void) {
+  if (!el || prefersReducedMotion()) {
+    done()
+    return
+  }
+  const rect = el.getBoundingClientRect()
+  const style = getComputedStyle(el)
+  const { paddingTop, paddingBottom, marginTop, marginBottom, borderBottomWidth } = style
+  // Measured to the window edge rather than a fixed number: the panel sits in
+  // a centred shell on a wide screen and hard against the right edge on a
+  // narrow one, so anything fixed either falls short or overshoots.
+  const distance = window.innerWidth - rect.left + 24
+  // The section clips while the row is in the air. A transformed row still
+  // counts towards the page's scrollable area, so without this a horizontal
+  // scrollbar flashes in and out underneath the panel. `clip` rather than
+  // `hidden` so the section doesn't become a scroll container mid-animation.
+  const clip = el.parentElement
+  clip?.classList.add('fling-clip')
+  el.style.overflow = 'hidden'
+  // Quick, but not so front-loaded that the row is off the edge inside three
+  // frames - most of the travel that can be seen happens in the panel's own
+  // width, and an ease-out steep enough to feel like a launch skipped it.
+  el.animate([{ transform: 'none' }, { transform: `translateX(${distance}px)` }], {
+    duration: 340,
+    easing: 'cubic-bezier(0.34, 0.6, 0.45, 1)',
+    fill: 'forwards',
+  })
+  const collapse = el.animate(
+    [
+      { height: `${rect.height}px`, paddingTop, paddingBottom, marginTop, marginBottom, borderBottomWidth },
+      {
+        height: '0px',
+        paddingTop: '0px',
+        paddingBottom: '0px',
+        marginTop: '0px',
+        marginBottom: '0px',
+        // The row's own bottom rule is a pixel of height in its own right, and
+        // a pixel left standing until unmount is a pixel that snaps.
+        borderBottomWidth: '0px',
+      },
+    ],
+    { duration: 280, delay: 140, easing: 'cubic-bezier(0.33, 1, 0.68, 1)', fill: 'forwards' },
+  )
+  const finish = () => {
+    clip?.classList.remove('fling-clip')
+    done()
+  }
+  collapse.onfinish = finish
+  collapse.oncancel = finish
+}

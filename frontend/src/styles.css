@@ -2065,6 +2065,40 @@ header > .brand {
   transition: background-color 120ms ease;
 }
 
+/* The day's "nothing due" line lands where a row just left from, so it opens
+   into the space rather than appearing at full height in one frame. The ceiling
+   is a number because you cannot interpolate to `auto`, and the fill is
+   `backwards` so it isn't left standing afterwards. */
+.task-section .empty {
+  overflow: hidden;
+  animation: day-empty-in 300ms cubic-bezier(0.33, 1, 0.68, 1) backwards;
+}
+
+@keyframes day-empty-in {
+  from {
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    opacity: 0;
+  }
+  to {
+    max-height: 120px;
+    padding-top: 28px;
+    padding-bottom: 28px;
+    opacity: 1;
+  }
+}
+
+/* While a row is flying off the day, the section it left clips at its own
+   edge, so the row is eaten by the panel boundary rather than sailing out
+   across the page - and a transformed row still counts towards the page's
+   scrollable width, which flashed a horizontal scrollbar underneath the panel.
+   `clip` rather than `hidden`: this must not become a scroll container in the
+   middle of an animation. */
+.task-section.fling-clip {
+  overflow-x: clip;
+}
+
 .task-section.drag-over {
   background-color: var(--accent-soft, rgba(228, 64, 42, 0.08));
   outline: 1px dashed var(--accent);
@@ -3931,6 +3965,9 @@ header > .brand {
   .did-done .task-title::after,
   .field-flash,
   .focus-view,
+  /* Two classes deep, to match the rule it is turning off - `.empty` on its
+     own is less specific and would lose wherever it sat. */
+  .task-section .empty,
   .row-wrap.restored {
     animation: none;
   }

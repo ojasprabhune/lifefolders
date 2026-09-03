@@ -12,7 +12,7 @@ import {
 import { dayLabel, dueLabel } from './dates'
 import { Expand } from './Expand'
 import { DayPlanner } from './DayPlanner'
-import { strikeOut, unfold, useFlipList } from './motion'
+import { collapseAndRemove, flingOut, strikeOut, unfold, useFlipList } from './motion'
 import { lastTaskDay, rememberTaskDay } from './lastPanel'
 import { Panel, usePanelState } from './Panel'
 import type { FocusSession, TaskCheckpoint, TaskWithCheckpoints } from './types'
@@ -49,6 +49,10 @@ function diffTask(before: TaskWithCheckpoints, after: TaskWithCheckpoints): Task
   return null
 }
 
+// A row still on screen after the change that removed it, kept in its old
+// shape so its exit has something to animate.
+type Held = { task: TaskWithCheckpoints; mode: 'done' | 'away' }
+
 export function Tasks({ open }: { open: boolean }) {
   const [tasks, setTasks] = useState<TaskWithCheckpoints[]>([])
   // Which day the list is pinned to (a yyyy-mm-dd), or null for everything
@@ -58,23 +62,48 @@ export function Tasks({ open }: { open: boolean }) {
   const [selected, setSelected] = useState<string | null>(() =>
     lastTaskDay(dateToStr(new Date())),
   )
+  // apply() has to know which day is on screen to tell whether a change took a
+  // row off it, but it must not be rebuilt when that changes: the effect that
+  // owns the refresh listener hangs off it and would refetch the whole list
+  // every time you touched the strip.
+  const selectedDay = useRef(selected)
+  selectedDay.current = selected
   const { mounted, closing } = usePanelState(open)
   const previous = useRef<Map<string, TaskWithCheckpoints>>(new Map())
   const [changes, setChanges] = useState<Map<string, TaskChange>>(new Map())
-  // A task marked done leaves the open list immediately, which would yank the
-  // row out from under its own strike-through. Its pre-done copy is held here
-  // so it keeps rendering in place until the sweep has finished.
-  const [leaving, setLeaving] = useState<TaskWithCheckpoints[]>([])
+  // A row that is on its way out is held here in the shape it had before the
+  // change, because otherwise it leaves the list on the same frame and is
+  // yanked out from under its own animation. Two ways out: `done`, which
+  // strikes itself through in place, and `away` - moved to a day other than
+  // the one you are looking at, which has nowhere to go in this list and so
+  // leaves sideways instead.
+  const [leaving, setLeaving] = useState<Held[]>([])
   const { ref: listRef, capture: captureRows } = useFlipList<HTMLElement>()
 
   const apply = useCallback(
     (next: TaskWithCheckpoints[]) => {
       const before = previous.current
       const found = new Map<string, TaskChange>()
+      const held: Held[] = []
+      const day = selectedDay.current
+      const today = dateToStr(new Date())
       for (const t of next) {
         const was = before.get(t.id)
         const change = was && diffTask(was, t)
-        if (change) found.set(t.id, change)
+        if (!was || !change) continue
+        found.set(t.id, change)
+        if (change.kind === 'done') held.push({ task: { ...was, status: 'not_started' }, mode: 'done' })
+        // A reschedule that takes the row off the day on screen. Every other
+        // change leaves it somewhere you can still see it, and the backlog
+        // view has no day to fall off in the first place.
+        else if (
+          change.kind === 'reschedule' &&
+          day &&
+          onPlate(was, day, today) &&
+          !onPlate(t, day, today)
+        ) {
+          held.push({ task: was, mode: 'away' })
+        }
       }
       previous.current = new Map(next.map((t) => [t.id, t]))
       // Captured before the state change, while the old layout is still on
@@ -84,12 +113,13 @@ export function Tasks({ open }: { open: boolean }) {
         (c) => c.kind === 'reschedule' || c.kind === 'recategorize' || c.kind === 'undone',
       )
       if (moves) captureRows()
-      setLeaving(
-        [...found.entries()]
-          .filter(([, c]) => c.kind === 'done')
-          .map(([id]) => before.get(id))
-          .flatMap((t) => (t ? [{ ...t, status: 'not_started' as const }] : [])),
-      )
+      // Merged rather than replaced: a second refresh landing mid-flight - a
+      // typed entry, the planner - would otherwise drop a row out of the DOM
+      // halfway through its own exit.
+      setLeaving((current) => [
+        ...current.filter((h) => !held.some((n) => n.task.id === h.task.id)),
+        ...held,
+      ])
       setTasks(next)
       if (found.size > 0) setChanges(found)
     },
@@ -150,13 +180,32 @@ export function Tasks({ open }: { open: boolean }) {
   // ordered by their position in this array, so a held row pushed onto the end
   // visibly jumped down past its neighbours before it collapsed.
   const openTasks = useMemo(() => {
-    const held = new Map(leaving.map((t) => [t.id, t]))
-    return tasks.flatMap((t) => {
-      const standIn = held.get(t.id)
-      if (standIn) return [standIn]
-      return t.status !== 'done' ? [t] : []
-    })
+    const held = new Map(leaving.map((h) => [h.task.id, h.task]))
+    return tasks
+      .flatMap((t) => {
+        const standIn = held.get(t.id)
+        if (standIn) return [standIn]
+        return t.status !== 'done' ? [t] : []
+      })
+      // The order the server sends is by due date, then age, and both views
+      // below fall back on it. It has to be re-derived from the rows in hand
+      // rather than trusted, because a held row carries the date it had before
+      // the change: left in the server's order, a sidequest moved off today
+      // jumped to wherever its new date put it and flew off from there.
+      .sort((a, b) => {
+        if (a.due_date !== b.due_date) {
+          if (!a.due_date) return 1
+          if (!b.due_date) return -1
+          return a.due_date.localeCompare(b.due_date)
+        }
+        // The id is here to make the tie total. Two sidequests can share a due
+        // date and a creation time, and the server is free to hand those back
+        // in either order - which would be invisible, except that a held row
+        // has to land in the same place two renders running.
+        return a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id)
+      })
   }, [tasks, leaving])
+  const heldMode = useMemo(() => new Map(leaving.map((h) => [h.task.id, h.mode])), [leaving])
   const grouped = useMemo(() => groupByCategory(openTasks), [openTasks])
   const todayStr = dateToStr(new Date())
   useEffect(() => {
@@ -173,11 +222,12 @@ export function Tasks({ open }: { open: boolean }) {
     const late: TaskWithCheckpoints[] = []
     const on: TaskWithCheckpoints[] = []
     for (const t of openTasks) {
-      const dates = plateDates(t)
-      if (dates.includes(day)) on.push(t)
-      // Overdue hangs off today only. On a day you picked from the strip it
-      // would be a list of things that have nothing to do with that day.
-      else if (day === today && dates.some((d) => d < today)) late.push(t)
+      if (!onPlate(t, day, today)) continue
+      // Overdue hangs off today only, which onPlate is already the rule for.
+      // On a day you picked from the strip it would be a list of things that
+      // have nothing to do with that day.
+      if (plateDates(t).includes(day)) on.push(t)
+      else late.push(t)
     }
     return {
       overdue: late.sort((a, b) => oldestPlateDate(a).localeCompare(oldestPlateDate(b))),
@@ -215,6 +265,40 @@ export function Tasks({ open }: { open: boolean }) {
         .sort((a, b) => (b.completed_at ?? '').localeCompare(a.completed_at ?? '')),
     [tasks],
   )
+
+  // The overdue heading is a section of its own, so moving your last late
+  // sidequest forward took the row *and* seventy pixels of heading with it on
+  // the frame the row finished leaving. Held through its own collapse, same
+  // shape as the planner's overflow warning.
+  const overdueRef = useRef<HTMLElement>(null)
+  const [overdueShown, setOverdueShown] = useState(false)
+  // The heading keeps the count it had. It is on screen for the length of the
+  // collapse, and "overdue (0)" is not a thing anyone has ever been.
+  const lastOverdue = useRef(0)
+  if (overdue.length > 0) lastOverdue.current = overdue.length
+  useEffect(() => {
+    if (overdue.length > 0) {
+      const el = overdueRef.current
+      // A section caught mid-collapse is still carrying that animation, filled
+      // forwards at zero height, and has to be let go of before it can show
+      // anything again.
+      if (el) {
+        el.getAnimations().forEach((a) => a.cancel())
+        el.style.overflow = ''
+      }
+      setOverdueShown(true)
+      return
+    }
+    setOverdueShown((shown) => {
+      if (shown) {
+        collapseAndRemove(overdueRef.current, () => setOverdueShown(false), {
+          ms: 240,
+          easing: 'cubic-bezier(0.33, 1, 0.68, 1)',
+        })
+      }
+      return shown
+    })
+  }, [overdue.length])
 
   if (!mounted) return null
 
@@ -260,9 +344,9 @@ export function Tasks({ open }: { open: boolean }) {
         <div className={`task-list-view slide-${view.dir}`} key={view.key}>
         {selected ? (
           <>
-            {overdue.length > 0 && (
-              <section className="music-section task-section">
-                <h2 className="section-title overdue-title">overdue ({overdue.length})</h2>
+            {(overdue.length > 0 || overdueShown) && (
+              <section className="music-section task-section" ref={overdueRef}>
+                <h2 className="section-title overdue-title">overdue ({lastOverdue.current})</h2>
                 {overdue.map((t) => (
                   <TaskRow
                     key={t.id}
@@ -272,7 +356,8 @@ export function Tasks({ open }: { open: boolean }) {
                     onDelete={() => void remove(t.id)}
                     onRefresh={refresh}
                     change={changes.get(t.id) ?? null}
-                    onLeft={() => setLeaving((l) => l.filter((x) => x.id !== t.id))}
+                    leaving={heldMode.get(t.id) ?? null}
+                    onLeft={() => setLeaving((l) => l.filter((h) => h.task.id !== t.id))}
                   />
                 ))}
               </section>
@@ -288,7 +373,8 @@ export function Tasks({ open }: { open: boolean }) {
                   onDelete={() => void remove(t.id)}
                   onRefresh={refresh}
                   change={changes.get(t.id) ?? null}
-                  onLeft={() => setLeaving((l) => l.filter((x) => x.id !== t.id))}
+                  leaving={heldMode.get(t.id) ?? null}
+                  onLeft={() => setLeaving((l) => l.filter((h) => h.task.id !== t.id))}
                 />
               ))}
               {dueOnDay.length === 0 && (
@@ -323,7 +409,8 @@ export function Tasks({ open }: { open: boolean }) {
                   onDelete={() => void remove(t.id)}
                   onRefresh={refresh}
                   change={changes.get(t.id) ?? null}
-                  onLeft={() => setLeaving((l) => l.filter((x) => x.id !== t.id))}
+                  leaving={heldMode.get(t.id) ?? null}
+                  onLeft={() => setLeaving((l) => l.filter((h) => h.task.id !== t.id))}
                 />
               ))}
             </section>
@@ -361,6 +448,15 @@ function plateDates(t: TaskWithCheckpoints): string[] {
   const dates = t.checkpoints.filter((cp) => cp.status === 'todo').map((cp) => cp.due_date)
   if (t.due_date) dates.push(t.due_date)
   return dates
+}
+
+// Whether a sidequest shows up on the day you're looking at: one of its dates
+// falls on that day, or - on today only - has already gone by, which is the
+// overdue section. The day's two sections are built from this, and so is the
+// question of whether a change has just taken a row off the screen.
+function onPlate(t: TaskWithCheckpoints, day: string, today: string): boolean {
+  const dates = plateDates(t)
+  return dates.includes(day) || (day === today && dates.some((d) => d < today))
 }
 
 function oldestPlateDate(t: TaskWithCheckpoints): string {
@@ -666,6 +762,7 @@ function TaskRow({
   onDelete,
   onRefresh,
   change,
+  leaving,
   onLeft,
 }: {
   task: TaskWithCheckpoints
@@ -674,8 +771,13 @@ function TaskRow({
   onDelete: () => void
   onRefresh: () => void
   change: TaskChange | null
+  leaving: 'done' | 'away' | null
   onLeft: () => void
 }) {
+  // A row on its way off the day is the copy from before the change, so its
+  // reschedule marker would roll the old date up against itself. It is leaving
+  // - where it landed is a matter for the day it landed on.
+  const marker = leaving === 'away' ? null : change
   const isOverdue = task.due_date && task.due_date < dateToStr(new Date())
   const isSoon = !isOverdue && task.due_date && daysUntil(task.due_date) <= 2
   // Every line, not just the most recent one. A note builds up as you check in
@@ -691,6 +793,14 @@ function TaskRow({
   const [noteDraft, setNoteDraft] = useState(task.note ?? '')
   const [titleDraft, setTitleDraft] = useState(task.title)
   const wrapRef = useRef<HTMLDivElement>(null)
+
+  // Keyed to the hold rather than to the change, so it runs on the one render
+  // where the hold begins - the change marker is cleared on a timer of its own
+  // and would otherwise send the row off a second time.
+  useEffect(() => {
+    if (leaving === 'away') flingOut(wrapRef.current, onLeft)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leaving])
 
   // Both of these need a measured height - `auto` is not animatable - so they
   // run from here rather than as CSS on the row.
@@ -750,7 +860,7 @@ function TaskRow({
 
   return (
     <div
-      className={`task-row-wrap ${expanded ? 'open' : ''} ${change ? `did-${change.kind}` : ''}`}
+      className={`task-row-wrap ${expanded ? 'open' : ''} ${marker ? `did-${marker.kind}` : ''}`}
       ref={wrapRef}
       data-flip-id={task.id}
     >
@@ -801,9 +911,9 @@ function TaskRow({
                 {dueLabel(task.due_date)}
                 {task.due_time && ` · ${formatDueTime(task.due_time)}`}
               </span>
-              {change?.kind === 'reschedule' && change.from && (
+              {marker?.kind === 'reschedule' && marker.from && (
                 <span className="task-due-was" aria-hidden="true">
-                  {dueLabel(change.from)}
+                  {dueLabel(marker.from)}
                 </span>
               )}
             </div>
