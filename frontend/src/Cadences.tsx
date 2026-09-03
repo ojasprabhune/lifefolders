@@ -7,6 +7,7 @@ import {
   listCadences,
   patchCadence,
 } from './api'
+import { Expand } from './Expand'
 import { Panel, usePanelState } from './Panel'
 import type { Cadence, CadenceCompletions, CadenceSchedule, IntervalUnit } from './types'
 import { Quip } from './Quip'
@@ -202,7 +203,11 @@ export function Cadences({ open }: { open: boolean }) {
         </div>
       </header>
 
-      {managing && <Manage cadences={cadences} onChange={loadCadences} />}
+      {/* A whole editing panel appearing and disappearing on the spot; it
+          opens and closes instead. */}
+      <Expand open={managing}>
+        <Manage cadences={cadences} onChange={loadCadences} />
+      </Expand>
 
       {cadences.length === 0 && !managing && (
         <div className="empty">
@@ -452,12 +457,9 @@ function Manage({ cadences, onChange }: { cadences: Cadence[]; onChange: () => v
               ✕
             </button>
           </div>
-          {editingId === h.id && (
-            <ScheduleEditor
-              value={h}
-              onChange={(next) => void reschedule(h.id, next)}
-            />
-          )}
+          <Expand open={editingId === h.id}>
+            <ScheduleEditor value={h} onChange={(next) => void reschedule(h.id, next)} />
+          </Expand>
         </div>
       ))}
       <div className="cadence-manage-add">

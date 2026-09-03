@@ -506,7 +506,9 @@ header {
    own entrance underneath the slide, which reads as the list wobbling rather
    than moving. */
 .list.slide-back .row,
-.list.slide-forward .row {
+.list.slide-forward .row,
+.list.slide-back .empty,
+.list.slide-forward .empty {
   animation: none;
 }
 
@@ -1465,6 +1467,28 @@ header > .brand {
   animation: overlay-in 160ms ease both;
 }
 
+.modal-overlay.closing {
+  animation: modal-overlay-out 180ms ease both;
+}
+
+/* The card goes with it rather than holding still inside a fading sheet. */
+.modal-overlay.closing .modal-card {
+  animation: modal-card-out 180ms ease both;
+}
+
+@keyframes modal-overlay-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes modal-card-out {
+  to {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
 @keyframes overlay-in {
   from {
     opacity: 0;
@@ -1637,11 +1661,35 @@ header > .brand {
   border-radius: 10px;
   font-size: 14px;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.25);
-  /* It lives in the bottom corner, so it comes up out of it - row-in dropped
-     it in from above, which reads as something falling onto the page. */
-  animation: focus-pill-in 260ms cubic-bezier(0.33, 1, 0.68, 1) both;
+  /* It comes up off the bottom edge rather than dropping in from above. Its
+     own keyframes, not the pill's: this one is centred with a translateX, and
+     a transform keyframe that forgets that yanks it half its width to the left
+     for the length of the animation. */
+  animation: sleep-nag-in 260ms cubic-bezier(0.33, 1, 0.68, 1) both;
   transition: background-color 260ms ease;
   max-width: calc(100% - 32px);
+}
+
+@keyframes sleep-nag-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%);
+  }
+}
+
+.sleep-nag.closing {
+  animation: sleep-nag-out 200ms ease both;
+}
+
+@keyframes sleep-nag-out {
+  to {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px) scale(0.97);
+  }
 }
 
 .sleep-nag button {
@@ -1674,9 +1722,23 @@ header > .brand {
   border-radius: 10px;
   font-size: 14px;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.25);
-  animation: row-in 150ms ease both;
+  /* It lives in the bottom corner, so it comes up out of it - row-in dropped
+     it in from above, which reads as something falling onto the page. */
+  animation: focus-pill-in 260ms cubic-bezier(0.33, 1, 0.68, 1) both;
+  transition: background-color 260ms ease;
   max-width: calc(100% - 32px);
   cursor: pointer;
+}
+
+.focus-pill.closing {
+  animation: focus-pill-out 200ms ease both;
+}
+
+@keyframes focus-pill-out {
+  to {
+    opacity: 0;
+    transform: translateY(10px) scale(0.96);
+  }
 }
 
 @keyframes focus-pill-in {
@@ -2101,11 +2163,12 @@ header > .brand {
   transition: background-color 120ms ease;
 }
 
-/* The day's "nothing due" line lands where a row just left from, so it opens
-   into the space rather than appearing at full height in one frame. The ceiling
-   is a number because you cannot interpolate to `auto`, and the fill is
-   `backwards` so it isn't left standing afterwards. */
-.task-section .empty {
+/* An empty state lands where the last row left from - delete the only thing
+   logged today, or move the last sidequest off the day - so it opens into the
+   space rather than appearing at full height in one frame. The ceiling is a
+   number because you cannot interpolate to `auto`, and the fill is `backwards`
+   so it isn't left standing afterwards. */
+.list .empty {
   overflow: hidden;
   animation: day-empty-in 300ms cubic-bezier(0.33, 1, 0.68, 1) backwards;
 }
@@ -2895,6 +2958,10 @@ header > .brand {
 }
 
 .daily-text {
+  /* The box is sized in JS from its own scrollHeight, so it stepped between
+     sizes - on every newline, and hardest when the chevrons swap the day for
+     a different amount of text. */
+  transition: height 160ms cubic-bezier(0.33, 1, 0.68, 1);
   font-family: inherit;
   font-weight: 500;
   font-size: 15px;
@@ -3993,10 +4060,13 @@ header > .brand {
   .focus-view,
   .backend-notice,
   .backend-notice-dot,
-  /* Two classes deep, to match the rule it is turning off - `.empty` on its
-     own is less specific and would lose wherever it sat. */
-  .task-section .empty,
-  .row-wrap.restored {
+  .list .empty,
+  .row-wrap.restored,
+  .sleep-nag,
+  .sleep-nag.closing,
+  .focus-pill.closing,
+  .modal-overlay.closing,
+  .modal-overlay.closing .modal-card {
     animation: none;
   }
 
@@ -4029,7 +4099,8 @@ header > .brand {
   .due-label,
   .due-date,
   .due-count,
-  .focus-pill {
+  .focus-pill,
+  .daily-text {
     transition: none;
   }
 

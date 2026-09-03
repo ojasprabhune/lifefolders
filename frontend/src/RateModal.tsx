@@ -23,6 +23,15 @@ export function RateModal({ domain, category, itemId, label, onClose }: RateModa
   const [rating, setRating] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  // The parent unmounts this the moment onClose comes back, so the exit has
+  // to be played here, before handing over.
+  const [closing, setClosing] = useState(false)
+
+  const dismiss = (rated: boolean) => {
+    if (closing) return
+    setClosing(true)
+    setTimeout(() => onClose(rated), 180)
+  }
 
   const step = async (t: Tier, comps: RankComparison[]) => {
     setBusy(true)
@@ -31,7 +40,7 @@ export function RateModal({ domain, category, itemId, label, onClose }: RateModa
       const res = await rankItem(domain, category, itemId, t, comps)
       if (res.done) {
         setRating(res.rating)
-        setTimeout(() => onClose(true), 1100)
+        setTimeout(() => dismiss(true), 1100)
       } else {
         setOpponent(res.next_opponent)
       }
@@ -58,7 +67,10 @@ export function RateModal({ domain, category, itemId, label, onClose }: RateModa
   }
 
   return (
-    <div className="modal-overlay" onClick={() => rating === null && onClose(false)}>
+    <div
+      className={`modal-overlay ${closing ? 'closing' : ''}`}
+      onClick={() => rating === null && dismiss(false)}
+    >
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         {rating !== null ? (
           <div className="modal-card result" key="result">

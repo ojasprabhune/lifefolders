@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { addWishlistItem, archiveWishlistItem, listWishlist, patchWishlistItem } from './api'
+import { Expand } from './Expand'
 import { Panel, usePanelState } from './Panel'
 import type { WishlistItem, WishlistKind } from './types'
 import { Quip } from './Quip'
@@ -38,6 +39,7 @@ export function Wishlist({ open }: { open: boolean }) {
   const [items, setItems] = useState<WishlistItem[]>([])
   const [title, setTitle] = useState('')
   const [kind, setKind] = useState<WishlistKind>('album')
+  const [showResolved, setShowResolved] = useState(false)
   const { mounted, closing } = usePanelState(open)
 
   const refresh = useCallback(() => {
@@ -148,17 +150,25 @@ export function Wishlist({ open }: { open: boolean }) {
         {openItems.length === 0 && <div className="empty">nothing on the list yet</div>}
 
         {resolved.length > 0 && (
-          <details className="resolved-section">
-            <summary className="section-title">done ({resolved.length})</summary>
-            <div className="resolved-list">
-              {resolved.map((item) => (
-                <div key={item.id} className="row music-row">
-                  <span className="row-main">{item.title}</span>
-                  <span className="row-right">waited {waitLabel(item)}</span>
-                </div>
-              ))}
-            </div>
-          </details>
+          <div className="resolved-section">
+            {/* A <details> opens and closes instantly, and this is a list. */}
+            <button
+              className="section-title resolved-summary"
+              onClick={() => setShowResolved((v) => !v)}
+            >
+              done ({resolved.length})
+            </button>
+            <Expand open={showResolved}>
+              <div className="resolved-list">
+                {resolved.map((item) => (
+                  <div key={item.id} className="row music-row">
+                    <span className="row-main">{item.title}</span>
+                    <span className="row-right">waited {waitLabel(item)}</span>
+                  </div>
+                ))}
+              </div>
+            </Expand>
+          </div>
         )}
       </main>
     </Panel>

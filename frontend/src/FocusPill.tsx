@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getFocusSession, remainingSeconds, type ActiveFocusSession } from './focusEngine'
+import { usePanelState } from './Panel'
 
 function mmss(totalSeconds: number): string {
   const s = Math.max(0, Math.round(totalSeconds))
@@ -27,15 +28,26 @@ export function FocusPill({ route }: { route: string }) {
     return () => window.removeEventListener('life-focus-changed', onChange)
   }, [])
 
-  if (!active || route.startsWith('#/focus')) return null
+  // A session ending, or walking into #/focus, used to take the pill off the
+  // screen on the spot. It is kept for one exit animation - and with it the
+  // last thing it was showing, since there's no session left to read.
+  const live = active !== null && !route.startsWith('#/focus')
+  const { mounted, closing } = usePanelState(live, 200)
+  const last = useRef(active)
+  if (active) last.current = active
+  const session = last.current
+  if (!mounted || !session) return null
 
-  const paused = active.pausedAtMs !== null
+  const paused = session.pausedAtMs !== null
 
   return (
-    <button className={`focus-pill ${paused ? 'paused' : ''}`} onClick={() => (window.location.hash = '#/focus')}>
+    <button
+      className={`focus-pill ${paused ? 'paused' : ''} ${closing ? 'closing' : ''}`}
+      onClick={() => (window.location.hash = '#/focus')}
+    >
       <span className="focus-pill-icon">{paused ? '⏸' : '⏵'}</span>
       <span className="focus-pill-time">{mmss(remaining)}</span>
-      <span className="focus-pill-title">{active.title}</span>
+      <span className="focus-pill-title">{session.title}</span>
     </button>
   )
 }

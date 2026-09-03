@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { listSleep } from './api'
+import { usePanelState } from './Panel'
 import type { SleepData } from './types'
 
 // Nag window: midnight through this hour. Capped at dawn so a night you
@@ -51,10 +52,13 @@ export function SleepReminder() {
     return () => window.clearTimeout(timer.current)
   }, [tick])
 
-  if (!visible) return null
+  // Dismissing it, or logging the night it is asking about, used to make it
+  // vanish mid-sentence.
+  const { mounted, closing } = usePanelState(visible, 200)
+  if (!mounted) return null
 
   return (
-    <div className="sleep-nag">
+    <div className={`sleep-nag ${closing ? 'closing' : ''}`}>
       <span>🌙 past midnight — log tonight's solace?</span>
       <button onClick={() => setVisible(false)} aria-label="dismiss">
         ✕

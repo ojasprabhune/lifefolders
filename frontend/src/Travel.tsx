@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { rankList } from './api'
+import { Expand } from './Expand'
 import { Panel, usePanelState } from './Panel'
 import { RateModal, rateProps } from './RateModal'
 import type { AlbumGroups, Log, Tier, TripData } from './types'
@@ -69,9 +70,7 @@ export function Travel({ open }: { open: boolean }) {
                   )}
                 </span>
               </div>
-              <div className="expand">
-                <div className="expand-inner">
-                  {open && (
+              <Expand open={open}>
                     <div className="editor">
                       {data.itinerary.length > 0 ? (
                         <div className="itinerary">
@@ -95,9 +94,7 @@ export function Travel({ open }: { open: boolean }) {
                         </div>
                       )}
                     </div>
-                  )}
-                </div>
-              </div>
+              </Expand>
             </div>
           )
         })}
