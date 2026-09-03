@@ -212,12 +212,6 @@ export function flingOut(el: HTMLElement | null, done: () => void) {
   // a centred shell on a wide screen and hard against the right edge on a
   // narrow one, so anything fixed either falls short or overshoots.
   const distance = window.innerWidth - rect.left + 24
-  // The section clips while the row is in the air. A transformed row still
-  // counts towards the page's scrollable area, so without this a horizontal
-  // scrollbar flashes in and out underneath the panel. `clip` rather than
-  // `hidden` so the section doesn't become a scroll container mid-animation.
-  const clip = el.parentElement
-  clip?.classList.add('fling-clip')
   el.style.overflow = 'hidden'
   // Quick, but not so front-loaded that the row is off the edge inside three
   // frames - most of the travel that can be seen happens in the panel's own
@@ -243,10 +237,6 @@ export function flingOut(el: HTMLElement | null, done: () => void) {
     ],
     { duration: 280, delay: 140, easing: 'cubic-bezier(0.33, 1, 0.68, 1)', fill: 'forwards' },
   )
-  const finish = () => {
-    clip?.classList.remove('fling-clip')
-    done()
-  }
-  collapse.onfinish = finish
-  collapse.oncancel = finish
+  collapse.onfinish = done
+  collapse.oncancel = done
 }

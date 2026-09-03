@@ -230,6 +230,11 @@ function Brand() {
 
 function BackendNotice() {
   const [state, setState] = useState<BackendState>(() => getBackendState())
+  // Held through its own collapse: the server coming back takes the notice
+  // away in the same frame, and the whole page above the entry box jumped up
+  // to fill the gap.
+  const [shown, setShown] = useState(state.status === 'waking')
+  const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const onChange = (e: Event) => setState((e as CustomEvent<BackendState>).detail)
@@ -237,10 +242,34 @@ function BackendNotice() {
     return () => window.removeEventListener('life-backend-status-changed', onChange)
   }, [])
 
-  if (state.status === 'online') return null
+  useEffect(() => {
+    if (state.status === 'waking') {
+      // A notice caught mid-collapse is still carrying that animation, filled
+      // forwards at zero height, and has to be let go of before it can show
+      // the countdown again.
+      const el = ref.current
+      if (el) {
+        el.getAnimations().forEach((a) => a.cancel())
+        el.style.overflow = ''
+      }
+      setShown(true)
+      return
+    }
+    setShown((visible) => {
+      if (visible) {
+        collapseAndRemove(ref.current, () => setShown(false), {
+          ms: 260,
+          easing: 'cubic-bezier(0.33, 1, 0.68, 1)',
+        })
+      }
+      return visible
+    })
+  }, [state.status])
+
+  if (!shown) return null
 
   return (
-    <div className="backend-notice">
+    <div className="backend-notice" ref={ref}>
       <span className="backend-notice-dot" />
       waking up the server… {state.secondsLeft}s
     </div>

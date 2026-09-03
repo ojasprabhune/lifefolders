@@ -79,6 +79,13 @@ button {
 }
 
 .shell {
+  /* A sidequest leaving the day flies out of the panel and across the page,
+     and a transformed row still counts towards the page's scrollable width -
+     without this it flashes a horizontal scrollbar for the length of the
+     flight. Clipped at the shell, which is the full width of the window, so
+     the row stays visible the whole way out. `clip` rather than `hidden`: this
+     must not become a scroll container. */
+  overflow-x: clip;
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -185,6 +192,11 @@ button {
     inset: 0 0 0 auto;
     width: min(420px, 100vw);
     overflow-y: auto;
+    /* Fixed, so the shell's clip doesn't reach it - and its own scrolling
+       would otherwise pick up a horizontal bar while a row flies out. It sits
+       against the right edge here anyway, so this clips where the window
+       does. */
+    overflow-x: clip;
     /* Above the backdrop (10) either way; entering above closing (12/11),
        same relative order as the desktop 2/1, just shifted above 10. */
     z-index: 12;
@@ -617,7 +629,31 @@ header {
   margin-bottom: 10px;
   font-size: 13px;
   color: var(--muted);
-  animation: row-in 150ms ease both;
+  /* Opens into the page rather than appearing at full height and shoving
+     everything down - it arrives while you are looking at the entry box. The
+     ceiling is a number because you cannot interpolate to `auto`, and the fill
+     is `backwards` so it isn't left standing afterwards. The exit is
+     collapseAndRemove, from App.tsx. */
+  overflow: hidden;
+  animation: backend-notice-in 280ms cubic-bezier(0.4, 0, 0.2, 1) backwards;
+}
+
+@keyframes backend-notice-in {
+  from {
+    max-height: 0;
+    margin-bottom: 0;
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    /* Barely above the one line this actually is. A generous ceiling races
+       past the real height in the first few frames and the opening isn't
+       there to see. */
+    max-height: 24px;
+    margin-bottom: 10px;
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .backend-notice-dot {
@@ -2087,16 +2123,6 @@ header > .brand {
     padding-bottom: 28px;
     opacity: 1;
   }
-}
-
-/* While a row is flying off the day, the section it left clips at its own
-   edge, so the row is eaten by the panel boundary rather than sailing out
-   across the page - and a transformed row still counts towards the page's
-   scrollable width, which flashed a horizontal scrollbar underneath the panel.
-   `clip` rather than `hidden`: this must not become a scroll container in the
-   middle of an animation. */
-.task-section.fling-clip {
-  overflow-x: clip;
 }
 
 .task-section.drag-over {
@@ -3965,6 +3991,8 @@ header > .brand {
   .did-done .task-title::after,
   .field-flash,
   .focus-view,
+  .backend-notice,
+  .backend-notice-dot,
   /* Two classes deep, to match the rule it is turning off - `.empty` on its
      own is less specific and would lose wherever it sat. */
   .task-section .empty,
