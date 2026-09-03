@@ -127,7 +127,7 @@ export default function App() {
   // just left rather than the panel beside it.
   const isWall = route.startsWith('#/cadences/all') || route.startsWith('#/sleep/all')
   const anyPanelOpen = !isWall && PANEL_ROUTE_PREFIXES.some((p) => route.startsWith(p))
-  const { mounted: slotMounted } = usePanelState(anyPanelOpen)
+  const { mounted: slotMounted, closing: slotClosing } = usePanelState(anyPanelOpen)
 
   useEffect(() => {
     if (anyPanelOpen) rememberPanel(route)
@@ -143,33 +143,82 @@ export default function App() {
   // and no animation runs.
   const shellRef = useRef<HTMLDivElement>(null)
   const homeLeft = useRef<number | null>(null)
+  // Where the column sits with no panel beside it. The close needs to know
+  // that before the slot is gone.
+  const bareLeft = useRef<number | null>(null)
   const wasSlotted = useRef(slotMounted)
+  const gliding = useRef(false)
+  const homeEl = () => shellRef.current?.firstElementChild as HTMLElement | null
+
   useLayoutEffect(() => {
-    const home = shellRef.current?.firstElementChild as HTMLElement | null
+    const home = homeEl()
     if (!home) {
       homeLeft.current = null
       return
     }
-    const left = home.getBoundingClientRect().left
+    // offsetLeft, not a bounding rect: the rect includes whatever transform is
+    // on the element, so a reading taken during a glide - or while one is
+    // filling forwards - is the animation's own doing and poisons the next
+    // delta. This is the layout position and nothing else.
+    const left = home.offsetLeft
     const previous = homeLeft.current
     const toggled = wasSlotted.current !== slotMounted
     homeLeft.current = left
     wasSlotted.current = slotMounted
-    if (!toggled || previous === null || prefersReducedMotion()) return
+    if (!slotMounted) bareLeft.current = left
+    if (!toggled || prefersReducedMotion()) return
+    // The close already glided the column while the panel was fading; the
+    // layout has now caught up with where it is standing, so the transform
+    // holding it there is simply dropped.
+    if (gliding.current) {
+      gliding.current = false
+      home.getAnimations().forEach((a) => a.cancel())
+      return
+    }
+    if (previous === null) return
     const delta = previous - left
     if (Math.abs(delta) < 1) return
     home.animate([{ transform: `translateX(${delta}px)` }, { transform: 'none' }], {
-      duration: 300,
-      easing: 'cubic-bezier(0.33, 1, 0.68, 1)',
+      duration: 230,
+      easing: 'cubic-bezier(0.22, 0.61, 0.36, 1)',
     })
   })
+
+  // Closing is the half that felt slow: the slot stays mounted until the panel
+  // has finished fading, so waiting for the layout to change meant the column
+  // sat still for the length of that fade and only then started moving. It is
+  // sent on its way in the same frame the close begins, and the unmount lands
+  // underneath it.
+  useLayoutEffect(() => {
+    const home = homeEl()
+    if (!home) return
+    if (!slotClosing) {
+      // Re-opened mid-close: the layout never changed, so the transform has to
+      // come off or the column is left standing where it was headed.
+      if (gliding.current && slotMounted) {
+        gliding.current = false
+        home.getAnimations().forEach((a) => a.cancel())
+      }
+      return
+    }
+    if (gliding.current || bareLeft.current === null || prefersReducedMotion()) return
+    const delta = bareLeft.current - home.offsetLeft
+    if (Math.abs(delta) < 1) return
+    gliding.current = true
+    home.animate([{ transform: 'none' }, { transform: `translateX(${delta}px)` }], {
+      duration: 220,
+      easing: 'cubic-bezier(0.22, 0.61, 0.36, 1)',
+      fill: 'forwards',
+    })
+  }, [slotClosing, slotMounted])
 
   // A resize moves the column without a panel having anything to do with it,
   // and a stale reading would be replayed as a glide the next time one opens.
   useEffect(() => {
     const onResize = () => {
-      const home = shellRef.current?.firstElementChild as HTMLElement | null
-      homeLeft.current = home ? home.getBoundingClientRect().left : null
+      const home = homeEl()
+      homeLeft.current = home ? home.offsetLeft : null
+      if (home && !wasSlotted.current) bareLeft.current = homeLeft.current
     }
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
