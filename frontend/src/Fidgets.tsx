@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { FallenBook, pageFor, type Fallen, type Phase } from './Book'
-import { Clock } from './Clock'
+import { Clock, FallenClock, type ClockSpot } from './Clock'
 
 // A bead of ink with weight. Fling it and it keeps going, bounces off the
 // window and slows down; hit an edge hard enough and it leaves a splat that
@@ -68,7 +68,7 @@ function InkDrop({
 }: {
   route: string
   boxRef: React.RefObject<HTMLDivElement | null>
-  spill: React.RefObject<(speed: number) => void>
+  spill: React.RefObject<(speed: number, what: 'book' | 'clock') => void>
   settle: React.RefObject<() => void>
 }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -123,7 +123,7 @@ function InkDrop({
   const syncSolids = useCallback(() => {
     solidsAt.current = performance.now()
     const found = document.querySelectorAll(
-      '.shelf-plank, .shelf .book:not(.gone), .shelf .plant, .shelf .pst-clock, .book-fallen',
+      '.shelf-plank, .shelf .book:not(.gone), .shelf .plant, .shelf .pst-clock:not(.gone), .book-fallen, .clock-fallen',
     )
     solids.current = Array.from(found)
       .map((el) => ({ el, r: el.getBoundingClientRect() }))
@@ -144,6 +144,9 @@ function InkDrop({
   // a second animation would throw that away.
   const knock = (el: Element) => {
     if (el.classList.contains('shelf-plank') || el.classList.contains('book-fallen')) return
+    // The clock on the floor is where its own inline transform put it, and a
+    // shudder keyframe would override that and stand it back on the shelf.
+    if (el.classList.contains('clock-fallen')) return
     if (el.classList.contains('struck')) return
     el.classList.add('struck')
     window.setTimeout(() => el.classList.remove('struck'), 480)
@@ -389,7 +392,8 @@ function InkDrop({
             s.vx *= SOLID_RUB
           }
           if (speed > KNOCK_SPEED) knock(o.el)
-          if (o.el.classList.contains('book')) spill.current(speed)
+          if (o.el.classList.contains('book')) spill.current(speed, 'book')
+          else if (o.el.classList.contains('pst-clock')) spill.current(speed, 'clock')
           worst = Math.max(worst, speed)
         }
         return worst
@@ -616,10 +620,10 @@ const CLOSE_MS = 280
 const RETURN_MS = 520
 // How far a book tips into the gap left by the one that fell.
 const TIP = 11
-// Hit a book harder than this and the whole shelf goes over. Measured against
-// what a release actually delivers: an ordinary fling lands around 1500 and a
-// quick one around 2300, so this is a flick you meant.
-const SPILL_SPEED = 3200
+// Hit the books or the clock harder than this and they go over. Measured
+// against what a release actually delivers: an ordinary fling lands around
+// 1500, so this is still a flick you meant rather than a nudge.
+const SPILL_SPEED = 2500
 // How far apart books lie on the floor. Standing they are five pixels wide and
 // eight apart; lying down they are the length of a book, and six of them
 // dropped where they stood would be one pile.
@@ -646,10 +650,11 @@ function Shelf({
   route: string
   showClock: boolean
   boxRef: React.RefObject<HTMLDivElement | null>
-  spill: React.RefObject<(speed: number) => void>
+  spill: React.RefObject<(speed: number, what: 'book' | 'clock') => void>
   settle: React.RefObject<() => void>
 }) {
   const [down, setDown] = useState<Down[]>([])
+  const [clock, setClock] = useState<ClockSpot | null>(null)
   const bookRefs = useRef<(HTMLSpanElement | null)[]>([])
   const reads = useRef(Number(localStorage.getItem(READS_KEY) ?? 0))
   const lastDrop = useRef(Date.now())
@@ -714,10 +719,30 @@ function Shelf({
     fall([Math.floor(Math.random() * BOOKS.length)])
   }
 
-  // The ball, hitting a book hard enough. Reassigned every render for the same
-  // reason the poll is: it has to see the books that are still standing.
-  spill.current = (speed: number) => {
+  // The ball, hitting something hard enough. Reassigned every render for the
+  // same reason the poll is: it has to see what is still standing.
+  spill.current = (speed: number, what: 'book' | 'clock') => {
     if (speed < SPILL_SPEED) return
+    if (what === 'clock') {
+      if (clock) return
+      const el = document.querySelector('.shelf .pst-clock')
+      const r = el?.getBoundingClientRect()
+      if (!r || !r.width) return
+      // Off the end of the plank rather than straight down, and clear of the
+      // books, which lie along the floor under where they stood.
+      const shelf = el!.closest('.shelf')!.getBoundingClientRect()
+      setClock({
+        left: r.left,
+        top: r.top,
+        w: r.width,
+        h: r.height,
+        dx: shelf.right + 24 - r.left,
+        dy: window.innerHeight - FLOOR - (r.top + r.height),
+        rot: 5 + Math.random() * 6,
+      })
+      timers.current.push(window.setTimeout(() => settle.current(), 900))
+      return
+    }
     const standing = BOOKS.map((_, i) => i).filter((i) => !gone.has(i))
     if (standing.length < 2) return
     fall(standing)
@@ -791,13 +816,14 @@ function Shelf({
             <i className="pot" />
           </span>
           <div className="ball-box" ref={boxRef} />
-          {showClock && <Clock />}
+          {showClock && <Clock gone={!!clock} />}
         </div>
         <div className="shelf-plank" />
       </div>
       {down.map((b) => (
         <FallenBook key={b.i} fallen={b} phase={b.phase} onOpen={() => !busy && open(b.i)} />
       ))}
+      {showClock && clock && <FallenClock spot={clock} onHome={() => setClock(null)} />}
     </>
   )
 }
@@ -824,7 +850,7 @@ export function Fidgets({ route, showClock }: { route: string; showClock: boolea
   const boxRef = useRef<HTMLDivElement>(null)
   // The ball telling the shelf it hit a book hard. A ref rather than state:
   // these are siblings, and nothing about the hit belongs in a render.
-  const spill = useRef<(speed: number) => void>(() => {})
+  const spill = useRef<(speed: number, what: 'book' | 'clock') => void>(() => {})
   // And the shelf telling the ball the floor has changed under it.
   const settle = useRef<() => void>(() => {})
   const narrow = useNarrow()

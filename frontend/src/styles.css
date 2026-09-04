@@ -1784,6 +1784,30 @@ header > .brand {
   user-select: none;
 }
 
+/* Knocked off. Its slot stays exactly where it was and only goes invisible:
+   the clock is the flex item that absorbs whatever the shelf has left over,
+   so a slot that closed up would drag the box and the plant along with it. */
+.pst-clock.gone {
+  visibility: hidden;
+}
+
+/* The same case, on the floor and in your hand. Everything about where it is
+   comes from an inline transform, so nothing here may set one. */
+.clock-fallen {
+  position: fixed;
+  z-index: 26;
+  flex: none;
+  margin: 0;
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
+}
+
+.clock-fallen.held {
+  cursor: grabbing;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.3);
+}
+
 .pst-clock::before,
 .pst-clock::after {
   content: '';
@@ -4813,7 +4837,7 @@ header > .brand {
   }
 }
 
-.pst-clock.struck {
+.pst-clock.struck:not(.clock-fallen) {
   animation: clock-knock 440ms ease-out;
 }
 
@@ -5293,6 +5317,7 @@ html.paddle-out * {
 @media (prefers-reduced-motion: reduce) {
   .book,
   .ball-box,
+  .clock-fallen,
   .send-btn.stamp,
   .stamp-plate {
     transition: none;
@@ -5305,7 +5330,7 @@ html.paddle-out * {
   .book.struck,
   .plant.struck .pot,
   .plant.struck .leaf,
-  .pst-clock.struck,
+  .pst-clock.struck:not(.clock-fallen),
   .book-spread,
   .book-leaf {
     animation: none;
