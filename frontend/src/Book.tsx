@@ -26,7 +26,7 @@ function daysSince(iso: string): number {
 // every time, the book kept saying the same sentence. Null on any failure: the
 // backend sleeps, and a book that says something else is better than a book
 // that says an error.
-async function factsFor(route: string): Promise<string[]> {
+async function loadFacts(route: string): Promise<string[]> {
   try {
     if (route.startsWith('#/tasks')) {
       const tasks = await listTasks()
@@ -85,6 +85,16 @@ async function factsFor(route: string): Promise<string[]> {
   }
 }
 
+// The promise, not the answer: a shelf that spills asks for six pages at once
+// and they would otherwise be six requests to a backend that is asleep.
+let facts: { route: string; at: number; lines: Promise<string[]> } | null = null
+
+function factsFor(route: string): Promise<string[]> {
+  if (facts && facts.route === route && Date.now() - facts.at < 5000) return facts.lines
+  facts = { route, at: Date.now(), lines: loadFacts(route) }
+  return facts.lines
+}
+
 let lastPage: string | null = null
 let lastFact: string | null = null
 
@@ -137,6 +147,11 @@ function pages(text: string): [string, string] {
 
 export type Fallen = {
   i: number
+  // Where in the spill it is, so a shelf going over topples rather than drops.
+  order: number
+  // The angle it comes to rest at. Six books that all land at exactly ninety
+  // degrees read as a diagram rather than a mess.
+  rot: number
   color: string
   left: number
   top: number
@@ -170,6 +185,8 @@ export function FallenBook({
     background: fallen.color,
     ['--dx' as string]: `${fallen.dx}px`,
     ['--dy' as string]: `${fallen.dy}px`,
+    ['--i' as string]: fallen.order,
+    ['--rot' as string]: `${fallen.rot}deg`,
   }
 
   return (

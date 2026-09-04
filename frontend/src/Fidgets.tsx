@@ -63,9 +63,13 @@ type Fly = {
 function InkDrop({
   route,
   boxRef,
+  spill,
+  settle,
 }: {
   route: string
   boxRef: React.RefObject<HTMLDivElement | null>
+  spill: React.RefObject<(speed: number) => void>
+  settle: React.RefObject<() => void>
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const padRef = useRef<HTMLDivElement>(null)
@@ -119,12 +123,20 @@ function InkDrop({
   const syncSolids = useCallback(() => {
     solidsAt.current = performance.now()
     const found = document.querySelectorAll(
-      '.shelf-plank, .shelf .book:not(.gone), .shelf .pot, .shelf .pst-clock, .book-fallen',
+      '.shelf-plank, .shelf .book:not(.gone), .shelf .plant, .shelf .pst-clock, .book-fallen',
     )
     solids.current = Array.from(found)
       .map((el) => ({ el, r: el.getBoundingClientRect() }))
       .filter((o) => o.r.width > 0)
   }, [])
+
+  // A book landing on the ball leaves it inside a book, and the ball may have
+  // come to rest, in which case nothing is running to push it out. The shelf
+  // calls this once the books have finished falling; one frame sorts it out.
+  settle.current = () => {
+    syncSolids()
+    if (!st.current.parked && !st.current.dragging) kick()
+  }
 
   // The plank is left alone - it is what the books are standing on, and a
   // shelf that flinches out from under them shows daylight. So is the book on
@@ -377,6 +389,7 @@ function InkDrop({
             s.vx *= SOLID_RUB
           }
           if (speed > KNOCK_SPEED) knock(o.el)
+          if (o.el.classList.contains('book')) spill.current(speed)
           worst = Math.max(worst, speed)
         }
         return worst
@@ -603,6 +616,14 @@ const CLOSE_MS = 280
 const RETURN_MS = 520
 // How far a book tips into the gap left by the one that fell.
 const TIP = 11
+// Hit a book harder than this and the whole shelf goes over. Measured against
+// what a release actually delivers: an ordinary fling lands around 1500 and a
+// quick one around 2300, so this is a flick you meant.
+const SPILL_SPEED = 3200
+// How far apart books lie on the floor. Standing they are five pixels wide and
+// eight apart; lying down they are the length of a book, and six of them
+// dropped where they stood would be one pile.
+const SPILL_GAP = 31
 
 const BOOKS: { domain: string; h: number; w: number; lean?: number }[] = [
   { domain: 'music', h: 24, w: 6 },
@@ -613,55 +634,93 @@ const BOOKS: { domain: string; h: number; w: number; lean?: number }[] = [
   { domain: 'learning', h: 19, w: 5, lean: -14 },
 ]
 
+type Down = Fallen & { phase: Phase }
+
 function Shelf({
   route,
   showClock,
   boxRef,
+  spill,
+  settle,
 }: {
   route: string
   showClock: boolean
   boxRef: React.RefObject<HTMLDivElement | null>
+  spill: React.RefObject<(speed: number) => void>
+  settle: React.RefObject<() => void>
 }) {
-  const [fallen, setFallen] = useState<Fallen | null>(null)
-  const [phase, setPhase] = useState<Phase>('floor')
+  const [down, setDown] = useState<Down[]>([])
   const bookRefs = useRef<(HTMLSpanElement | null)[]>([])
   const reads = useRef(Number(localStorage.getItem(READS_KEY) ?? 0))
   const lastDrop = useRef(Date.now())
   const timers = useRef<number[]>([])
+
+  const gone = new Set(down.map((b) => b.i))
+
+  // Knocking books onto the floor. One at a time it lands about where it
+  // stood; a whole shelf has to be laid out along the floor, because lying
+  // down a book is as long as it was tall and six of them dropped in place
+  // would be a single pile.
+  const fall = (idx: number[]) => {
+    const found = idx
+      .map((i) => ({ i, el: bookRefs.current[i] }))
+      .filter((b): b is { i: number; el: HTMLSpanElement } => !!b.el)
+      .map((b) => ({ ...b, r: b.el.getBoundingClientRect() }))
+      .filter((b) => b.r.width > 0)
+    if (!found.length) return
+    lastDrop.current = Date.now()
+    // Long enough for the last of them to have landed. A book that comes down
+    // on the ball leaves it inside a book until something tells it to look.
+    timers.current.push(window.setTimeout(() => settle.current(), 1500))
+    const many = found.length > 1
+    const base = found[0].r.left
+    // The pages are worked out before the books fall, not when you open one:
+    // the backend sleeps, and three seconds is not long enough to wait for it.
+    void Promise.all(found.map(() => pageFor(route, reads.current))).then((texts) => {
+      setDown((cur) => [
+        ...cur,
+        ...found.map((b, k) => ({
+          i: b.i,
+          order: k,
+          phase: 'floor' as Phase,
+          color: getComputedStyle(b.el).backgroundColor,
+          left: b.r.left,
+          top: b.r.top,
+          w: b.r.width,
+          h: b.r.height,
+          dx: many
+            ? base + k * SPILL_GAP - b.r.left + (Math.random() * 9 - 4)
+            : 6 + Math.random() * 20,
+          rot: 90 + (Math.random() * 8 - 4),
+          // It keeps its standing geometry and is turned onto its side, so
+          // where it lands is worked out against the centre it rotates about
+          // rather than against its box, which is a different shape by the
+          // time it stops.
+          dy: window.innerHeight - FLOOR - (b.r.top + b.r.height / 2 + b.r.width / 2),
+          text: texts[k],
+        })),
+      ])
+    })
+  }
 
   // Mounted once, through a ref. An effect with no dependency list tears its
   // own interval down on every render, and this renders more often than it
   // polls - which is how the drawer this replaces ended up never leaking.
   const dropRef = useRef(() => {})
   dropRef.current = () => {
-    if (fallen) return
+    if (down.length) return
     if (Date.now() - lastDrop.current < DROP_COOLDOWN_MS) return
     if (Math.random() > DROP_CHANCE) return
-    const i = Math.floor(Math.random() * BOOKS.length)
-    const el = bookRefs.current[i]
-    const r = el?.getBoundingClientRect()
-    if (!r || !r.width) return
-    lastDrop.current = Date.now()
-    // It keeps its standing geometry and is turned onto its side, so where it
-    // lands is worked out against the centre it rotates about rather than
-    // against its box, which is a different shape by the time it stops.
-    const dy = window.innerHeight - FLOOR - (r.top + r.height / 2 + r.width / 2)
-    // The page is worked out before it falls, not when you open it: the
-    // backend sleeps, and three seconds is not long enough to wait for it.
-    void pageFor(route, reads.current).then((text) => {
-      setPhase('floor')
-      setFallen({
-        i,
-        color: getComputedStyle(el!).backgroundColor,
-        left: r.left,
-        top: r.top,
-        w: r.width,
-        h: r.height,
-        dx: 6 + Math.random() * 20,
-        dy,
-        text,
-      })
-    })
+    fall([Math.floor(Math.random() * BOOKS.length)])
+  }
+
+  // The ball, hitting a book hard enough. Reassigned every render for the same
+  // reason the poll is: it has to see the books that are still standing.
+  spill.current = (speed: number) => {
+    if (speed < SPILL_SPEED) return
+    const standing = BOOKS.map((_, i) => i).filter((i) => !gone.has(i))
+    if (standing.length < 2) return
+    fall(standing)
   }
 
   useEffect(() => {
@@ -672,36 +731,38 @@ function Shelf({
     }
   }, [])
 
-  const open = () => {
+  const open = (i: number) => {
     const n = reads.current + 1
     reads.current = n
     localStorage.setItem(READS_KEY, String(n))
-    setPhase('open')
-    timers.current = [
-      window.setTimeout(() => setPhase('closing'), OPEN_MS + HOLD_MS),
-      window.setTimeout(() => setPhase('back'), OPEN_MS + HOLD_MS + CLOSE_MS),
+    const set = (phase: Phase) => setDown((cur) => cur.map((b) => (b.i === i ? { ...b, phase } : b)))
+    set('open')
+    timers.current.push(
+      window.setTimeout(() => set('closing'), OPEN_MS + HOLD_MS),
+      window.setTimeout(() => set('back'), OPEN_MS + HOLD_MS + CLOSE_MS),
       window.setTimeout(
-        () => {
-          setFallen(null)
-          setPhase('floor')
-        },
+        () => setDown((cur) => cur.filter((b) => b.i !== i)),
         OPEN_MS + HOLD_MS + CLOSE_MS + RETURN_MS,
       ),
-    ]
+    )
   }
 
-  // The gap stays open the whole time the book is away - its slot keeps its
-  // width and only goes invisible - and the two books either side tip into it
-  // until they meet. Which of them is really holding the other up is not worth
-  // working out at five pixels wide.
+  // One spread at a time. Six books on the floor is an invitation to click
+  // them all at once, and they all open in the same corner.
+  const busy = down.some((b) => b.phase !== 'floor')
+
+  // The gap stays open the whole time a book is away - its slot keeps its
+  // width and only goes invisible - and whatever is standing beside it tips
+  // in. A book with a gap on both sides has nothing to lean on and stays put.
   const tipOf = (idx: number) => {
-    if (!fallen) return 0
-    if (idx === fallen.i - 1) return TIP
-    if (idx === fallen.i + 1) return -TIP
-    return 0
+    if (gone.has(idx)) return 0
+    const right = gone.has(idx + 1)
+    const left = gone.has(idx - 1)
+    if (right === left) return 0
+    return right ? TIP : -TIP
   }
 
-  // The book leaves the shelf in the DOM too, not just visually: .shelf sets a
+  // The books leave the shelf in the DOM too, not just visually: .shelf sets a
   // z-index, and anything inside it is stuck in that stacking context - the
   // open spread would have been painted under the ball.
   return (
@@ -714,7 +775,7 @@ function Shelf({
               ref={(el) => {
                 bookRefs.current[i] = el
               }}
-              className={`book${fallen?.i === i ? ' gone' : ''}`}
+              className={`book${gone.has(i) ? ' gone' : ''}`}
               style={{
                 ['--c' as string]: `var(--${b.domain})`,
                 height: `${b.h}px`,
@@ -734,7 +795,9 @@ function Shelf({
         </div>
         <div className="shelf-plank" />
       </div>
-      {fallen && <FallenBook fallen={fallen} phase={phase} onOpen={open} />}
+      {down.map((b) => (
+        <FallenBook key={b.i} fallen={b} phase={b.phase} onOpen={() => !busy && open(b.i)} />
+      ))}
     </>
   )
 }
@@ -759,11 +822,16 @@ function useNarrow(): boolean {
 
 export function Fidgets({ route, showClock }: { route: string; showClock: boolean }) {
   const boxRef = useRef<HTMLDivElement>(null)
+  // The ball telling the shelf it hit a book hard. A ref rather than state:
+  // these are siblings, and nothing about the hit belongs in a render.
+  const spill = useRef<(speed: number) => void>(() => {})
+  // And the shelf telling the ball the floor has changed under it.
+  const settle = useRef<() => void>(() => {})
   const narrow = useNarrow()
   return (
     <>
-      <Shelf route={route} showClock={showClock} boxRef={boxRef} />
-      {!narrow && <InkDrop route={route} boxRef={boxRef} />}
+      <Shelf route={route} showClock={showClock} boxRef={boxRef} spill={spill} settle={settle} />
+      {!narrow && <InkDrop route={route} boxRef={boxRef} spill={spill} settle={settle} />}
     </>
   )
 }

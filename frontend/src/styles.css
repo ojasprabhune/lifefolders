@@ -2043,7 +2043,11 @@ header > .brand {
   align-items: center;
   gap: 4px;
   /* The day you pick lights up rather than switching on, and the bars grow
-     when a sidequest is moved onto another day instead of jumping there. */
+     when a sidequest is moved onto another day instead of jumping there.
+     The corners are rounded here rather than on .selected: only the colour
+     fades, so a radius that arrives with the fill leaves before it and the
+     day squares off on its way out. */
+  border-radius: 6px;
   transition: background-color 200ms ease;
 }
 
@@ -2060,7 +2064,6 @@ header > .brand {
 
 .due-col.selected {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
-  border-radius: 6px;
 }
 
 .due-col.selected .due-label,
@@ -4677,31 +4680,37 @@ header > .brand {
   clip-path: polygon(0 0, 100% 0, 84% 100%, 16% 100%);
 }
 
+/* Each leaf's angle and size are custom properties rather than a literal
+   transform, so the shake it does when the ball lands in the plant can be
+   added to where the leaf already sits instead of straightening it out. */
 .leaf {
   position: absolute;
   width: 8px;
   height: 9px;
   border-radius: 50% 50% 50% 0;
   background: var(--cadence);
+  transform: rotate(var(--rot, 0deg)) scale(var(--sc, 1));
 }
 
 .leaf.a {
   left: 3px;
   bottom: 7px;
-  transform: rotate(-8deg);
+  --rot: -8deg;
 }
 
 .leaf.b {
   left: 0;
   bottom: 10px;
-  transform: rotate(-58deg) scale(0.82);
+  --rot: -58deg;
+  --sc: 0.82;
   background: color-mix(in srgb, var(--cadence) 78%, var(--ink));
 }
 
 .leaf.c {
   left: 7px;
   bottom: 11px;
-  transform: rotate(46deg) scale(0.86);
+  --rot: 46deg;
+  --sc: 0.86;
   background: color-mix(in srgb, var(--cadence) 86%, var(--bg));
 }
 
@@ -4751,8 +4760,41 @@ header > .brand {
   }
 }
 
-.pot.struck {
+.plant.struck .pot {
   animation: pot-knock 480ms ease-out;
+}
+
+/* The leaves carry on after the pot has stopped, and not in step with each
+   other - three leaves swinging as one is a cardboard cutout. */
+@keyframes leaf-shake {
+  0%,
+  100% {
+    transform: rotate(var(--rot, 0deg)) scale(var(--sc, 1));
+  }
+  18% {
+    transform: rotate(calc(var(--rot, 0deg) + 13deg)) scale(var(--sc, 1));
+  }
+  44% {
+    transform: rotate(calc(var(--rot, 0deg) - 8deg)) scale(var(--sc, 1));
+  }
+  68% {
+    transform: rotate(calc(var(--rot, 0deg) + 4deg)) scale(var(--sc, 1));
+  }
+  86% {
+    transform: rotate(calc(var(--rot, 0deg) - 2deg)) scale(var(--sc, 1));
+  }
+}
+
+.plant.struck .leaf {
+  animation: leaf-shake 620ms cubic-bezier(0.3, 0.9, 0.4, 1);
+}
+
+.plant.struck .leaf.b {
+  animation-delay: 45ms;
+}
+
+.plant.struck .leaf.c {
+  animation-delay: 85ms;
 }
 
 @keyframes clock-knock {
@@ -4840,6 +4882,9 @@ header > .brand {
   box-shadow: inset -1.5px 0 0 rgba(0, 0, 0, 0.22);
   cursor: pointer;
   animation: book-fall 900ms cubic-bezier(0.35, 0, 0.4, 1) both;
+  /* A whole shelf going over topples along the row rather than dropping at
+     once. `both` is what holds each book standing until its turn. */
+  animation-delay: calc(var(--i, 0) * 70ms);
 }
 
 .book-fallen::after {
@@ -4864,19 +4909,19 @@ header > .brand {
     transform: translate(calc(var(--dx) * 0.55), calc(var(--dy) - 7px)) rotate(64deg);
   }
   72% {
-    transform: translate(var(--dx), var(--dy)) rotate(98deg);
+    transform: translate(var(--dx), var(--dy)) rotate(calc(var(--rot, 90deg) + 8deg));
   }
   86% {
-    transform: translate(var(--dx), calc(var(--dy) - 4px)) rotate(86deg);
+    transform: translate(var(--dx), calc(var(--dy) - 4px)) rotate(calc(var(--rot, 90deg) - 4deg));
   }
   100% {
-    transform: translate(var(--dx), var(--dy)) rotate(90deg);
+    transform: translate(var(--dx), var(--dy)) rotate(var(--rot, 90deg));
   }
 }
 
 @keyframes book-return {
   from {
-    transform: translate(var(--dx), var(--dy)) rotate(90deg);
+    transform: translate(var(--dx), var(--dy)) rotate(var(--rot, 90deg));
   }
   to {
     transform: translate(0, 0) rotate(0deg);
@@ -5258,7 +5303,8 @@ html.paddle-out * {
   .ball-box.caught,
   .pst-clock-char.colon,
   .book.struck,
-  .pot.struck,
+  .plant.struck .pot,
+  .plant.struck .leaf,
   .pst-clock.struck,
   .book-spread,
   .book-leaf {
@@ -5270,6 +5316,6 @@ html.paddle-out * {
      landed. */
   .book-fallen {
     animation: none;
-    transform: translate(var(--dx), var(--dy)) rotate(90deg);
+    transform: translate(var(--dx), var(--dy)) rotate(var(--rot, 90deg));
   }
 }
