@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { FallenBook, pageFor, type Fallen, type Phase } from './Book'
-import { Clock, FallenClock, type ClockSpot } from './Clock'
+import { Carried, type Spot } from './Carried'
+import { Clock, FallenClock } from './Clock'
 
 // A bead of ink with weight. Fling it and it keeps going, bounces off the
 // window and slows down; hit an edge hard enough and it leaves a splat that
@@ -68,7 +69,7 @@ function InkDrop({
 }: {
   route: string
   boxRef: React.RefObject<HTMLDivElement | null>
-  spill: React.RefObject<(speed: number, what: 'book' | 'clock') => void>
+  spill: React.RefObject<(speed: number, what: Toppled) => void>
   settle: React.RefObject<() => void>
 }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -123,7 +124,7 @@ function InkDrop({
   const syncSolids = useCallback(() => {
     solidsAt.current = performance.now()
     const found = document.querySelectorAll(
-      '.shelf-plank, .shelf .book:not(.gone), .shelf .plant, .shelf .pst-clock:not(.gone), .book-fallen, .clock-fallen',
+      '.shelf-plank, .shelf .book:not(.gone), .shelf .plant:not(.gone), .shelf .pst-clock:not(.gone), .book-fallen, .clock-fallen, .plant-fallen',
     )
     solids.current = Array.from(found)
       .map((el) => ({ el, r: el.getBoundingClientRect() }))
@@ -394,6 +395,7 @@ function InkDrop({
           if (speed > KNOCK_SPEED) knock(o.el)
           if (o.el.classList.contains('book')) spill.current(speed, 'book')
           else if (o.el.classList.contains('pst-clock')) spill.current(speed, 'clock')
+          else if (o.el.classList.contains('plant')) spill.current(speed, 'plant')
           worst = Math.max(worst, speed)
         }
         return worst
@@ -620,10 +622,14 @@ const CLOSE_MS = 280
 const RETURN_MS = 520
 // How far a book tips into the gap left by the one that fell.
 const TIP = 11
-// Hit the books or the clock harder than this and they go over. Measured
-// against what a release actually delivers: an ordinary fling lands around
-// 1500, so this is still a flick you meant rather than a nudge.
-const SPILL_SPEED = 2500
+// How far past the end of the plank each of these lands, so they do not come
+// down on top of each other or on the books.
+const PLANT_OUT = 18
+const CLOCK_OUT = 58
+// Hit something harder than this and it goes over. Measured at the impact
+// rather than at the release, and against pointer moves at a real mouse's
+// rate: a lazy toss arrives at about 700, a flick you meant at about 1500.
+const SPILL_SPEED = 1200
 // How far apart books lie on the floor. Standing they are five pixels wide and
 // eight apart; lying down they are the length of a book, and six of them
 // dropped where they stood would be one pile.
@@ -640,6 +646,18 @@ const BOOKS: { domain: string; h: number; w: number; lean?: number }[] = [
 
 type Down = Fallen & { phase: Phase }
 
+type Toppled = 'book' | 'clock' | 'plant'
+
+// The plant, twice: standing in its slot and lying on the floor.
+const LEAVES = (
+  <>
+    <i className="leaf a" />
+    <i className="leaf b" />
+    <i className="leaf c" />
+    <i className="pot" />
+  </>
+)
+
 function Shelf({
   route,
   showClock,
@@ -650,11 +668,12 @@ function Shelf({
   route: string
   showClock: boolean
   boxRef: React.RefObject<HTMLDivElement | null>
-  spill: React.RefObject<(speed: number, what: 'book' | 'clock') => void>
+  spill: React.RefObject<(speed: number, what: Toppled) => void>
   settle: React.RefObject<() => void>
 }) {
   const [down, setDown] = useState<Down[]>([])
-  const [clock, setClock] = useState<ClockSpot | null>(null)
+  const [clock, setClock] = useState<Spot | null>(null)
+  const [plant, setPlant] = useState<Spot | null>(null)
   const bookRefs = useRef<(HTMLSpanElement | null)[]>([])
   const reads = useRef(Number(localStorage.getItem(READS_KEY) ?? 0))
   const lastDrop = useRef(Date.now())
@@ -721,31 +740,39 @@ function Shelf({
 
   // The ball, hitting something hard enough. Reassigned every render for the
   // same reason the poll is: it has to see what is still standing.
-  spill.current = (speed: number, what: 'book' | 'clock') => {
+  spill.current = (speed: number, what: Toppled) => {
     if (speed < SPILL_SPEED) return
-    if (what === 'clock') {
-      if (clock) return
-      const el = document.querySelector('.shelf .pst-clock')
-      const r = el?.getBoundingClientRect()
-      if (!r || !r.width) return
-      // Off the end of the plank rather than straight down, and clear of the
-      // books, which lie along the floor under where they stood.
-      const shelf = el!.closest('.shelf')!.getBoundingClientRect()
-      setClock({
-        left: r.left,
-        top: r.top,
-        w: r.width,
-        h: r.height,
-        dx: shelf.right + 24 - r.left,
-        dy: window.innerHeight - FLOOR - (r.top + r.height),
-        rot: 5 + Math.random() * 6,
-      })
-      timers.current.push(window.setTimeout(() => settle.current(), 900))
-      return
-    }
+    if (what === 'clock') return clock ? undefined : knockOff('.shelf .pst-clock', CLOCK_OUT, 5 + Math.random() * 6, setClock)
+    if (what === 'plant') return plant ? undefined : knockOff('.shelf .plant', PLANT_OUT, 82 + Math.random() * 16, setPlant)
     const standing = BOOKS.map((_, i) => i).filter((i) => !gone.has(i))
     if (standing.length < 2) return
     fall(standing)
+  }
+
+  // Off the end of the plank rather than straight down, and each to its own
+  // spot, so a shelf that has lost everything is not one heap. The books lie
+  // along the floor under where they stood, so both of these clear the shelf.
+  const knockOff = (sel: string, out: number, rot: number, set: (s: Spot) => void) => {
+    const el = document.querySelector(sel)
+    const r = el?.getBoundingClientRect()
+    if (!r || !r.width) return
+    const shelf = el!.closest('.shelf')!.getBoundingClientRect()
+    set({
+      left: r.left,
+      top: r.top,
+      w: r.width,
+      h: r.height,
+      dx: shelf.right + out - r.left,
+      // Turned onto its side, a tall thing is shorter than its box: without
+      // this the plant lies hovering above the floor by half the difference.
+      dy:
+        window.innerHeight -
+        FLOOR -
+        (r.top + r.height) +
+        (Math.abs(rot) > 45 ? (r.height - r.width) / 2 : 0),
+      rot,
+    })
+    timers.current.push(window.setTimeout(() => settle.current(), 900))
   }
 
   useEffect(() => {
@@ -809,12 +836,7 @@ function Shelf({
               }}
             />
           ))}
-          <span className="plant">
-            <i className="leaf a" />
-            <i className="leaf b" />
-            <i className="leaf c" />
-            <i className="pot" />
-          </span>
+          <span className={`plant${plant ? ' gone' : ''}`}>{LEAVES}</span>
           <div className="ball-box" ref={boxRef} />
           {showClock && <Clock gone={!!clock} />}
         </div>
@@ -824,6 +846,16 @@ function Shelf({
         <FallenBook key={b.i} fallen={b} phase={b.phase} onOpen={() => !busy && open(b.i)} />
       ))}
       {showClock && clock && <FallenClock spot={clock} onHome={() => setClock(null)} />}
+      {plant && (
+        <Carried
+          spot={plant}
+          className="plant plant-fallen"
+          label="the plant is on the floor, drag it back onto the shelf"
+          onHome={() => setPlant(null)}
+        >
+          {LEAVES}
+        </Carried>
+      )}
     </>
   )
 }
@@ -850,7 +882,7 @@ export function Fidgets({ route, showClock }: { route: string; showClock: boolea
   const boxRef = useRef<HTMLDivElement>(null)
   // The ball telling the shelf it hit a book hard. A ref rather than state:
   // these are siblings, and nothing about the hit belongs in a render.
-  const spill = useRef<(speed: number, what: 'book' | 'clock') => void>(() => {})
+  const spill = useRef<(speed: number, what: Toppled) => void>(() => {})
   // And the shelf telling the ball the floor has changed under it.
   const settle = useRef<() => void>(() => {})
   const narrow = useNarrow()

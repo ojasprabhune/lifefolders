@@ -4694,6 +4694,33 @@ header > .brand {
   margin-left: 6px;
 }
 
+/* Knocked off, same as a book's slot and the clock's: it keeps its width and
+   only goes invisible, so the rest of the row stays where it was. */
+.plant.gone {
+  visibility: hidden;
+}
+
+/* The same plant, on the floor and in your hand. Everything about where it is
+   comes from an inline transform, so nothing here may set one. */
+.plant-fallen {
+  position: fixed;
+  z-index: 26;
+  margin: 0;
+  cursor: grab;
+  touch-action: none;
+}
+
+/* Fifteen pixels by twenty-two is not something you can pick up. */
+.plant-fallen::before {
+  content: '';
+  position: absolute;
+  inset: -12px;
+}
+
+.plant-fallen.held {
+  cursor: grabbing;
+}
+
 .pot {
   position: absolute;
   left: 2px;
@@ -5318,6 +5345,7 @@ html.paddle-out * {
   .book,
   .ball-box,
   .clock-fallen,
+  .plant-fallen,
   .send-btn.stamp,
   .stamp-plate {
     transition: none;
