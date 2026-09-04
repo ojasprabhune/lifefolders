@@ -4712,6 +4712,69 @@ header > .brand {
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.22);
 }
 
+/* Hit by the ball. A book tips about its bottom edge the way it already
+   leans, so the knock is added to whatever lean it is standing at rather than
+   replacing it - otherwise the one that leans on its neighbour stands up
+   straight for half a second every time it is struck. */
+@keyframes book-knock {
+  0% {
+    transform: rotate(var(--lean, 0deg));
+  }
+  22% {
+    transform: rotate(calc(var(--lean, 0deg) + 8deg));
+  }
+  55% {
+    transform: rotate(calc(var(--lean, 0deg) - 4deg));
+  }
+  78% {
+    transform: rotate(calc(var(--lean, 0deg) + 2deg));
+  }
+  100% {
+    transform: rotate(var(--lean, 0deg));
+  }
+}
+
+.book.struck {
+  animation: book-knock 480ms cubic-bezier(0.3, 0.9, 0.4, 1);
+}
+
+@keyframes pot-knock {
+  0%,
+  100% {
+    transform: translateX(0) rotate(0deg);
+  }
+  25% {
+    transform: translateX(1.5px) rotate(2.5deg);
+  }
+  62% {
+    transform: translateX(-1px) rotate(-1.5deg);
+  }
+}
+
+.pot.struck {
+  animation: pot-knock 480ms ease-out;
+}
+
+@keyframes clock-knock {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  20% {
+    transform: translate(-2px, -1px);
+  }
+  48% {
+    transform: translate(1.5px, 0);
+  }
+  74% {
+    transform: translate(-1px, 0);
+  }
+}
+
+.pst-clock.struck {
+  animation: clock-knock 440ms ease-out;
+}
+
 /* The box the ball goes in, standing open on the plank beside the plant. */
 .ball-box {
   flex: none;
@@ -5194,6 +5257,9 @@ html.paddle-out * {
   .ink-splat,
   .ball-box.caught,
   .pst-clock-char.colon,
+  .book.struck,
+  .pot.struck,
+  .pst-clock.struck,
   .book-spread,
   .book-leaf {
     animation: none;

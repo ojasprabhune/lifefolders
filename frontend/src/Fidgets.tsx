@@ -21,6 +21,16 @@ const PADDLE_STILL = 30
 // across the room rather than a lob over a building.
 const THROW_G = 2600
 
+// The shelf is furniture, not scenery. The plank, the books, the pot and the
+// clock all turn the ball back - softer than the window does, and a little of
+// whatever it had along the surface goes with it.
+const SOLID_BOUNCE = 0.52
+const SOLID_RUB = 0.86
+// Loud enough that the thing hit ought to react to it.
+const KNOCK_SPEED = 240
+// The shelf only moves when the window does, or when a book falls off it.
+const SOLIDS_STALE_MS = 400
+
 const DROP_HOMES: { prefix: string; x: number; y: number }[] = [
   { prefix: '#/music', x: 0.08, y: 0.34 },
   { prefix: '#/soma', x: 0.93, y: 0.28 },
@@ -99,6 +109,33 @@ function InkDrop({
     const r = boxRef.current?.getBoundingClientRect()
     boxRect.current = r && r.width ? r : null
   }, [boxRef])
+
+  // Everything on the shelf the ball can hit. Found by selector rather than
+  // handed down as refs: the book on the floor deliberately sits outside
+  // .shelf - the shelf's stacking context would paint an open spread under the
+  // ball - so there is no one element all of these live inside.
+  const solids = useRef<{ el: Element; r: DOMRect }[]>([])
+  const solidsAt = useRef(0)
+  const syncSolids = useCallback(() => {
+    solidsAt.current = performance.now()
+    const found = document.querySelectorAll(
+      '.shelf-plank, .shelf .book:not(.gone), .shelf .pot, .shelf .pst-clock, .book-fallen',
+    )
+    solids.current = Array.from(found)
+      .map((el) => ({ el, r: el.getBoundingClientRect() }))
+      .filter((o) => o.r.width > 0)
+  }, [])
+
+  // The plank is left alone - it is what the books are standing on, and a
+  // shelf that flinches out from under them shows daylight. So is the book on
+  // the floor: its resting place is the end of its own falling animation, and
+  // a second animation would throw that away.
+  const knock = (el: Element) => {
+    if (el.classList.contains('shelf-plank') || el.classList.contains('book-fallen')) return
+    if (el.classList.contains('struck')) return
+    el.classList.add('struck')
+    window.setTimeout(() => el.classList.remove('struck'), 480)
+  }
 
   const draw = () => {
     if (ref.current) ref.current.style.transform = `translate(${st.current.x}px, ${st.current.y}px)`
@@ -286,31 +323,78 @@ function InkDrop({
       // Weighted: almost no drag, so it coasts and the bounces do the work.
       s.vx *= Math.pow(0.35, dt)
       s.vy *= Math.pow(0.35, dt)
-      s.x += s.vx * dt
-      s.y += s.vy * dt
+      if (t - solidsAt.current > SOLIDS_STALE_MS) syncSolids()
+
       const maxX = window.innerWidth - DROP
       const maxY = window.innerHeight - DROP
-      const hit = (speed: number) => speed > 900 && splat(s.x, s.y, speed)
-      if (s.x < 0) {
-        s.x = 0
-        hit(Math.abs(s.vx))
-        s.vx = -s.vx * 0.62
+      const walls = () => {
+        let worst = 0
+        if (s.x < 0) {
+          s.x = 0
+          worst = Math.abs(s.vx)
+          s.vx = -s.vx * 0.62
+        } else if (s.x > maxX) {
+          s.x = maxX
+          worst = Math.abs(s.vx)
+          s.vx = -s.vx * 0.62
+        }
+        if (s.y < 0) {
+          s.y = 0
+          worst = Math.max(worst, Math.abs(s.vy))
+          s.vy = -s.vy * 0.62
+        } else if (s.y > maxY) {
+          s.y = maxY
+          worst = Math.max(worst, Math.abs(s.vy))
+          s.vy = -s.vy * 0.62
+        }
+        return worst
       }
-      if (s.x > maxX) {
-        s.x = maxX
-        hit(Math.abs(s.vx))
-        s.vx = -s.vx * 0.62
+
+      // Pushed out along whichever side it is least far in. A spine is five
+      // pixels wide, so which face it came through is not a question worth
+      // asking - the nearest way out is the way it came.
+      const furniture = () => {
+        let worst = 0
+        for (const o of solids.current) {
+          const r = o.r
+          if (s.x + DROP <= r.left || s.x >= r.right) continue
+          if (s.y + DROP <= r.top || s.y >= r.bottom) continue
+          const l = s.x + DROP - r.left
+          const rt = r.right - s.x
+          const u = s.y + DROP - r.top
+          const d = r.bottom - s.y
+          const least = Math.min(l, rt, u, d)
+          let speed: number
+          if (least === l || least === rt) {
+            speed = Math.abs(s.vx)
+            s.x = least === l ? r.left - DROP : r.right
+            s.vx = (least === l ? -1 : 1) * speed * SOLID_BOUNCE
+            s.vy *= SOLID_RUB
+          } else {
+            speed = Math.abs(s.vy)
+            s.y = least === u ? r.top - DROP : r.bottom
+            s.vy = (least === u ? -1 : 1) * speed * SOLID_BOUNCE
+            s.vx *= SOLID_RUB
+          }
+          if (speed > KNOCK_SPEED) knock(o.el)
+          worst = Math.max(worst, speed)
+        }
+        return worst
       }
-      if (s.y < 0) {
-        s.y = 0
-        hit(Math.abs(s.vy))
-        s.vy = -s.vy * 0.62
+
+      // Stepped fine enough that the ball cannot cross a book between two
+      // frames: a swing hands it ninety pixels a frame, and a spine is five
+      // pixels wide, so testing only where it ends up is a tunnel rather than
+      // a collision.
+      const n = Math.min(40, Math.max(1, Math.ceil((Math.hypot(s.vx, s.vy) * dt) / 4)))
+      const h = dt / n
+      let worst = 0
+      for (let i = 0; i < n; i++) {
+        s.x += s.vx * h
+        s.y += s.vy * h
+        worst = Math.max(worst, walls(), furniture())
       }
-      if (s.y > maxY) {
-        s.y = maxY
-        hit(Math.abs(s.vy))
-        s.vy = -s.vy * 0.62
-      }
+      if (worst > 900) splat(s.x, s.y, worst)
     }
 
     // A cursor that stopped moving sends no more events, so its velocity has
@@ -391,10 +475,14 @@ function InkDrop({
 
   // The cached box rect only goes stale when the window does.
   useEffect(() => {
-    syncBox()
-    window.addEventListener('resize', syncBox)
-    return () => window.removeEventListener('resize', syncBox)
-  }, [syncBox])
+    const sync = () => {
+      syncBox()
+      syncSolids()
+    }
+    sync()
+    window.addEventListener('resize', sync)
+    return () => window.removeEventListener('resize', sync)
+  }, [syncBox, syncSolids])
 
   useEffect(() => {
     const s = st.current
