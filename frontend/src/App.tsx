@@ -1,7 +1,29 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { createLog, getHiddenDomains, getShowClock, getToken, listLogs, setToken, transcribe, undoLast } from './api'
+import {
+  createLog,
+  getHiddenDomains,
+  getShowClock,
+  getToken,
+  listLogs,
+  listTasks,
+  setToken,
+  transcribe,
+  undoLast,
+} from './api'
 import { getBackendState, markBackendOffline, markBackendOnline, type BackendState } from './backendStatus'
-import type { Category, Log, PendingLog } from './types'
+import type { Category, Log, PendingLog, TaskData } from './types'
+import { cacheLogs, cacheTasks, cachedLogs, cachedTasks } from './cache'
+import { parseTaskEntry } from './localParse'
+import {
+  LOCAL_ID_PREFIX,
+  addOptimistic,
+  dropOptimistic,
+  isOptimistic,
+  optimisticLog,
+  optimisticTask,
+  settleOptimistic,
+} from './optimistic'
+import { forgetOutbox, rememberOutbox, takeOutbox } from './outbox'
 import { DOMAINS } from './domains'
 import { Row } from './Row'
 import { adoptFocusSession, restoreFocusSession } from './focusEngine'
@@ -404,7 +426,9 @@ function Home() {
   }))
   const pendingSlide = useRef<'back' | 'forward' | null>(null)
   const [category, setCategory] = useState<Category>('all')
-  const [logs, setLogs] = useState<Log[]>([])
+  // Painted from the last visit so the day isn't blank while a sleeping
+  // backend wakes up. `refresh` replaces it either way, a moment later.
+  const [logs, setLogs] = useState<Log[]>(() => cachedLogs(localDateStr(new Date())) ?? [])
   const [hiddenDomains] = useState<string[]>(() => getHiddenDomains())
   const hiddenParsedTypes = useMemo(
     () =>
@@ -463,8 +487,13 @@ function Home() {
       const rows = await listLogs(d, 'all')
       const slide = pendingSlide.current
       pendingSlide.current = null
-      logsRef.current = rows
-      setLogs(rows)
+      // A locally-drawn row is not in the server's answer yet, and a refetch
+      // triggered by something else - a command typed a beat later - would
+      // otherwise blink it out and back when its own write lands.
+      const held = logsRef.current.filter((l) => isOptimistic(l.id))
+      const merged = held.length > 0 ? [...held, ...rows] : rows
+      logsRef.current = merged
+      setLogs(merged)
       // A same-day refresh (undo, a command) keeps the object identical, so
       // nothing about the list's animation state changes underneath it.
       setView((v) => (v.date === d && slide === null ? v : { date: d, slide }))
@@ -477,9 +506,41 @@ function Home() {
     void refresh(date)
   }, [date, refresh])
 
+  // The local parse needs the open sidequests to tell a new one from an entry
+  // about something already tracked. The panel refreshes that cache every time
+  // it is opened, which is most visits - this is only for the first one, and
+  // it costs nothing on any visit after it.
+  useEffect(() => {
+    if (cachedTasks()) return
+    listTasks().then(cacheTasks).catch(() => {})
+  }, [])
+
+  // Anything that was still in flight when the tab last closed. Offered rather
+  // than resent: the write may well have gone through and only lost its reply.
+  useEffect(() => {
+    const left = takeOutbox()
+    if (left.length === 0) return
+    setPendings((p) => [
+      ...left.map((e) => ({ tempId: e.tempId, raw_input: e.raw, failed: true, retrying: false })),
+      ...p,
+    ])
+  }, [])
+
   useEffect(() => {
     logsRef.current = logs
   }, [logs])
+
+  // Cached from what is on screen rather than from the last fetch: almost
+  // everything that lands in the day is applied locally and never refetched,
+  // so caching in `refresh` would have kept handing back the day as it looked
+  // when you opened it. Rows still waiting on their write are left out - one
+  // that goes on to fail was never real.
+  useEffect(() => {
+    cacheLogs(
+      view.date,
+      logs.filter((l) => !isOptimistic(l.id)),
+    )
+  }, [view.date, logs])
 
   // Give a set of rows their arrival animation. The window has to outlast the
   // longest reveal in styles.css (the completion strike at 620ms) - if it
@@ -572,13 +633,33 @@ function Home() {
 
   const submit = async (rawText: string, tempId?: string) => {
     const id = tempId ?? `tmp-${Math.random().toString(36).slice(2)}`
-    setPendings((p) => [
-      { tempId: id, raw_input: rawText, failed: false, retrying: false },
-      ...p.filter((x) => x.tempId !== id),
-    ])
     // Typing while looking at an earlier day logs to that day - the entry
     // lands there and the view stays put, rather than snapping back to today.
     const forDate = isToday ? undefined : date
+
+    // Read locally first. An entry that is unmistakably a sidequest is drawn
+    // in full before the request has left the browser, here and in the
+    // sidequests panel, and the server's answer takes its place in the same
+    // spot without the row ever remounting. Everything else keeps the plain
+    // pending row: a row of the wrong shape corrected a second later is worse
+    // than a second of nothing. See localParse.ts for what counts as certain.
+    const guess = parseTaskEntry(rawText, today, cachedTasks() ?? [])
+    const localId = guess ? `${LOCAL_ID_PREFIX}${id}` : null
+    if (guess && localId) {
+      const at = new Date().toISOString()
+      setLogs((l) => [optimisticLog(localId, rawText, guess, at), ...l])
+      addOptimistic(localId, optimisticTask(localId, guess, at))
+      flashParsed([localId])
+    } else {
+      setPendings((p) => [
+        { tempId: id, raw_input: rawText, failed: false, retrying: false },
+        ...p.filter((x) => x.tempId !== id),
+      ])
+    }
+    // Held on disk until the write is confirmed, so closing the tab mid-flight
+    // doesn't take the sentence with it. Never replayed on its own - see
+    // outbox.ts.
+    rememberOutbox(id, rawText)
 
     // A cold backend doesn't reject, it just takes a very long time - so the
     // catch below never fires for the case the notice is actually for. Anything
@@ -594,11 +675,26 @@ function Home() {
         } = await createLog(rawText, forDate)
         window.clearTimeout(slow)
         markBackendOnline()
+        forgetOutbox(id)
+        // The row that was already drawn locally inherits the server's copy,
+        // carrying its key across so the swap costs no remount and no second
+        // arrival animation. The reveal is keyed the same way and simply keeps
+        // running over the top of it.
+        const taken = localId ? created.find((x) => x.parsed_type === 'task') : undefined
+        const settled = created.map((x) => (x === taken ? { ...x, localId: localId! } : x))
+        if (localId) {
+          if (taken) settleOptimistic(localId, (taken.data as TaskData).task_id)
+          else dropOptimistic(localId)
+        }
         const createdIds = new Set(created.map((x) => x.id))
-        const sleeps = created.filter((x) => x.parsed_type === 'sleep')
-        const rest = created.filter((x) => x.parsed_type !== 'sleep')
+        const sleeps = settled.filter((x) => x.parsed_type === 'sleep')
+        const rest = settled.filter((x) => x.parsed_type !== 'sleep')
         setPendings((p) => p.filter((x) => x.tempId !== id))
-        setLogs((l) => [...rest, ...l.filter((x) => !createdIds.has(x.id)), ...sleeps])
+        setLogs((l) => [
+          ...rest,
+          ...l.filter((x) => !createdIds.has(x.id) && x.id !== localId),
+          ...sleeps,
+        ])
         // Fires even when a command produced no logs at all - the sidequests
         // panel and any open dashboard still need to pick up the change.
         window.dispatchEvent(new Event('life-log-created'))
@@ -607,7 +703,7 @@ function Home() {
           adoptFocusSession(focus_session)
           window.location.hash = '#/focus'
         }
-        flashParsed(created.map((x) => x.id))
+        flashParsed(settled.filter((x) => x.localId === undefined).map((x) => x.id))
         // A command writes no logs row but does change ones already on
         // screen (a deleted entry, a rescheduled sidequest), so re-read the
         // day rather than leaving a stale list.
@@ -618,9 +714,17 @@ function Home() {
         if (attempt === 0) markBackendOffline()
         const delay = RETRY_DELAYS_MS[attempt]
         if (delay === undefined) {
-          setPendings((p) =>
-            p.map((x) => (x.tempId === id ? { ...x, failed: true, retrying: false } : x)),
-          )
+          // Out of retries: the locally-drawn row was a promise this would
+          // land, so it comes back off the day and hands over to the same
+          // failed row every other entry gets.
+          if (localId) {
+            dropOptimistic(localId)
+            setLogs((l) => l.filter((x) => x.id !== localId))
+          }
+          setPendings((p) => [
+            { tempId: id, raw_input: rawText, failed: true, retrying: false },
+            ...p.filter((x) => x.tempId !== id),
+          ])
           return
         }
         setPendings((p) => p.map((x) => (x.tempId === id ? { ...x, retrying: true } : x)))
@@ -932,12 +1036,19 @@ function Home() {
           ))}
         {visible.map((log) => (
           <Row
-            key={log.id}
+            // Both keyed off the local id where there is one, so the row a
+            // local parse drew keeps its identity - and its reveal - when the
+            // server's copy replaces it a moment later.
+            key={log.localId ?? log.id}
             log={log}
-            justParsed={justParsed.has(log.id)}
+            justParsed={justParsed.has(log.localId ?? log.id)}
             restored={restored.has(log.id)}
             expanded={expandedId === log.id}
-            onToggle={() => setExpandedId(expandedId === log.id ? null : log.id)}
+            // Nothing to open yet: the row exists here but not on the server,
+            // so an edit made against it would have no id to save to.
+            onToggle={() =>
+              isOptimistic(log.id) ? undefined : setExpandedId(expandedId === log.id ? null : log.id)
+            }
             onChange={(updated) =>
               setLogs((l) => l.map((x) => (x.id === updated.id ? updated : x)))
             }

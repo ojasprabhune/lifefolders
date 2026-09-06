@@ -103,6 +103,68 @@ The LLM writes only the first draft, and only the work blocks. **Meals are place
 
 When adding a new domain, pick this pattern over the recipe only when the interaction is genuinely structured/live (a timer, an autosaving field, a stepper) rather than a phrase the LLM could parse.
 
+## Reading an entry before the server does
+
+Typing a sidequest used to cost a Groq round trip - a second or more - before
+anything but a grey placeholder appeared, which is the wrong shape for the way
+the app is actually used: a burst of entries at the start of a day. Three
+modules make that instant, and the split between them is the whole design.
+
+`localParse.ts` reads a task out of a typed entry without the model. Four of
+the fields are already deterministic in Rust rather than LLM-decided (`#tag`,
+`@time`, `note:`, and a bare duration - see `tasks.rs`), so those are a
+straight port and cannot drift; `effortFromText` and `bestMatch` are ports of
+their Rust namesakes line for line. What is left is the title, a due-date
+grammar, and the exam flag. **`parseTaskEntry` returns null unless it is
+certain**, and certainty is deliberately narrow: a `task:` prefix, or a `#tag`,
+or a date phrase *together with* a schoolwork/deadline word from a closed list.
+A date phrase alone is not enough - "dinner with sarah friday" has to fall
+through to the model - and the list is an allow-list rather than a deny-list
+because no deny-list ever finishes. It also returns null when `bestMatch` finds
+an open sidequest by that name: that entry is an update, and which fields an
+update touches (and whether a note appends or replaces) is the server's call.
+Everything that returns null keeps the plain pending row it always had. A row
+of the wrong shape corrected a second later is worse than a second of nothing,
+which is the trade the whole file exists to avoid.
+
+`optimistic.ts` holds the rows that have been drawn but not confirmed. Home
+creates them and the sidequests panel renders them and the two are not in the
+same tree, so it is a module-level store with a subscription. The handover is
+gapless on purpose: when the write lands the entry is **not dropped**, it is
+given the id the server assigned, and the panel discards it only once its own
+next fetch actually contains that id. Dropping it on the response leaves the
+row missing for the length of the refetch, which is a hole opening mid-list.
+Two consequences carry: `Log.localId` exists so the timeline can key the row
+off it and the swap to the server's copy costs no remount and no replayed
+arrival (verified - the DOM node survives, and its reveal keeps running over
+the top of it); and `justParsed` is looked up by the same key, or the reveal
+loses its markup the moment the response lands. An unconfirmed panel row wears
+`.unsent`, which is only `pointer-events: none` - it looks finished, because
+that is the point, but there is no id to act against yet. It also opens itself
+with `unfold` rather than shoving its neighbours down in one frame, since it
+arrives from the parse rather than through the panel's diff.
+
+`cache.ts` is a first-frame copy of the day's timeline and the open sidequests,
+and nothing in it is trusted longer than one fetch - the real request always
+follows and replaces it. It exists because the backend sleeps after fifteen
+idle minutes, so opening the app is regularly half a minute of empty panel. Two
+things about it are load-bearing. The timeline is cached from **what is on
+screen**, not from the last fetch: almost everything that lands in a day is
+applied locally and never refetched, so caching inside `refresh` kept handing
+back the day as it looked when you opened it. And `Tasks` seeds `tasks` from
+the cache while deliberately leaving `previous.current` empty - the diff only
+marks ids it has seen before, so the real list arriving cannot animate a
+done-sweep or a reschedule against a cache that may be a day stale. Home warms
+the task cache itself on a first-ever visit, because the local parse needs the
+open sidequests to tell a new one from an entry about something tracked; on
+every later visit the panel has already written it.
+
+`outbox.ts` keeps unconfirmed entries on disk so closing the tab mid-request
+doesn't take the sentence with it. **Nothing is ever replayed automatically**:
+the backend has no idempotency key, so a request that succeeded and only lost
+its reply would come back as a duplicate. Leftovers are handed back as the same
+failed row a dead network produces, and retrying is a tap.
+
 ## Frontend architecture
 
 Hash-based router (no library): `#/` = home (daily timeline), `#/music` / `#/sleep` / `#/tasks` / etc. = dedicated dashboard pages for complex domains.

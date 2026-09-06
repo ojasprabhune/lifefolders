@@ -210,6 +210,10 @@ export type ParsedType =
 
 export interface Log {
   id: string
+  // Client-only, and set only while a locally-parsed row waits for its write
+  // to come back. The timeline keys off it so the row survives the swap to the
+  // server's copy without remounting and replaying its own arrival.
+  localId?: string
   created_at: string
   raw_input: string
   parsed_type: ParsedType

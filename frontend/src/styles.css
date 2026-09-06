@@ -3237,6 +3237,13 @@ header > .brand {
   border-bottom: 1px solid var(--line);
 }
 
+/* A sidequest drawn from a local parse, before its write has come back. It
+   looks finished on purpose - the whole point is that you can keep typing -
+   but nothing on it would have an id to save against yet. */
+.task-row-wrap.unsent {
+  pointer-events: none;
+}
+
 .task-main {
   cursor: pointer;
 }

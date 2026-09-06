@@ -9,11 +9,13 @@ import {
   patchCheckpoint,
   patchTask,
 } from './api'
+import { cacheTasks, cachedTasks } from './cache'
 import { dayLabel, dueLabel } from './dates'
 import { Expand } from './Expand'
 import { DayPlanner } from './DayPlanner'
 import { collapseAndRemove, flingOut, strikeOut, unfold, useFlipList } from './motion'
 import { lastTaskDay, rememberTaskDay } from './lastPanel'
+import { clearSettled, isOptimistic, optimisticTasks, subscribeOptimistic } from './optimistic'
 import { Panel, usePanelState } from './Panel'
 import type { FocusSession, TaskCheckpoint, TaskWithCheckpoints } from './types'
 import { Quip } from './Quip'
@@ -54,7 +56,12 @@ function diffTask(before: TaskWithCheckpoints, after: TaskWithCheckpoints): Task
 type Held = { task: TaskWithCheckpoints; mode: 'done' | 'away' }
 
 export function Tasks({ open }: { open: boolean }) {
-  const [tasks, setTasks] = useState<TaskWithCheckpoints[]>([])
+  // Seeded from the last visit so the panel has rows on its first frame
+  // instead of after a round trip to a backend that sleeps. `previous` is
+  // deliberately left empty: the diff below only marks ids it has seen
+  // before, so the real list arriving cannot animate a change against a cache
+  // that may be a day stale.
+  const [tasks, setTasks] = useState<TaskWithCheckpoints[]>(() => cachedTasks() ?? [])
   // Which day the list is pinned to (a yyyy-mm-dd), or null for everything
   // grouped by category. The today button is just this set to today. Restored
   // from the session so a reload, or a trip out to a full-page route, comes
@@ -106,6 +113,10 @@ export function Tasks({ open }: { open: boolean }) {
         }
       }
       previous.current = new Map(next.map((t) => [t.id, t]))
+      cacheTasks(next)
+      // Anything the server is now reporting for itself has been handed over,
+      // so the local copy standing in for it can go.
+      clearSettled(new Set(next.map((t) => t.id)))
       // Captured before the state change, while the old layout is still on
       // screen - a reschedule or a recategorize moves the row to a new place
       // in the sort, and the glide needs where it used to be.
@@ -179,9 +190,21 @@ export function Tasks({ open }: { open: boolean }) {
   // Substituted in place rather than appended: tasks sharing a due date are
   // ordered by their position in this array, so a held row pushed onto the end
   // visibly jumped down past its neighbours before it collapsed.
+  // Sidequests read out of a typed entry and drawn before their write came
+  // back. They live outside this tree - Home creates them - so they arrive
+  // through a subscription rather than a prop.
+  const [pending, setPending] = useState<TaskWithCheckpoints[]>(optimisticTasks)
+  useEffect(() => subscribeOptimistic(() => setPending(optimisticTasks())), [])
+  const allTasks = useMemo(() => {
+    if (pending.length === 0) return tasks
+    const have = new Set(tasks.map((t) => t.id))
+    const extra = pending.filter((t) => !have.has(t.id))
+    return extra.length === 0 ? tasks : [...tasks, ...extra]
+  }, [tasks, pending])
+
   const openTasks = useMemo(() => {
     const held = new Map(leaving.map((h) => [h.task.id, h.task]))
-    return tasks
+    return allTasks
       .flatMap((t) => {
         const standIn = held.get(t.id)
         if (standIn) return [standIn]
@@ -204,7 +227,7 @@ export function Tasks({ open }: { open: boolean }) {
         // has to land in the same place two renders running.
         return a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id)
       })
-  }, [tasks, leaving])
+  }, [allTasks, leaving])
   const heldMode = useMemo(() => new Map(leaving.map((h) => [h.task.id, h.mode])), [leaving])
   const grouped = useMemo(() => groupByCategory(openTasks), [openTasks])
   const todayStr = dateToStr(new Date())
@@ -351,6 +374,7 @@ export function Tasks({ open }: { open: boolean }) {
                   <TaskRow
                     key={t.id}
                     task={t}
+                    pending={isOptimistic(t.id)}
                     onCycle={() => void cycleStatus(t)}
                     onCheckpoint={toggleCheckpoint}
                     onDelete={() => void remove(t.id)}
@@ -368,6 +392,7 @@ export function Tasks({ open }: { open: boolean }) {
                 <TaskRow
                   key={t.id}
                   task={t}
+                  pending={isOptimistic(t.id)}
                   onCycle={() => void cycleStatus(t)}
                   onCheckpoint={toggleCheckpoint}
                   onDelete={() => void remove(t.id)}
@@ -404,6 +429,7 @@ export function Tasks({ open }: { open: boolean }) {
                 <TaskRow
                   key={t.id}
                   task={t}
+                  pending={isOptimistic(t.id)}
                   onCycle={() => void cycleStatus(t)}
                   onCheckpoint={toggleCheckpoint}
                   onDelete={() => void remove(t.id)}
@@ -757,6 +783,7 @@ function EffortPill({ task, onRefresh }: { task: TaskWithCheckpoints; onRefresh:
 
 function TaskRow({
   task,
+  pending = false,
   onCycle,
   onCheckpoint,
   onDelete,
@@ -766,6 +793,10 @@ function TaskRow({
   onLeft,
 }: {
   task: TaskWithCheckpoints
+  // Drawn from a local parse, with no row on the server yet. It reads exactly
+  // like any other sidequest; it just can't be acted on for the second or so
+  // before its write lands, because there is no id to act against.
+  pending?: boolean
   onCycle: () => void
   onCheckpoint: (id: string, status: 'todo' | 'done') => void
   onDelete: () => void
@@ -801,6 +832,14 @@ function TaskRow({
     if (leaving === 'away') flingOut(wrapRef.current, onLeft)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leaving])
+
+  // A sidequest that has just been typed. It arrives without going through
+  // the diff at all - it comes from the local parse, not from a fetch - so it
+  // opens itself rather than shoving the rows below it down in one frame.
+  useEffect(() => {
+    if (pending) unfold(wrapRef.current)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Both of these need a measured height - `auto` is not animatable - so they
   // run from here rather than as CSS on the row.
@@ -860,7 +899,9 @@ function TaskRow({
 
   return (
     <div
-      className={`task-row-wrap ${expanded ? 'open' : ''} ${marker ? `did-${marker.kind}` : ''}`}
+      className={`task-row-wrap ${expanded ? 'open' : ''} ${pending ? 'unsent' : ''} ${
+        marker ? `did-${marker.kind}` : ''
+      }`}
       ref={wrapRef}
       data-flip-id={task.id}
     >
@@ -1051,6 +1092,10 @@ function ResolvedRow({
   onDelete,
 }: {
   task: TaskWithCheckpoints
+  // Drawn from a local parse, with no row on the server yet. It reads exactly
+  // like any other sidequest; it just can't be acted on for the second or so
+  // before its write lands, because there is no id to act against.
+  pending?: boolean
   onCycle: () => void
   onDelete: () => void
 }) {

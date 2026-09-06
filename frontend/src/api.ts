@@ -23,6 +23,7 @@ import type {
   Topic,
   WishlistItem,
 } from './types'
+import { clearCaches } from './cache'
 
 const API = import.meta.env.VITE_API_URL ?? 'https://lifefolders-api.onrender.com'
 const TOKEN_KEY = 'life_token'
@@ -37,6 +38,9 @@ export function setToken(token: string) {
 
 export function clearToken() {
   localStorage.removeItem(TOKEN_KEY)
+  // The cached lists are somebody's day; they don't outlive the token that
+  // fetched them.
+  clearCaches()
 }
 
 const HIDDEN_DOMAINS_KEY = 'life_hidden_domains'
