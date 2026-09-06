@@ -322,9 +322,11 @@ pub async fn create_log(
                 let at_ts = parse_at(&at, tz_offset);
                 if action == "both" {
                     let wake_ts = parse_at(&wake_at, tz_offset);
-                    let start_log = handle_sleep(&state, raw, "start", at_ts, tz_offset).await?;
+                    // Both halves write the same row: the start opens it, the end fills it in.
+                    // Pushing the start too puts an "sleeping" row on the timeline that the
+                    // next fetch doesn't have.
+                    handle_sleep(&state, raw, "start", at_ts, tz_offset).await?;
                     let end_log = handle_sleep(&state, raw, "end", wake_ts, tz_offset).await?;
-                    logs.push(start_log);
                     logs.push(end_log);
                 } else {
                     let log = handle_sleep(&state, raw, &action, at_ts, tz_offset).await?;
