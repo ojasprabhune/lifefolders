@@ -364,7 +364,14 @@ export function Tasks({ open }: { open: boolean }) {
       )}
 
       <main className="list" ref={listRef}>
-        <div className={`task-list-view slide-${view.dir}`} key={view.key}>
+        {/* A drag cancelled with Esc leaves no dragleave behind, so the last
+            highlight would sit there until the next drag. dragend bubbles from
+            the row that started it. */}
+        <div
+          className={`task-list-view slide-${view.dir}`}
+          key={view.key}
+          onDragEnd={() => setDragOver(null)}
+        >
         {selected ? (
           <>
             {(overdue.length > 0 || overdueShown) && (
@@ -416,7 +423,17 @@ export function Tasks({ open }: { open: boolean }) {
                 e.preventDefault()
                 if (dragOver !== category) setDragOver(category)
               }}
-              onDragLeave={() => setDragOver((c) => (c === category ? null : c))}
+              // dragleave fires for every child the cursor crosses into as
+              // well, and it bubbles, so the rows inside the section blinked
+              // the highlight off and the next dragover turned it back on.
+              // Only a leave we can watch land outside the section counts: a
+              // null relatedTarget tells us nothing, and the dragend below is
+              // the backstop for the case it really was the last one.
+              onDragLeave={(e) => {
+                const to = e.relatedTarget as Node | null
+                if (!to || e.currentTarget.contains(to)) return
+                setDragOver((c) => (c === category ? null : c))
+              }}
               onDrop={(e) => {
                 e.preventDefault()
                 setDragOver(null)
