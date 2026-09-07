@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use anyhow::{anyhow, bail, Context, Result};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -10,7 +12,17 @@ use crate::models::{
 use crate::usda;
 
 const CHAT_URL: &str = "https://api.groq.com/openai/v1/chat/completions";
-const MODELS: &[&str] = &["openai/gpt-oss-120b", "openai/gpt-oss-20b"];
+// Groq meters tokens per minute per model, so each entry in this list is its own
+// budget as much as it is a fallback: one entry costs ~6k tokens of prompt against
+// an 8k/min ceiling, which a burst of typing goes through in seconds.
+const MODELS: &[&str] = &[
+    "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
+    "llama-3.3-70b-versatile",
+];
+
+/// How long a 429 may ask us to wait before it is cheaper to try the next model.
+const MAX_RETRY_WAIT: Duration = Duration::from_secs(8);
 
 #[derive(Debug, Deserialize)]
 struct ChatResponse {
@@ -606,6 +618,8 @@ async fn chat(
         None => json!("required"),
     };
 
+    let request_tools = tools(command_only, wishlist);
+
     for model in MODELS {
         let body = json!({
             "model": model,
@@ -613,32 +627,55 @@ async fn chat(
                 { "role": "system", "content": system },
                 { "role": "user", "content": raw_text }
             ],
-            "tools": tools(command_only, wishlist),
+            "tools": request_tools,
             "tool_choice": tool_choice,
             "temperature": 0.2
         });
 
-        let resp = match http
-            .post(CHAT_URL)
-            .bearer_auth(api_key)
-            .json(&body)
-            .send()
-            .await
-        {
-            Ok(r) => r,
-            Err(e) => {
-                last_err = e.into();
-                continue;
-            }
-        };
+        let mut waits_left = 2;
+        let resp = loop {
+            let resp = match http
+                .post(CHAT_URL)
+                .bearer_auth(api_key)
+                .json(&body)
+                .send()
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    last_err = e.into();
+                    break None;
+                }
+            };
 
-        if !resp.status().is_success() {
             let status = resp.status();
+            if status.is_success() {
+                break Some(resp);
+            }
+
+            // A rate-limited request burns none of the budget it was refused, and
+            // Groq says exactly when the next one will fit. Waiting out a short
+            // one here is a pause; failing back to the browser is a pause plus
+            // the retry ladder plus the round trip.
+            if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                if let Some(wait) = retry_after(&resp).filter(|w| *w <= MAX_RETRY_WAIT) {
+                    if waits_left > 0 {
+                        waits_left -= 1;
+                        let secs = wait.as_secs_f32();
+                        tracing::info!(model, secs, "groq rate limited, waiting");
+                        tokio::time::sleep(wait).await;
+                        continue;
+                    }
+                }
+            }
+
             let text = resp.text().await.unwrap_or_default();
             tracing::warn!(%status, model, "groq request failed: {text}");
             last_err = anyhow!("groq {model} returned {status}");
-            continue;
-        }
+            break None;
+        };
+
+        let Some(resp) = resp else { continue };
 
         let parsed: ChatResponse = resp.json().await?;
         let calls = parsed
@@ -665,6 +702,14 @@ async fn chat(
     }
 
     Err(last_err)
+}
+
+/// Seconds Groq asks us to wait after a 429. The header is fractional seconds
+/// ("2.53"), which `Duration::from_secs` on a parsed integer would round to zero.
+fn retry_after(resp: &reqwest::Response) -> Option<Duration> {
+    let raw = resp.headers().get("retry-after")?.to_str().ok()?;
+    let secs: f64 = raw.trim().parse().ok()?;
+    Some(Duration::from_secs_f64(secs.max(0.0)))
 }
 
 const POLISH_MODEL: &str = "openai/gpt-oss-20b";
