@@ -1357,9 +1357,19 @@ header {
    landing rather than ahead of it. This is the only reveal that animates the
    row itself, which means it replaces the generic row-in entrance rather than
    stacking with it - one animation property, and this rule comes later. */
+/* row-in is kept at the head of the list rather than replaced, and that is
+   load-bearing: when the reveal class comes off at the end of the justParsed
+   window the list changes, and animations are matched to the new list by name
+   and position. Dropping row-in and leaving only thud-land meant the element
+   came back to a *different* name in slot one, which starts it - so the row
+   blinked and wiggled through row-in a second time, 700ms after it landed.
+   Both animate transform and opacity; the later entry wins while it runs, and
+   row-in is over by 150ms anyway. */
 .row.reveal-thud {
   transform-origin: 50% 100%;
-  animation: thud-land 520ms cubic-bezier(0.36, 0, 0.24, 1) both;
+  animation:
+    row-in 150ms ease both,
+    thud-land 520ms cubic-bezier(0.36, 0, 0.24, 1) both;
 }
 
 @keyframes thud-land {
