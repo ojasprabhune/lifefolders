@@ -377,10 +377,11 @@ export function Tasks({ open }: { open: boolean }) {
             {(overdue.length > 0 || overdueShown) && (
               <section className="music-section task-section" ref={overdueRef}>
                 <h2 className="section-title overdue-title">overdue ({lastOverdue.current})</h2>
-                {overdue.map((t) => (
+                {overdue.map((t, i) => (
                   <TaskRow
                     key={t.id}
                     task={t}
+                    index={i}
                     pending={isOptimistic(t.id)}
                     onCycle={() => void cycleStatus(t)}
                     onCheckpoint={toggleCheckpoint}
@@ -395,10 +396,11 @@ export function Tasks({ open }: { open: boolean }) {
             )}
             <section className="music-section task-section">
               <h2 className="section-title">due {dueLabel(selected)}</h2>
-              {dueOnDay.map((t) => (
+              {dueOnDay.map((t, i) => (
                 <TaskRow
                   key={t.id}
                   task={t}
+                  index={i}
                   pending={isOptimistic(t.id)}
                   onCycle={() => void cycleStatus(t)}
                   onCheckpoint={toggleCheckpoint}
@@ -442,10 +444,11 @@ export function Tasks({ open }: { open: boolean }) {
               }}
             >
               <h2 className="section-title">{category}</h2>
-              {items.map((t) => (
+              {items.map((t, i) => (
                 <TaskRow
                   key={t.id}
                   task={t}
+                  index={i}
                   pending={isOptimistic(t.id)}
                   onCycle={() => void cycleStatus(t)}
                   onCheckpoint={toggleCheckpoint}
@@ -800,6 +803,7 @@ function EffortPill({ task, onRefresh }: { task: TaskWithCheckpoints; onRefresh:
 
 function TaskRow({
   task,
+  index = 0,
   pending = false,
   onCycle,
   onCheckpoint,
@@ -810,6 +814,8 @@ function TaskRow({
   onLeft,
 }: {
   task: TaskWithCheckpoints
+  // Place in the list, read only by the assemble cascade in styles.css.
+  index?: number
   // Drawn from a local parse, with no row on the server yet. It reads exactly
   // like any other sidequest; it just can't be acted on for the second or so
   // before its write lands, because there is no id to act against.
@@ -921,6 +927,7 @@ function TaskRow({
       }`}
       ref={wrapRef}
       data-flip-id={task.id}
+      style={{ ['--i' as string]: index }}
     >
       <div
         className={`task-row ${dragging ? 'dragging' : ''}`}
@@ -1109,6 +1116,8 @@ function ResolvedRow({
   onDelete,
 }: {
   task: TaskWithCheckpoints
+  // Place in the list, read only by the assemble cascade in styles.css.
+  index?: number
   // Drawn from a local parse, with no row on the server yet. It reads exactly
   // like any other sidequest; it just can't be acted on for the second or so
   // before its write lands, because there is no id to act against.

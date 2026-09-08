@@ -42,6 +42,7 @@ import { Learning } from './Learning'
 import { Music } from './Music'
 import { pickGreeting } from './greetings'
 import { usePanelState } from './Panel'
+import { isAssembling, runAssemble } from './assemble'
 import { Places } from './Places'
 import { RateModal, rateProps } from './RateModal'
 import { Search } from './Search'
@@ -188,7 +189,9 @@ export default function App() {
     homeLeft.current = left
     wasSlotted.current = slotMounted
     if (!slotMounted) bareLeft.current = left
-    if (!toggled || prefersReducedMotion()) return
+    // The assemble re-forms every part of the column where it finally stands,
+    // so gliding the column itself from where it used to be fights it.
+    if (!toggled || prefersReducedMotion() || isAssembling()) return
     // The close already glided the column while the panel was fading; the
     // layout has now caught up with where it is standing, so the transform
     // holding it there is simply dropped.
@@ -330,10 +333,14 @@ export default function App() {
 // The Render backend sleeps after 15 min idle, so a cold start can take
 // well past a normal request timeout - this surfaces that state instead of
 // letting an entry just silently fail to parse.
+// The title is the assemble button. It still behaves like a link - the panel
+// it opens is a real route - but the sequence is fired here rather than off the
+// hash change, so clicking it again while sidequests is already open replays
+// the whole thing instead of doing nothing.
 function Brand() {
   return (
     <h1 className="brand">
-      <a className="brand-link" href="#/">
+      <a className="brand-link" href="#/tasks" onClick={() => runAssemble()}>
         life
         <span className="brand-sub">folders.</span>
       </a>
@@ -871,6 +878,7 @@ function Home() {
 
   const visible = logs.filter((l) => matches(l, category) && !hiddenParsedTypes.has(l.parsed_type))
   const visibleFilters = FILTERS.filter((f) => f.value === 'all' || !hiddenFilterValues.has(f.value))
+  const navCount = DOMAINS.filter((d) => d.navHref && !hiddenDomains.includes(d.id)).length
   const totalCals = logs
     .filter((l) => l.parsed_type === 'nutrition')
     .reduce((sum, l) => sum + (Number((l.data as { calories?: number }).calories) || 0), 0)
@@ -880,12 +888,12 @@ function Home() {
       <header>
         <Brand />
         <nav className="header-nav">
-          {DOMAINS.filter((d) => d.navHref && !hiddenDomains.includes(d.id)).map((d) => (
-            <a key={d.id} className="guide-link" href={d.navHref}>
+          {DOMAINS.filter((d) => d.navHref && !hiddenDomains.includes(d.id)).map((d, i) => (
+            <a key={d.id} className="guide-link" href={d.navHref} style={{ ['--i' as string]: i }}>
               {d.label}
             </a>
           ))}
-          <a className="guide-link" href="#/guide">
+          <a className="guide-link" href="#/guide" style={{ ['--i' as string]: navCount }}>
             guide
           </a>
         </nav>
@@ -975,9 +983,10 @@ function Home() {
           </button>
         </div>
         <div className="filters">
-          {visibleFilters.map((f) => (
+          {visibleFilters.map((f, i) => (
             <button
               key={f.value}
+              style={{ ['--i' as string]: i }}
               className={`filter ${category === f.value ? 'active' : ''}`}
               onClick={() => {
                 captureRows()
@@ -1034,8 +1043,9 @@ function Home() {
               </span>
             </div>
           ))}
-        {visible.map((log) => (
+        {visible.map((log, i) => (
           <Row
+            index={i}
             // Both keyed off the local id where there is one, so the row a
             // local parse drew keeps its identity - and its reveal - when the
             // server's copy replaces it a moment later.

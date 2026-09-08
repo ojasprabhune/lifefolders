@@ -140,8 +140,15 @@ export function DailyPlan() {
         </span>
       </div>
       <div className="daily-grid">
-        <AutoField label="today" value={today_text} onChange={onToday} placeholder="what's the plan…" />
         <AutoField
+          index={0}
+          label="today"
+          value={today_text}
+          onChange={onToday}
+          placeholder="what's the plan…"
+        />
+        <AutoField
+          index={1}
           label="tomorrow"
           value={tomorrow_text}
           onChange={onTomorrow}
@@ -153,11 +160,14 @@ export function DailyPlan() {
 }
 
 function AutoField({
+  index,
   label,
   value,
   onChange,
   placeholder,
 }: {
+  // Place in the assemble cascade, read only by styles.css.
+  index: number
   label: string
   value: string
   onChange: (v: string) => void
@@ -172,7 +182,7 @@ function AutoField({
   }, [value])
 
   return (
-    <label className="daily-field">
+    <label className="daily-field" style={{ ['--i' as string]: index }}>
       <span className="daily-label">{label}</span>
       <textarea
         ref={ref}

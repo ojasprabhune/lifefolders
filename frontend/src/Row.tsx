@@ -24,6 +24,8 @@ import type {
 
 interface RowProps {
   log: Log
+  // Place in the list, read only by the assemble cascade in styles.css.
+  index?: number
   justParsed: boolean
   restored: boolean
   expanded: boolean
@@ -334,6 +336,7 @@ function scatter(i: number): React.CSSProperties {
 
 export function Row({
   log,
+  index = 0,
   justParsed,
   restored,
   expanded,
@@ -374,6 +377,7 @@ export function Row({
       className={`row-wrap ${expanded ? 'open' : ''} ${restored ? 'restored' : ''}`}
       ref={wrapRef}
       data-flip-id={log.id}
+      style={{ ['--i' as string]: index }}
     >
       <div className={`row ${reveal ? `reveal-${reveal}` : ''}`} onClick={onToggle}>
         <span className="row-time">{rowTime(log)}</span>
