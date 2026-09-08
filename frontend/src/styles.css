@@ -223,6 +223,8 @@ header {
 }
 
 .brand {
+  /* For the assemble's typing caret, which is drawn at the clip's edge. */
+  position: relative;
   font-family: 'mencken-std-text', serif;
   font-weight: 400;
   font-style: italic;
@@ -3073,6 +3075,8 @@ header > .brand {
 /* daily plan */
 
 .daily {
+  /* For the assemble's drawn outline, which is an overlay on this box. */
+  position: relative;
   margin-top: 20px;
   border: 1px solid var(--line);
   padding: 12px 16px 14px;
@@ -5550,20 +5554,22 @@ html.paddle-out * {
    the one before, which is the only way the order stays readable:
 
      0     the title's point appears and grows into two lines - in the middle
-           of the window, at four times its size
+           of the window, drawn at its full size on the stage
      560   the lines have carried the word open, and it holds
      700   it flies to its real place in the header, shrinking as it goes
-     1060  it lands. nothing else has started before this
+     1060  it lands and hands over to the real title. nothing else has started
      1080  nav links trickle in
      1140  a line draws itself across the middle of the entry box
-     1440  the line swoops down onto the input, and the placeholder and the mic
-           come up behind it
-     1740  today and tomorrow open from a line each, one then the other
+     1440  the line swoops down and becomes the underline; the placeholder and
+           the mic come up behind it
+     1740  the day box's outline is drawn clockwise
      2060  the dateline slides in and the chips click into place
-     2060  the panel's header; 2140 the day strip spins to a stop on today
+     2060  the panel's header types itself out
+     2140  the day strip is thrown, and runs a long way down to today
      2160  the day's rows drop
-     2420  sidequests slam down one at a time, each rippling red as it lands
-     3800  the stamp comes down last, flashes, and throws five marks
+     2460  today and tomorrow are typed out, one then the other
+     2700  sidequests slam down one at a time, each rippling red as it lands
+     4100  the stamp comes down last, flashes, and throws five marks
 
    Two rules are load-bearing and both are the reveals' rules. **Nothing here
    may sit on an element that already carries an `animation` of its own** -
@@ -5580,6 +5586,18 @@ html.paddle-out * {
    everything inside is therefore hidden by the parent no matter what its own
    first frame looks like. */
 
+@property --type {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 0%;
+}
+
+@property --draw {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
 @keyframes hud-gate {
   from {
     opacity: 0;
@@ -5589,11 +5607,6 @@ html.paddle-out * {
 .assembling .input-wrap {
   animation: hud-gate 1ms linear both;
   animation-delay: 1140ms;
-}
-
-.assembling .daily {
-  animation: hud-gate 1ms linear both;
-  animation-delay: 1740ms;
 }
 
 .assembling .dateline {
@@ -5613,66 +5626,96 @@ html.paddle-out * {
 
 .assembling .side-panel > .list {
   animation: hud-gate 1ms linear both;
-  animation-delay: 2360ms;
+  animation-delay: 2600ms;
 }
 
-/* The title, which is the whole first act. A point appears at its centre,
-   grows into two vertical lines, and they carry the edges of the word apart
-   with them - so it is uncovered rather than drawn - all of it in the middle
-   of the window at several times its size. Then it flies to the header.
-
-   The flight is one transform on the h1, which is a block and so transformable
-   where the inline link inside it is not. The clip that does the uncovering is
-   on that link, which is what keeps the lines - the h1's own pseudo-elements -
-   outside their own reveal. Setting `display` on the link to make it a box
-   instead is what an earlier version did, and it changed the height of the
-   header's line box: the nav sat 23px lower for the length of the run and
-   snapped back up at the end, taking the whole page below it along. clip-path
-   applies to an inline perfectly well. */
-.assembling .app > header {
-  position: relative;
-  z-index: 50;
+/* The title's opening act, played on its own copy of the word. See
+   AssembleStage in App.tsx for why it is a copy rather than the real one
+   scaled up. The two lines are the stage word's pseudo-elements and the clip
+   that uncovers the word is on the word itself - the caret trick further down
+   is what lets one element carry both a clip and something drawn at its
+   edge, but here the lines travel well past the clip, so they have to be
+   pseudo-elements of an element the clip is *not* on. Hence the wrapper. */
+.brand-stage {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 80;
 }
 
-.assembling .app > header .brand {
+.brand-stage-word {
   position: relative;
+  font-family: 'mencken-std-text', serif;
+  font-weight: 400;
+  font-style: italic;
+  font-size: min(190px, 19vw);
+  line-height: 1;
+  letter-spacing: -0.01em;
+  color: var(--ink);
   transform-origin: 50% 50%;
-  animation: brand-fly 1060ms cubic-bezier(0.6, 0, 0.2, 1) both;
 }
 
-@keyframes brand-fly {
+/* Proportional to the stage's own size, so the copy is a true scale of the
+   real title and the two coincide when the flight lands. The base rule sets
+   these in px against a 46px title. */
+.brand-stage-word .brand-sub {
+  font-size: 0.457em;
+  --bleed-x: 0.714em;
+  --bleed-y: 0.81em;
+}
+
+.assembling .brand-stage {
+  animation: stage-hold 1160ms linear both;
+}
+
+@keyframes stage-hold {
   0%,
-  60% {
-    transform: translate(var(--brand-dx, 0), var(--brand-dy, 0)) scale(var(--brand-scale, 3));
+  88% {
+    opacity: 1;
   }
   100% {
-    transform: none;
+    opacity: 0;
   }
 }
 
-.assembling .app > header .brand::before,
-.assembling .app > header .brand::after {
+.assembling .brand-stage-word {
+  animation:
+    stage-fly 1060ms cubic-bezier(0.6, 0, 0.2, 1) both,
+    brand-unveil 560ms cubic-bezier(0.55, 0, 0.2, 1) both;
+}
+
+@keyframes stage-fly {
+  0%,
+  60% {
+    transform: none;
+  }
+  100% {
+    transform: translate(var(--stage-dx, 0), var(--stage-dy, 0)) scale(var(--stage-scale, 0.25));
+  }
+}
+
+.assembling .brand-stage-word::before,
+.assembling .brand-stage-word::after {
   content: '';
   position: absolute;
-  top: -6px;
-  bottom: -6px;
-  width: 2px;
+  top: -0.06em;
+  bottom: -0.06em;
+  width: 0.014em;
   background: var(--flash);
-  box-shadow: 0 0 12px 1px var(--accent);
+  box-shadow: 0 0 0.09em 0.012em var(--accent);
   z-index: 2;
   pointer-events: none;
 }
 
-.assembling .app > header .brand::before {
+.assembling .brand-stage-word::before {
   animation: brand-split-left 560ms cubic-bezier(0.55, 0, 0.2, 1) both;
 }
 
-.assembling .app > header .brand::after {
+.assembling .brand-stage-word::after {
   animation: brand-split-right 560ms cubic-bezier(0.55, 0, 0.2, 1) both;
-}
-
-.assembling .app > header .brand-link {
-  animation: brand-unveil 560ms cubic-bezier(0.55, 0, 0.2, 1) both;
 }
 
 @keyframes brand-split-left {
@@ -5721,20 +5764,35 @@ html.paddle-out * {
   }
 }
 
-/* The vertical insets are pixels, and deliberately far bigger than the title.
-   `.brand-sub` is a block inside the inline link, which breaks that inline into
-   fragments - so the clip's reference box is only the *first* line, and a
-   percentage inset measured against it cut "folders." in half. Pixels large
-   enough to clear any line box mean the clip only ever does what it is here to
-   do, which is open horizontally. */
+/* Insets in em rather than percentages: the reference box is only the first
+   line, because .brand-sub is a block inside an inline and that breaks the
+   inline into fragments. A percentage measured against it cut "folders." in
+   half. Anything comfortably taller than a line box does the job. */
 @keyframes brand-unveil {
   0%,
   22% {
-    clip-path: inset(-80px 50% -80px 50%);
+    clip-path: inset(-1em 50% -1em 50%);
   }
   88%,
   100% {
-    clip-path: inset(-80px -20px -80px -20px);
+    clip-path: inset(-1em -0.1em -1em -0.1em);
+  }
+}
+
+/* The real title, which does nothing but wait and then take over. The stage is
+   still fading as this comes up, so a small mismatch between the two - the
+   sub's bleed padding does not scale perfectly - is crossed rather than cut. */
+.assembling .app > header .brand-link {
+  animation: title-handoff 1160ms linear both;
+}
+
+@keyframes title-handoff {
+  0%,
+  88% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
   }
 }
 
@@ -5762,10 +5820,11 @@ html.paddle-out * {
 }
 
 /* The entry box is built rather than revealed: a bright line draws itself
-   across the middle of it, then swoops down and becomes the underline, and
-   the placeholder and the mic come up behind it as it passes. The input's own
-   2px border is what the line hands over to, so it is held transparent until
-   the moment they meet. */
+   across the middle of it, then swoops down and becomes the underline, and the
+   placeholder and the mic come up behind it as it passes. The handover has to
+   overlap - the input's own 2px border is painted *before* the line starts
+   fading, or there is a frame or two with neither of them and the whole thing
+   reads as a blink. */
 .assembling .input-wrap::before {
   content: '';
   position: absolute;
@@ -5776,7 +5835,7 @@ html.paddle-out * {
   background: var(--flash);
   box-shadow: 0 0 16px 2px var(--accent);
   pointer-events: none;
-  animation: entry-line 580ms cubic-bezier(0.4, 0, 0.2, 1) both;
+  animation: entry-line 640ms cubic-bezier(0.4, 0, 0.2, 1) both;
   animation-delay: 1140ms;
 }
 
@@ -5788,11 +5847,12 @@ html.paddle-out * {
   6% {
     opacity: 1;
   }
-  46% {
+  42% {
     opacity: 1;
     transform: translateY(-24px) scaleX(1);
   }
-  84% {
+  72%,
+  86% {
     opacity: 1;
     transform: translateY(0) scaleX(1);
   }
@@ -5803,18 +5863,26 @@ html.paddle-out * {
 }
 
 .assembling .entry-input {
-  animation: entry-arrive 300ms cubic-bezier(0.2, 0.9, 0.3, 1) both;
+  animation: entry-arrive 420ms cubic-bezier(0.2, 0.9, 0.3, 1) both;
   animation-delay: 1440ms;
 }
 
+/* 55% is 1671ms, which is where entry-line puts the line on the underline -
+   the border is already there when the line begins to go. */
 @keyframes entry-arrive {
   0% {
     opacity: 0;
     border-bottom-color: transparent;
     transform: translateY(5px);
   }
-  70% {
+  54% {
     border-bottom-color: transparent;
+  }
+  55% {
+    border-bottom-color: var(--ink);
+  }
+  70% {
+    opacity: 1;
   }
   100% {
     opacity: 1;
@@ -5827,77 +5895,186 @@ html.paddle-out * {
   animation-delay: 1560ms;
 }
 
-/* Boxes of content open from a horizontal line at their own middle, with the
-   line left behind as a flash that fades. The clip ends outside the box rather
-   than flush with it, so nothing sits clipped for the seconds between the
-   animation finishing and the class coming off. */
-.assembling .daily,
-.assembling .daily-field {
-  position: relative;
-  animation: hud-open 340ms cubic-bezier(0.2, 0.9, 0.3, 1) both;
+/* The day box is drawn rather than opened: an overlay carrying the same 1px
+   border is revealed by a conic mask whose angle runs from 0 to 360, so the
+   front travels the perimeter clockwise. The box's own border is held
+   transparent until the drawing hand gets back to the top. */
+.assembling .daily {
+  animation:
+    hud-gate 1ms linear both,
+    box-border 720ms linear both;
+  animation-delay: 1740ms, 1740ms;
 }
 
-.assembling .daily::after,
-.assembling .daily-field::after {
+@keyframes box-border {
+  0%,
+  89% {
+    border-color: transparent;
+  }
+  90%,
+  100% {
+    border-color: var(--line);
+  }
+}
+
+.assembling .daily::before {
   content: '';
   position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  height: 2px;
-  background: var(--flash);
-  box-shadow: 0 0 16px 2px var(--accent);
+  inset: 0;
+  border: 1px solid var(--line);
   pointer-events: none;
-  animation: hud-flashline 380ms ease-out both;
-}
-
-@keyframes hud-open {
-  0% {
-    opacity: 0;
-    clip-path: inset(49% 0 49% 0);
-  }
-  8% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 1;
-    clip-path: inset(-40% 0 -40% 0);
-  }
-}
-
-@keyframes hud-flashline {
-  0% {
-    transform: scaleX(0.1);
-    opacity: 0;
-  }
-  8% {
-    transform: scaleX(0.1);
-    opacity: 1;
-  }
-  40% {
-    transform: scaleX(1);
-    opacity: 1;
-  }
-  100% {
-    transform: scaleX(1);
-    opacity: 0;
-  }
-}
-
-.assembling .daily {
+  -webkit-mask-image: conic-gradient(from 0deg, #000 var(--draw), transparent 0);
+  mask-image: conic-gradient(from 0deg, #000 var(--draw), transparent 0);
+  animation: box-draw 720ms cubic-bezier(0.4, 0, 0.3, 1) both;
   animation-delay: 1740ms;
 }
 
-.assembling .daily::after {
-  animation-delay: 1740ms;
+/* The overlay hands the border back at 90% and is gone by the end. Left up, it
+   sat a second 1px line exactly on top of the real one for the rest of the run,
+   so the box changed under you when the class came off. */
+@keyframes box-draw {
+  0% {
+    --draw: 0deg;
+    opacity: 1;
+  }
+  89% {
+    --draw: 356deg;
+    opacity: 1;
+  }
+  100% {
+    --draw: 360deg;
+    opacity: 0;
+  }
 }
 
-.assembling .daily-field {
-  animation-delay: calc(1860ms + var(--i, 0) * 110ms);
+.assembling .daily-head,
+.assembling .daily-label {
+  animation: hud-trickle 300ms cubic-bezier(0.2, 0.9, 0.3, 1) both;
+  animation-delay: 2400ms;
 }
 
-.assembling .daily-field::after {
-  animation-delay: calc(1860ms + var(--i, 0) * 110ms);
+/* Typed out a character at a time behind a caret. The clip and the caret are
+   driven by the same animated --type, and the caret is drawn at
+   `--type - 2px`, which is *inside* the clip - that is the whole trick, and it
+   is what lets one element carry both without a wrapper. The percentages are
+   of the element's own width, so on anything sized to its content the caret
+   stops exactly where the words stop. */
+.daily-typewrap {
+  display: block;
+  position: relative;
+}
+
+.daily-typed {
+  position: absolute;
+  left: 0;
+  top: 0;
+  max-width: 100%;
+  font-family: inherit;
+  font-weight: 500;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--ink);
+  white-space: pre-wrap;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.daily-typed.ghost {
+  color: var(--faint);
+}
+
+.assembling .daily-typed {
+  animation: type-out 900ms steps(30) both;
+  clip-path: inset(-2px calc(100% - var(--type) - 4px) -2px -2px);
+}
+
+.assembling .daily-typed::after {
+  content: '';
+  position: absolute;
+  top: 0.1em;
+  height: 1.1em;
+  left: calc(var(--type) - 2px);
+  width: 2px;
+  background: var(--accent);
+  animation: type-caret 900ms steps(30) both;
+}
+
+/* The reveal front runs a few pixels ahead of the caret, so the character being
+   typed is already there beside it rather than half cut - and so the finished
+   state clips nothing at all. */
+@keyframes type-sweep {
+  from {
+    --type: 0%;
+  }
+  to {
+    --type: 100%;
+  }
+}
+
+/* The same sweep, but for the overlay that has a real field to hand back to:
+   it goes out at the end while the field underneath comes up. */
+@keyframes type-out {
+  0% {
+    opacity: 0;
+    --type: 0%;
+  }
+  1% {
+    opacity: 1;
+    --type: 0%;
+  }
+  92% {
+    opacity: 1;
+    --type: 100%;
+  }
+  100% {
+    opacity: 0;
+    --type: 100%;
+  }
+}
+
+/* Invisible at 0% as well as at the end: a `both` fill holds the first frame
+   through the delay, and a caret parked at full opacity is a red tick sitting
+   on an otherwise empty screen for two seconds before its turn. Gone a beat
+   before the text hands back to the real field, so the swap is never
+   something you can catch. */
+@keyframes type-caret {
+  0% {
+    opacity: 0;
+  }
+  1%,
+  88% {
+    opacity: 1;
+  }
+  89%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.assembling .daily-text {
+  animation: field-handback 900ms linear both;
+}
+
+@keyframes field-handback {
+  0%,
+  86% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.assembling .daily-field:nth-child(1) .daily-typed,
+.assembling .daily-field:nth-child(1) .daily-typed::after,
+.assembling .daily-field:nth-child(1) .daily-text {
+  animation-delay: 2460ms;
+}
+
+.assembling .daily-field:nth-child(2) .daily-typed,
+.assembling .daily-field:nth-child(2) .daily-typed::after,
+.assembling .daily-field:nth-child(2) .daily-text {
+  animation-delay: 2660ms;
 }
 
 /* The dateline: the date slides over from the left, the chips click into place
@@ -5967,36 +6144,57 @@ html.paddle-out * {
   }
 }
 
-/* The panel's own furniture, arriving under its slide-in rather than instead
-   of it - .side-panel keeps panel-in and is not touched here. */
-.assembling .side-panel > header {
-  animation-name: hud-gate, hud-trickle;
-  animation-duration: 1ms, 340ms;
-  animation-timing-function: linear, cubic-bezier(0.2, 0.9, 0.3, 1);
+/* The panel's title types itself out. It is a flex item, so it is already the
+   width of its own text and the caret lands where the word ends without
+   anything having to measure it. The caret is only as tall as the title line;
+   the quip underneath comes in behind the same sweep. */
+.assembling .side-panel > header .brand {
+  animation:
+    hud-gate 1ms linear both,
+    type-sweep 700ms steps(11) both;
   animation-delay: 2060ms, 2060ms;
-  animation-fill-mode: both, both;
+  clip-path: inset(-4px calc(100% - var(--type) - 6px) -4px -4px);
 }
 
-/* The day strip arrives the way you would get there by hand: thrown along and
-   left to run out, blurred while it is moving, settling on today. The columns
-   all carry the same transform, which is what makes it read as one strip
-   scrolling rather than a row of things sliding. Today is already the column
-   the strip is scrolled to - DueStrip does that on mount - so this only has to
-   look like the journey, and never touches scrollLeft, which the user may have
-   moved by then. */
+.assembling .side-panel > header .brand::after {
+  content: '';
+  position: absolute;
+  top: 0.06em;
+  height: 0.86em;
+  left: calc(var(--type) - 3px);
+  width: 3px;
+  background: var(--accent);
+  animation: type-caret 700ms steps(11) both;
+  animation-delay: 2060ms;
+}
+
+.assembling .side-panel > header .header-nav .guide-link {
+  animation: hud-trickle 300ms cubic-bezier(0.2, 0.9, 0.3, 1) both;
+  animation-delay: calc(2700ms + min(var(--i, 0), 6) * 60ms);
+}
+
+/* The day strip is thrown and left to run out: a very long way, blurred while
+   it is moving, decelerating hard onto today. The columns all carry the same
+   transform, which is what makes it read as one strip scrolling rather than a
+   row of things sliding. Today is already the column the strip is scrolled to
+   - DueStrip does that on mount - so this only has to look like the journey,
+   and never touches scrollLeft, which the user may have moved by then. */
 .assembling .side-panel .due-col {
-  animation: strip-spin 900ms cubic-bezier(0.1, 0.85, 0.15, 1) both;
+  animation: strip-spin 1400ms cubic-bezier(0.06, 0.92, 0.12, 1) both;
   animation-delay: 2140ms;
 }
 
 @keyframes strip-spin {
   0% {
     opacity: 0;
-    transform: translateX(420px);
-    filter: blur(4px);
+    transform: translateX(2800px);
+    filter: blur(9px);
   }
-  12% {
+  8% {
     opacity: 1;
+  }
+  70% {
+    filter: blur(3px);
   }
   100% {
     opacity: 1;
@@ -6007,7 +6205,7 @@ html.paddle-out * {
 
 .assembling .side-panel .section-title {
   animation: hud-in-left 300ms cubic-bezier(0.2, 0.9, 0.3, 1) both;
-  animation-delay: 2380ms;
+  animation-delay: 2620ms;
 }
 
 /* Sidequests are the point of the whole sequence: one at a time and well
@@ -6020,7 +6218,7 @@ html.paddle-out * {
 .assembling .task-row-wrap {
   position: relative;
   animation: hud-slamdown 280ms cubic-bezier(0.55, 0, 1, 0.5) both;
-  animation-delay: calc(2420ms + min(var(--i, 0), 6) * 150ms);
+  animation-delay: calc(2700ms + min(var(--i, 0), 6) * 150ms);
 }
 
 @keyframes hud-slamdown {
@@ -6052,7 +6250,7 @@ html.paddle-out * {
   background-repeat: no-repeat;
   background-size: 240% 100%;
   animation: hud-ripple 440ms cubic-bezier(0.25, 0.8, 0.4, 1) both;
-  animation-delay: calc(2600ms + min(var(--i, 0), 6) * 150ms);
+  animation-delay: calc(2880ms + min(var(--i, 0), 6) * 150ms);
 }
 
 @keyframes hud-ripple {
@@ -6077,7 +6275,7 @@ html.paddle-out * {
    itself that are gone almost before you see them. */
 .assembling .send-btn.stamp {
   animation: hud-slam 320ms cubic-bezier(0.3, 1.5, 0.5, 1) both;
-  animation-delay: 3800ms;
+  animation-delay: 4100ms;
 }
 
 @keyframes hud-slam {
@@ -6115,7 +6313,7 @@ html.paddle-out * {
 
 .assembling .assemble-stamp {
   animation: stamp-throw 380ms cubic-bezier(0.2, 0.9, 0.3, 1) both;
-  animation-delay: 4060ms;
+  animation-delay: 4360ms;
 }
 
 @keyframes stamp-throw {
@@ -6135,16 +6333,18 @@ html.paddle-out * {
 
 /* Below the shared reduced-motion block, so it needs its own. The ones that
    have to go rather than stand still are the ones with no resting state: the
-   title's two lines, a flash line, the ripple, the thrown marks. */
+   stage, the title's two lines, the drawn border, a caret, the ripple, the
+   thrown marks. */
 @media (prefers-reduced-motion: reduce) {
-  .assembling .app > header .brand,
   .assembling .app > header .brand-link,
   .assembling .app > header .header-nav .guide-link,
   .assembling .input-wrap,
   .assembling .entry-input,
   .assembling .mic-btn,
   .assembling .daily,
-  .assembling .daily-field,
+  .assembling .daily-head,
+  .assembling .daily-label,
+  .assembling .daily-text,
   .assembling .dateline,
   .assembling .datenav,
   .assembling .filter,
@@ -6152,7 +6352,8 @@ html.paddle-out * {
   .assembling .day-list,
   .assembling .day-list .row-wrap,
   .assembling .day-list .empty,
-  .assembling .side-panel > header,
+  .assembling .side-panel > header .brand,
+  .assembling .side-panel > header .header-nav .guide-link,
   .assembling .side-panel > .list,
   .assembling .side-panel .due-strip,
   .assembling .side-panel .due-col,
@@ -6162,11 +6363,17 @@ html.paddle-out * {
     animation: none;
   }
 
-  .assembling .app > header .brand::before,
-  .assembling .app > header .brand::after,
+  .assembling .side-panel > header .brand {
+    clip-path: none;
+  }
+
+  .assembling .brand-stage,
+  .assembling .brand-stage-word::before,
+  .assembling .brand-stage-word::after,
   .assembling .input-wrap::before,
-  .assembling .daily::after,
-  .assembling .daily-field::after,
+  .assembling .daily::before,
+  .assembling .daily-typed,
+  .assembling .side-panel > header .brand::after,
   .assembling .task-row-wrap::after,
   .assembling .assemble-stamp {
     display: none;

@@ -9,11 +9,7 @@
 // the same coupling `justParsed` has with the row reveals.
 const RUN_MS = 4700
 
-// How big the title gets while it is centre stage, and how much of the window
-// it is allowed to fill on a narrow one - the shell clips horizontally, so a
-// title wider than the window would have its ends cut off.
-const TITLE_SCALE_MAX = 4.2
-const TITLE_WIDTH_SHARE = 0.72
+
 
 let timer: number | undefined
 
@@ -35,19 +31,20 @@ export function isAssembling(): boolean {
   return document.documentElement.classList.contains('assembling')
 }
 
-// The title's run starts in the middle of the window at several times its size
-// and ends where it actually lives, which is a distance CSS has no way to ask
-// for. It is measured here and handed over as three custom properties for the
-// keyframes to use. Read *after* the class comes off and layout is flushed:
-// a rect taken while the previous run's transform was still applied would be
-// that transform's doing, and every following run would drift.
+// The stage's copy of the title has to end its flight sitting exactly on the
+// real one, and how far that is - and how much smaller - is something CSS has
+// no way to ask for. Both are measured here and handed over for the keyframes
+// to use. Read *after* the class comes off and layout is flushed: a rect taken
+// while the previous run's transform was still applied would be that
+// transform's doing, and every following run would drift.
 function measureTitle(root: HTMLElement) {
-  const brand = document.querySelector('.app > header .brand')
-  if (!brand) return
-  const box = brand.getBoundingClientRect()
-  if (box.width === 0) return
-  const scale = Math.min(TITLE_SCALE_MAX, (window.innerWidth * TITLE_WIDTH_SHARE) / box.width)
-  root.style.setProperty('--brand-dx', `${window.innerWidth / 2 - (box.left + box.width / 2)}px`)
-  root.style.setProperty('--brand-dy', `${window.innerHeight / 2 - (box.top + box.height / 2)}px`)
-  root.style.setProperty('--brand-scale', String(scale))
+  const real = document.querySelector('.app > header .brand')
+  const stage = document.querySelector('.brand-stage-word')
+  if (!real || !stage) return
+  const to = real.getBoundingClientRect()
+  const from = stage.getBoundingClientRect()
+  if (to.width === 0 || from.width === 0) return
+  root.style.setProperty('--stage-dx', `${to.left + to.width / 2 - (from.left + from.width / 2)}px`)
+  root.style.setProperty('--stage-dy', `${to.top + to.height / 2 - (from.top + from.height / 2)}px`)
+  root.style.setProperty('--stage-scale', String(to.width / from.width))
 }

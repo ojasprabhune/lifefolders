@@ -184,14 +184,24 @@ function AutoField({
   return (
     <label className="daily-field" style={{ ['--i' as string]: index }}>
       <span className="daily-label">{label}</span>
-      <textarea
-        ref={ref}
-        className="daily-text"
-        rows={1}
-        value={value}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-      />
+      <span className="daily-typewrap">
+        <textarea
+          ref={ref}
+          className="daily-text"
+          rows={1}
+          value={value}
+          placeholder={placeholder}
+          onChange={(e) => onChange(e.target.value)}
+        />
+        {/* The copy the assemble types out. A textarea's own text can't be
+            revealed a character at a time - and the caret has to stop where
+            the words stop, which needs an element the width of the text
+            rather than the width of the field. Inert and invisible unless a
+            run is going. */}
+        <span className={`daily-typed ${value ? '' : 'ghost'}`} aria-hidden="true">
+          {value || placeholder}
+        </span>
+      </span>
     </label>
   )
 }

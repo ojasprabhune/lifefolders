@@ -334,6 +334,7 @@ export default function App() {
   return (
     <>
       {content}
+      <AssembleStage />
       <SleepReminder />
       <FocusPill route={route} />
       <Fidgets route={route} showClock={showClock} />
@@ -356,6 +357,24 @@ function Brand() {
         <span className="brand-sub">folders.</span>
       </a>
     </h1>
+  )
+}
+
+// Where the title plays its opening. It is a second copy of the word rather
+// than the real one scaled up, and that is the whole point: a transform scales
+// the raster the text was drawn at, so `scale(4)` on a 46px title is a 46px
+// title blown up - soft and stepped. This one is *drawn* at the big size and
+// scales down onto the real one, which is the direction that stays sharp. It
+// is fixed, outside every clip and every column, and only ever visible while
+// an assemble is running.
+function AssembleStage() {
+  return (
+    <div className="brand-stage" aria-hidden="true">
+      <span className="brand-stage-word">
+        life
+        <span className="brand-sub">folders.</span>
+      </span>
+    </div>
   )
 }
 
