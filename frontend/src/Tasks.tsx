@@ -615,7 +615,16 @@ function formatDueTime(timeStr: string): string {
 // to travel over, and how long it stays there. The strip only reaches five days
 // into the past, which is a hundred and fifty pixels - nothing to scroll. These
 // are borrowed for the run and taken away again the moment it stops.
-const RUNWAY_DAYS = 34
+const RUNWAY_DAYS = 42
+
+// Where the strip has to be scrolled to for today to sit at its left edge.
+// Measured off the rects rather than offsetLeft, which is the trap here: the
+// strip is not positioned, so a column's offsetParent is the *panel*, and the
+// number came back 24px large - the panel's own padding - and the strip landed
+// a sliver past the day it was aiming at.
+function todayScroll(strip: HTMLElement, today: HTMLElement): number {
+  return strip.scrollLeft + (today.getBoundingClientRect().left - strip.getBoundingClientRect().left)
+}
 
 function DueStrip({
   days,
@@ -656,19 +665,14 @@ function DueStrip({
         const strip = stripRef.current
         const today = todayRef.current
         if (!strip || !today) return setRunway(0)
-        const to = today.offsetLeft
-        const from = 0
-        strip.scrollLeft = from
+        const to = todayScroll(strip, today)
+        strip.scrollLeft = 0
         const t0 = performance.now()
         const step = () => {
           const p = Math.min(1, (performance.now() - t0) / STRIP_RUN_MS)
-          // Flat out for most of the way and then all of the braking at the
-          // end. A plain ease-out puts nearly all the travel in the first few
-          // frames and then crawls, which reads as a stall rather than as a
-          // strip running out of speed.
-          const eased =
-            p < 0.72 ? (p / 0.72) * 0.87 : 0.87 + 0.13 * (1 - Math.pow(1 - (p - 0.72) / 0.28, 3))
-          strip.scrollLeft = from + (to - from) * eased
+          // Thrown, then friction: all of the speed is at the start and it
+          // runs out on its own. Nothing here is at a constant rate.
+          strip.scrollLeft = to * (1 - Math.pow(1 - p, 3))
           if (p < 1) requestAnimationFrame(step)
           else setRunway(0)
         }
@@ -690,9 +694,7 @@ function DueStrip({
     if (runway !== 0) return
     const strip = stripRef.current
     const today = todayRef.current
-    if (strip && today && strip.scrollLeft !== today.offsetLeft) {
-      strip.scrollLeft = today.offsetLeft
-    }
+    if (strip && today) strip.scrollLeft = todayScroll(strip, today)
   }, [runway])
 
   const runwayDays = useMemo(() => {

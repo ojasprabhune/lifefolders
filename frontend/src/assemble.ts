@@ -7,13 +7,13 @@
 // Has to outlast the last thing to finish, which is the stamp's own marks at
 // the very end. Cut this shorter and pieces lose their animation mid-flight,
 // the same coupling `justParsed` has with the row reveals.
-const RUN_MS = 11000
+const RUN_MS = 9800
 
 // The one part of the sequence that is not a CSS animation: the day strip is
 // scrolled by hand, so DueStrip needs to know when its turn is. Keep these in
 // step with the strip's own delays in styles.css.
-export const STRIP_START_MS = 5900
-export const STRIP_RUN_MS = 1700
+export const STRIP_START_MS = 4300
+export const STRIP_RUN_MS = 1400
 
 let timer: number | undefined
 let startedAt = 0
