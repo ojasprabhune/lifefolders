@@ -198,7 +198,11 @@ function AutoField({
             the words stop, which needs an element the width of the text
             rather than the width of the field. Inert and invisible unless a
             run is going. */}
-        <span className={`daily-typed ${value ? '' : 'ghost'}`} aria-hidden="true">
+        <span
+          className={`daily-typed ${value ? '' : 'ghost'}`}
+          aria-hidden="true"
+          style={{ ['--steps' as string]: Math.max(1, (value || placeholder).length) }}
+        >
           {value || placeholder}
         </span>
       </span>

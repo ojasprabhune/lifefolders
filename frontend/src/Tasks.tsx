@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   createCheckpoint,
   deleteCheckpoint,
@@ -9,6 +9,7 @@ import {
   patchCheckpoint,
   patchTask,
 } from './api'
+import { assembleElapsed, STRIP_RUN_MS, STRIP_START_MS } from './assemble'
 import { cacheTasks, cachedTasks } from './cache'
 import { dayLabel, dueLabel } from './dates'
 import { Expand } from './Expand'
@@ -329,7 +330,10 @@ export function Tasks({ open }: { open: boolean }) {
     <Panel closing={closing}>
       <header>
         <h1 className="brand">
-          sidequests
+          {/* Wrapped so the assemble can type it: the caret's travel is a
+              percentage of its own box, so it needs one the width of the word
+              rather than of the header. */}
+          <span className="brand-word">sidequests</span>
           <Quip domain="tasks" />
         </h1>
         <div className="header-nav">
@@ -607,6 +611,12 @@ function formatDueTime(timeStr: string): string {
     .replace(' ', '')
 }
 
+// How many extra days are laid down to the left of the strip for the assemble
+// to travel over, and how long it stays there. The strip only reaches five days
+// into the past, which is a hundred and fifty pixels - nothing to scroll. These
+// are borrowed for the run and taken away again the moment it stops.
+const RUNWAY_DAYS = 34
+
 function DueStrip({
   days,
   todayIndex,
@@ -620,6 +630,8 @@ function DueStrip({
 }) {
   const max = Math.max(1, ...days.map((d) => d.count))
   const todayRef = useRef<HTMLButtonElement>(null)
+  const stripRef = useRef<HTMLDivElement>(null)
+  const [runway, setRunway] = useState(0)
 
   // The strip spans a couple weeks each side of today so it scrolls left
   // (past) and right (future), but should still open with today in view
@@ -628,8 +640,81 @@ function DueStrip({
     todayRef.current?.scrollIntoView({ inline: 'start', block: 'nearest' })
   }, [])
 
+  // The assemble's strip run. The days to the left are real columns, laid down
+  // so there is something to travel over, and the scroll itself is by hand -
+  // a transform would have been a picture of scrolling rather than the thing,
+  // and it could not land on a column. When it stops, the borrowed days go and
+  // the scroll is re-pinned to today: today is at the left edge either way, so
+  // taking them away moves nothing.
+  useEffect(() => {
+    const begin = () => {
+      const elapsed = assembleElapsed()
+      if (elapsed === null || elapsed > STRIP_START_MS) return
+      setRunway(RUNWAY_DAYS)
+      const startIn = STRIP_START_MS - elapsed
+      const go = window.setTimeout(() => {
+        const strip = stripRef.current
+        const today = todayRef.current
+        if (!strip || !today) return setRunway(0)
+        const to = today.offsetLeft
+        const from = 0
+        strip.scrollLeft = from
+        const t0 = performance.now()
+        const step = () => {
+          const p = Math.min(1, (performance.now() - t0) / STRIP_RUN_MS)
+          // Flat out for most of the way and then all of the braking at the
+          // end. A plain ease-out puts nearly all the travel in the first few
+          // frames and then crawls, which reads as a stall rather than as a
+          // strip running out of speed.
+          const eased =
+            p < 0.72 ? (p / 0.72) * 0.87 : 0.87 + 0.13 * (1 - Math.pow(1 - (p - 0.72) / 0.28, 3))
+          strip.scrollLeft = from + (to - from) * eased
+          if (p < 1) requestAnimationFrame(step)
+          else setRunway(0)
+        }
+        requestAnimationFrame(step)
+      }, startIn)
+      return () => window.clearTimeout(go)
+    }
+    const stop = begin()
+    window.addEventListener('life-assemble', begin)
+    return () => {
+      stop?.()
+      window.removeEventListener('life-assemble', begin)
+    }
+  }, [])
+
+  // Re-pinned after the borrowed days leave, in the layout effect so it lands
+  // in the same frame they do and there is nothing to see.
+  useLayoutEffect(() => {
+    if (runway !== 0) return
+    const strip = stripRef.current
+    const today = todayRef.current
+    if (strip && today && strip.scrollLeft !== today.offsetLeft) {
+      strip.scrollLeft = today.offsetLeft
+    }
+  }, [runway])
+
+  const runwayDays = useMemo(() => {
+    if (runway === 0) return []
+    const first = new Date(`${days[0].date}T00:00:00`)
+    return Array.from({ length: runway }, (_, i) => {
+      const d = new Date(first)
+      d.setDate(d.getDate() - (runway - i))
+      return dateToStr(d)
+    })
+  }, [runway, days])
+
   return (
-    <div className="due-strip">
+    <div className="due-strip" ref={stripRef}>
+      {runwayDays.map((date) => (
+        <div key={`runway-${date}`} className="due-col runway" aria-hidden="true">
+          <span className="due-count" />
+          <div className="due-bar" style={{ height: '0%' }} />
+          <span className="due-label">{shortDayLabel(date)}</span>
+          <span className="due-date">{dayOfMonth(date)}</span>
+        </div>
+      ))}
       {days.map((d, i) => (
         <button
           key={d.date}

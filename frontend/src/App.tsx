@@ -372,7 +372,12 @@ function AssembleStage() {
     <div className="brand-stage" aria-hidden="true">
       <span className="brand-stage-word">
         life
-        <span className="brand-sub">folders.</span>
+        {/* The full stop is its own element so it can blink on its own once
+            the word has finished arriving. The real title has it inside the
+            same string; this is a copy, so it can be split. */}
+        <span className="brand-sub">
+          folders<span className="stage-dot">.</span>
+        </span>
       </span>
     </div>
   )
