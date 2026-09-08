@@ -5556,9 +5556,9 @@ html.paddle-out * {
 
      0     the title arrives on the stage, wiped in on a diagonal from the
            top left over two and a half seconds
-     2706  it shrinks onto the header
-     3300  it has landed, and the stage and the real title swap in a single
-           frame. nothing else has begun before this
+     2905  it begins to fade, where it stands - it never goes anywhere
+     3300  the rest of the screen starts building while it is still going, and
+           the real title comes up in the header
      3300  nav links trickle in
      3400  a line draws itself across the middle of the entry box
      3780  the line swoops down and becomes the underline; the placeholder and
@@ -5703,21 +5703,22 @@ html.paddle-out * {
   --bleed-y: 0.81em;
 }
 
-/* Not a crossfade. The stage's copy is 190px type scaled down and the real
-   title is 46px type drawn at 46px, and no two rasterisations of that are the
-   same - so any window where both are part-way visible is a window where you
-   watch one turn into the other. This and title-handoff below are both
-   steps(1, jump-end) over the same duration, so the swap is a single frame
-   with nothing dissolving: the same trick the day box's border uses. */
+/* The word does not travel anywhere. It is drawn where it is, held, and then
+   simply goes - and the rest of the screen starts building underneath it while
+   it is still on its way out, which is why the fade is the last sixth of this
+   and everything else begins at 3300. It used to shrink into the header, and
+   that needed the header's exact position measured and handed to the keyframes;
+   none of that is here any more. */
 .assembling .brand-stage {
-  animation: stage-hold 3300ms steps(1, jump-end) both;
+  animation: stage-hold 3500ms linear both;
 }
 
 @keyframes stage-hold {
-  from {
+  0%,
+  83% {
     opacity: 1;
   }
-  to {
+  100% {
     opacity: 0;
   }
 }
@@ -5729,9 +5730,7 @@ html.paddle-out * {
   mask-size: 300% 300%;
   -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
-  animation:
-    stage-wipe 2600ms cubic-bezier(0.45, 0.1, 0.5, 0.95) both,
-    stage-fly 3300ms cubic-bezier(0.55, 0, 0.2, 1) both;
+  animation: stage-wipe 2600ms cubic-bezier(0.45, 0.1, 0.5, 0.95) both;
 }
 
 @keyframes stage-wipe {
@@ -5745,29 +5744,19 @@ html.paddle-out * {
   }
 }
 
-@keyframes stage-fly {
-  0%,
-  82% {
-    transform: none;
-  }
-  100% {
-    transform: translate(var(--stage-dx, 0), var(--stage-dy, 0)) scale(var(--stage-scale, 0.25));
-  }
-}
-
-/* The real title, which does nothing but wait and then take over. The stage is
-   still fading as this comes up, so a small mismatch between the two - the
-   sub's bleed padding is in px and does not scale perfectly - is crossed
-   rather than cut. */
+/* The real title comes up in its own place a moment after the stage begins to
+   go, so for a beat both are on screen - which is fine now that neither is
+   pretending to be the other. */
 .assembling .app > header .brand-link {
-  animation: title-handoff 3300ms steps(1, jump-end) both;
+  animation: title-handoff 3500ms linear both;
 }
 
 @keyframes title-handoff {
-  from {
+  0%,
+  88% {
     opacity: 0;
   }
-  to {
+  100% {
     opacity: 1;
   }
 }
