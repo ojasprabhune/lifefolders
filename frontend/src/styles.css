@@ -1114,11 +1114,11 @@ header {
   overflow: hidden;
 }
 
-.row-rise {
+.row-num {
   display: inline-block;
 }
 
-.reveal-count .row-rise {
+.reveal-count .row-num {
   animation: count-rise 420ms cubic-bezier(0.33, 1, 0.68, 1) both;
 }
 
@@ -1260,6 +1260,142 @@ header {
 @keyframes date-arrive {
   from {
     transform: translateY(90%);
+    opacity: 0;
+  }
+}
+
+/* wake - a night that is over comes into focus, the way the morning does: the
+   line starts soft and dim and sharpens, with a slow band of light crossing
+   behind it. The light sits on the wrapper's own background for the same
+   reason the stamp wash does - an overlay inside the row paints on top of the
+   words, and the timeline clips anything reaching outside a row. This is also
+   the one domain whose right side is usually empty, which is why the count
+   reveal it used to have was invisible: there is no number to send up. */
+.reveal-wake .row-main {
+  animation: wake-focus 560ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes wake-focus {
+  from {
+    filter: blur(4px);
+    opacity: 0;
+    color: var(--muted);
+    transform: translateY(3px);
+  }
+}
+
+.row-wrap:has(.reveal-wake) {
+  animation: wake-light 620ms ease-out both;
+}
+
+/* The band is one stripe in an image far wider than the row, walked across by
+   background-position - so it needs no extra element and nothing to clean up.
+   Both keyframes carry the whole shorthand's worth: background-repeat doesn't
+   interpolate, and stating it once would flip it halfway. */
+@keyframes wake-light {
+  from {
+    background-image: linear-gradient(
+      100deg,
+      transparent 34%,
+      color-mix(in srgb, var(--accent) 16%, transparent) 50%,
+      transparent 66%
+    );
+    background-repeat: no-repeat;
+    background-size: 260% 100%;
+    background-position: 100% 0;
+  }
+  to {
+    background-image: linear-gradient(
+      100deg,
+      transparent 34%,
+      color-mix(in srgb, var(--accent) 16%, transparent) 50%,
+      transparent 66%
+    );
+    background-repeat: no-repeat;
+    background-size: 260% 100%;
+    background-position: 0 0;
+  }
+}
+
+/* drift - the other half of solace, and the opposite motion: a night that has
+   only just started. The line comes down from above and sinks the last of the
+   way instead of snapping into place, and the zzz swells once, like a breath.
+   Slower than everything else here on purpose. */
+.reveal-drift .row-main {
+  animation: drift-down 600ms cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+
+@keyframes drift-down {
+  from {
+    transform: translateY(-7px);
+    opacity: 0;
+  }
+}
+
+.reveal-drift .status-label {
+  animation: drift-breath 600ms ease-in-out both;
+}
+
+@keyframes drift-breath {
+  0% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  45% {
+    opacity: 1;
+    transform: scale(1.07);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* thud - soma lands. Squash and recover is the whole vocabulary of weight, so
+   the row drops in, compresses against the line it lands on and springs back,
+   and the figure on the right falls a beat later so it arrives *with* the
+   landing rather than ahead of it. This is the only reveal that animates the
+   row itself, which means it replaces the generic row-in entrance rather than
+   stacking with it - one animation property, and this rule comes later. */
+.row.reveal-thud {
+  transform-origin: 50% 100%;
+  animation: thud-land 520ms cubic-bezier(0.36, 0, 0.24, 1) both;
+}
+
+@keyframes thud-land {
+  0% {
+    transform: translateY(-10px) scaleY(1.05);
+    opacity: 0;
+  }
+  26% {
+    opacity: 1;
+  }
+  38% {
+    transform: translateY(0) scaleY(0.9);
+  }
+  60% {
+    transform: translateY(0) scaleY(1.04);
+  }
+  82% {
+    transform: translateY(0) scaleY(0.98);
+  }
+  100% {
+    transform: translateY(0) scaleY(1);
+  }
+}
+
+.reveal-thud .row-right {
+  overflow: hidden;
+}
+
+.reveal-thud .row-num {
+  animation: thud-drop 360ms cubic-bezier(0.4, 0, 0.3, 1) both;
+  animation-delay: 90ms;
+}
+
+@keyframes thud-drop {
+  from {
+    transform: translateY(-130%);
     opacity: 0;
   }
 }
@@ -4063,7 +4199,13 @@ header > .brand {
 
 @media (prefers-reduced-motion: reduce) {
   .row-decode,
-  .reveal-count .row-rise,
+  .reveal-count .row-num,
+  .reveal-wake .row-main,
+  .row-wrap:has(.reveal-wake),
+  .reveal-drift .row-main,
+  .reveal-drift .status-label,
+  .row.reveal-thud,
+  .reveal-thud .row-num,
   .reveal-stamp .badge,
   .reveal-stamp .badge::after,
   .row-wrap:has(.reveal-stamp),

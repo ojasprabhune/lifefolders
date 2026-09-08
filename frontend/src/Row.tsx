@@ -284,14 +284,13 @@ function rightSide(log: Log, onRate: (log: Log) => void): React.ReactNode {
  * reveal the parsed row - stays the default: it's the one that describes
  * parsing itself, so anything without a better story keeps it.
  */
-type Reveal = 'decode' | 'count' | 'stamp' | 'settle' | 'strike' | 'roll'
+type Reveal = 'decode' | 'count' | 'stamp' | 'settle' | 'strike' | 'roll' | 'wake' | 'drift' | 'thud'
 
 const DOMAIN_REVEAL: Partial<Record<Log['parsed_type'], Reveal>> = {
   nutrition: 'count',
-  weight: 'count',
-  sleep: 'count',
   focus_session: 'count',
-  workout: 'count',
+  weight: 'thud',
+  workout: 'thud',
   person: 'settle',
   album: 'stamp',
   song: 'stamp',
@@ -301,6 +300,13 @@ const DOMAIN_REVEAL: Partial<Record<Log['parsed_type'], Reveal>> = {
 }
 
 function revealOf(log: Log): Reveal {
+  // Solace has two states and they mean opposite things, so they get opposite
+  // reveals: a night that is over comes into focus, one that has just started
+  // goes under. Both used to be `count`, which animated a number that a
+  // finished sleep doesn't have - the right side is empty there.
+  if (log.parsed_type === 'sleep') {
+    return (log.data as SleepData).sleep_end === null ? 'drift' : 'wake'
+  }
   if (log.parsed_type === 'task') {
     const t = log.data as TaskData
     if (t.action === 'status') return t.status === 'done' ? 'strike' : 'decode'
@@ -389,10 +395,11 @@ export function Row({
           )}
         </span>
         <span className="row-right" ref={rightRef}>
-          {/* Wrapped only for the count reveal: the right side is usually a
-              bare number, and there has to be an element to slide. */}
-          {reveal === 'count' ? (
-            <span className="row-rise">{rightSide(log, onRate)}</span>
+          {/* Wrapped for the two reveals that move the figure: the right side
+              is usually a bare number, and there has to be an element to
+              slide. Count sends it up, thud drops it in. */}
+          {reveal === 'count' || reveal === 'thud' ? (
+            <span className="row-num">{rightSide(log, onRate)}</span>
           ) : (
             rightSide(log, onRate)
           )}
