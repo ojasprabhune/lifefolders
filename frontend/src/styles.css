@@ -5616,6 +5616,17 @@ html.paddle-out * {
   }
 }
 
+/* The waking-up notice, when there is one. `backend-notice-in` stays at the
+   head of the list rather than being replaced - it is one of the handful of
+   things here that already carries an animation, and a name that changes back
+   when the class comes off is a name that starts again. */
+.assembling .backend-notice {
+  animation:
+    backend-notice-in 280ms cubic-bezier(0.4, 0, 0.2, 1) backwards,
+    hud-fade 360ms ease-out both;
+  animation-delay: 0ms, 3400ms;
+}
+
 .assembling .input-wrap {
   animation: hud-gate 1ms linear both;
   animation-delay: 3400ms;
@@ -6276,6 +6287,7 @@ html.paddle-out * {
 @media (prefers-reduced-motion: reduce) {
   .assembling .app > header .brand-link,
   .assembling .app > header .header-nav .guide-link,
+  .assembling .backend-notice,
   .assembling .input-wrap,
   .assembling .entry-input,
   .assembling .mic-btn,
