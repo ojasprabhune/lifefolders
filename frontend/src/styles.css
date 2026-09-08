@@ -5377,6 +5377,7 @@ html.paddle-out * {
    state the button already had still reads, and the press is a thunk rather
    than the shrink every other button in here does. */
 .send-btn.stamp {
+  position: relative;
   flex-direction: column;
   gap: 2px;
   transition: transform 110ms cubic-bezier(0.3, 0.9, 0.4, 1);
@@ -5538,6 +5539,7 @@ html.paddle-out * {
   }
 }
 
+
 /* --- assemble ---------------------------------------------------------------
    Clicking the title reassembles the screen. `runAssemble` in assemble.ts puts
    `.assembling` on <html> for the length of the run and everything below hangs
@@ -5547,34 +5549,105 @@ html.paddle-out * {
    Delays are absolute positions on one clock rather than each piece waiting on
    the one before, which is the only way the order stays readable:
 
-     0ms    the title splits open
-     180ms  nav links trickle in
-     340ms  the entry box opens from a line, flashes
-     470ms  the stamp slams down onto it
-     520ms  today and tomorrow open, one then the other
-     760ms  the dateline; chips click into place
-     880ms  the day's rows drop in
-     900ms  the sidequests panel's own header and strip
-     1040ms sidequests slam down, each one landing with an impact
+     0     the title's point appears and grows into two lines - in the middle
+           of the window, at four times its size
+     560   the lines have carried the word open, and it holds
+     700   it flies to its real place in the header, shrinking as it goes
+     1060  it lands. nothing else has started before this
+     1080  nav links trickle in
+     1140  a line draws itself across the middle of the entry box
+     1440  the line swoops down onto the input, and the placeholder and the mic
+           come up behind it
+     1740  today and tomorrow open from a line each, one then the other
+     2060  the dateline slides in and the chips click into place
+     2060  the panel's header; 2140 the day strip spins to a stop on today
+     2160  the day's rows drop
+     2420  sidequests slam down one at a time, each rippling red as it lands
+     3800  the stamp comes down last, flashes, and throws five marks
 
-   Every stagger is capped with min(): a forty-row day would otherwise cascade
-   for six seconds, and the class comes off at 2600ms regardless - the same
-   coupling justParsed has with the row reveals, and the same failure if it is
-   cut short (pieces lose their animation mid-flight).
-
-   Nothing here may sit on an element that already carries an `animation` of
-   its own - `.row`, `.side-panel`, `.task-list-view`. Replacing one means the
+   Two rules are load-bearing and both are the reveals' rules. **Nothing here
+   may sit on an element that already carries an `animation` of its own** -
+   `.row`, `.side-panel`, `.task-list-view` - because replacing one means the
    name in that slot changes back when `.assembling` comes off, which starts it
-   again, seconds later, for no reason. That is a real bug this app has had. */
+   again seconds later; that is a real bug this app has shipped. And the class
+   must outlast the last thing to finish.
 
-/* The title. A point appears at its centre, grows into two vertical lines, and
-   they carry the edges of the word apart with them - so the title is not drawn
-   so much as uncovered. The lines are the h1's pseudo-elements and the clip is
-   on the link inside it, which is what keeps the lines outside their own
-   reveal. `left` rather than a transform because the travel is half the title's
-   width and CSS has no way to ask an element how wide it is. */
+   The screen has to be *empty* until each piece is called, which is a
+   different requirement from each piece being animated: an animation filled
+   `both` holds its 0% frame through its own delay, so a 0% frame that is only
+   half-hidden leaves a line or an edge sitting there for seconds. Every
+   container is gated by `hud-gate` at the moment its contents begin, and
+   everything inside is therefore hidden by the parent no matter what its own
+   first frame looks like. */
+
+@keyframes hud-gate {
+  from {
+    opacity: 0;
+  }
+}
+
+.assembling .input-wrap {
+  animation: hud-gate 1ms linear both;
+  animation-delay: 1140ms;
+}
+
+.assembling .daily {
+  animation: hud-gate 1ms linear both;
+  animation-delay: 1740ms;
+}
+
+.assembling .dateline {
+  animation: hud-gate 1ms linear both;
+  animation-delay: 2060ms;
+}
+
+.assembling .day-list {
+  animation: hud-gate 1ms linear both;
+  animation-delay: 2160ms;
+}
+
+.assembling .side-panel .due-strip {
+  animation: hud-gate 1ms linear both;
+  animation-delay: 2140ms;
+}
+
+.assembling .side-panel > .list {
+  animation: hud-gate 1ms linear both;
+  animation-delay: 2360ms;
+}
+
+/* The title, which is the whole first act. A point appears at its centre,
+   grows into two vertical lines, and they carry the edges of the word apart
+   with them - so it is uncovered rather than drawn - all of it in the middle
+   of the window at several times its size. Then it flies to the header.
+
+   The flight is one transform on the h1, which is a block and so transformable
+   where the inline link inside it is not. The clip that does the uncovering is
+   on that link, which is what keeps the lines - the h1's own pseudo-elements -
+   outside their own reveal. Setting `display` on the link to make it a box
+   instead is what an earlier version did, and it changed the height of the
+   header's line box: the nav sat 23px lower for the length of the run and
+   snapped back up at the end, taking the whole page below it along. clip-path
+   applies to an inline perfectly well. */
+.assembling .app > header {
+  position: relative;
+  z-index: 50;
+}
+
 .assembling .app > header .brand {
   position: relative;
+  transform-origin: 50% 50%;
+  animation: brand-fly 1060ms cubic-bezier(0.6, 0, 0.2, 1) both;
+}
+
+@keyframes brand-fly {
+  0%,
+  60% {
+    transform: translate(var(--brand-dx, 0), var(--brand-dy, 0)) scale(var(--brand-scale, 3));
+  }
+  100% {
+    transform: none;
+  }
 }
 
 .assembling .app > header .brand::before,
@@ -5591,16 +5664,15 @@ html.paddle-out * {
 }
 
 .assembling .app > header .brand::before {
-  animation: brand-split-left 660ms cubic-bezier(0.55, 0, 0.2, 1) both;
+  animation: brand-split-left 560ms cubic-bezier(0.55, 0, 0.2, 1) both;
 }
 
 .assembling .app > header .brand::after {
-  animation: brand-split-right 660ms cubic-bezier(0.55, 0, 0.2, 1) both;
+  animation: brand-split-right 560ms cubic-bezier(0.55, 0, 0.2, 1) both;
 }
 
 .assembling .app > header .brand-link {
-  display: inline-block;
-  animation: brand-unveil 660ms cubic-bezier(0.55, 0, 0.2, 1) both;
+  animation: brand-unveil 560ms cubic-bezier(0.55, 0, 0.2, 1) both;
 }
 
 @keyframes brand-split-left {
@@ -5609,7 +5681,7 @@ html.paddle-out * {
     transform: scaleY(0);
     opacity: 1;
   }
-  20% {
+  22% {
     left: 50%;
     transform: scaleY(1);
     opacity: 1;
@@ -5632,7 +5704,7 @@ html.paddle-out * {
     transform: scaleY(0);
     opacity: 1;
   }
-  20% {
+  22% {
     left: 50%;
     transform: scaleY(1);
     opacity: 1;
@@ -5649,14 +5721,20 @@ html.paddle-out * {
   }
 }
 
+/* The vertical insets are pixels, and deliberately far bigger than the title.
+   `.brand-sub` is a block inside the inline link, which breaks that inline into
+   fragments - so the clip's reference box is only the *first* line, and a
+   percentage inset measured against it cut "folders." in half. Pixels large
+   enough to clear any line box mean the clip only ever does what it is here to
+   do, which is open horizontally. */
 @keyframes brand-unveil {
   0%,
-  20% {
-    clip-path: inset(-10% 50% -10% 50%);
+  22% {
+    clip-path: inset(-80px 50% -80px 50%);
   }
   88%,
   100% {
-    clip-path: inset(-10% -4% -10% -4%);
+    clip-path: inset(-80px -20px -80px -20px);
   }
 }
 
@@ -5664,7 +5742,7 @@ html.paddle-out * {
    little out of focus until it settles. */
 .assembling .app > header .header-nav .guide-link {
   animation: hud-trickle 320ms cubic-bezier(0.2, 0.9, 0.3, 1) both;
-  animation-delay: calc(180ms + min(var(--i, 0), 12) * 45ms);
+  animation-delay: calc(1080ms + min(var(--i, 0), 12) * 40ms);
 }
 
 @keyframes hud-trickle {
@@ -5683,17 +5761,83 @@ html.paddle-out * {
   }
 }
 
-/* Anything that is a box of content opens from a horizontal line at its own
-   middle, with the line left behind as a flash that fades. The clip ends
-   outside the box rather than flush with it, so nothing sits clipped for the
-   second and a half between the animation finishing and the class coming off. */
-.assembling .input-wrap,
-.assembling .daily-field {
-  position: relative;
-  animation: hud-open 360ms cubic-bezier(0.2, 0.9, 0.3, 1) both;
+/* The entry box is built rather than revealed: a bright line draws itself
+   across the middle of it, then swoops down and becomes the underline, and
+   the placeholder and the mic come up behind it as it passes. The input's own
+   2px border is what the line hands over to, so it is held transparent until
+   the moment they meet. */
+.assembling .input-wrap::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--flash);
+  box-shadow: 0 0 16px 2px var(--accent);
+  pointer-events: none;
+  animation: entry-line 580ms cubic-bezier(0.4, 0, 0.2, 1) both;
+  animation-delay: 1140ms;
 }
 
-.assembling .input-wrap::after,
+@keyframes entry-line {
+  0% {
+    opacity: 0;
+    transform: translateY(-24px) scaleX(0);
+  }
+  6% {
+    opacity: 1;
+  }
+  46% {
+    opacity: 1;
+    transform: translateY(-24px) scaleX(1);
+  }
+  84% {
+    opacity: 1;
+    transform: translateY(0) scaleX(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(0) scaleX(1);
+  }
+}
+
+.assembling .entry-input {
+  animation: entry-arrive 300ms cubic-bezier(0.2, 0.9, 0.3, 1) both;
+  animation-delay: 1440ms;
+}
+
+@keyframes entry-arrive {
+  0% {
+    opacity: 0;
+    border-bottom-color: transparent;
+    transform: translateY(5px);
+  }
+  70% {
+    border-bottom-color: transparent;
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.assembling .mic-btn {
+  animation: hud-trickle 300ms cubic-bezier(0.2, 0.9, 0.3, 1) both;
+  animation-delay: 1560ms;
+}
+
+/* Boxes of content open from a horizontal line at their own middle, with the
+   line left behind as a flash that fades. The clip ends outside the box rather
+   than flush with it, so nothing sits clipped for the seconds between the
+   animation finishing and the class coming off. */
+.assembling .daily,
+.assembling .daily-field {
+  position: relative;
+  animation: hud-open 340ms cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+
+.assembling .daily::after,
 .assembling .daily-field::after {
   content: '';
   position: absolute;
@@ -5704,14 +5848,19 @@ html.paddle-out * {
   background: var(--flash);
   box-shadow: 0 0 16px 2px var(--accent);
   pointer-events: none;
-  animation: hud-flashline 400ms ease-out both;
+  animation: hud-flashline 380ms ease-out both;
 }
 
 @keyframes hud-open {
   0% {
+    opacity: 0;
     clip-path: inset(49% 0 49% 0);
   }
+  8% {
+    opacity: 1;
+  }
   100% {
+    opacity: 1;
     clip-path: inset(-40% 0 -40% 0);
   }
 }
@@ -5719,9 +5868,13 @@ html.paddle-out * {
 @keyframes hud-flashline {
   0% {
     transform: scaleX(0.1);
+    opacity: 0;
+  }
+  8% {
+    transform: scaleX(0.1);
     opacity: 1;
   }
-  35% {
+  40% {
     transform: scaleX(1);
     opacity: 1;
   }
@@ -5731,54 +5884,27 @@ html.paddle-out * {
   }
 }
 
-.assembling .input-wrap {
-  animation-delay: 340ms;
+.assembling .daily {
+  animation-delay: 1740ms;
 }
 
-.assembling .input-wrap::after {
-  animation-delay: 320ms;
+.assembling .daily::after {
+  animation-delay: 1740ms;
 }
 
 .assembling .daily-field {
-  animation-delay: calc(520ms + var(--i, 0) * 110ms);
+  animation-delay: calc(1860ms + var(--i, 0) * 110ms);
 }
 
 .assembling .daily-field::after {
-  animation-delay: calc(500ms + var(--i, 0) * 110ms);
-}
-
-.assembling .daily-head {
-  animation: hud-trickle 320ms cubic-bezier(0.2, 0.9, 0.3, 1) both;
-  animation-delay: 480ms;
-}
-
-/* The stamp is put down last and hardest, oversized and crooked on the way in.
-   It only ever carries a transform from :active and .down, both of which are
-   transitions - so the two can't be running at once. */
-.assembling .send-btn.stamp {
-  animation: hud-slam 300ms cubic-bezier(0.3, 1.5, 0.5, 1) both;
-  animation-delay: 470ms;
-}
-
-@keyframes hud-slam {
-  0% {
-    opacity: 0;
-    transform: translateY(-30px) scale(1.6) rotate(-10deg);
-  }
-  55% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 1;
-    transform: none;
-  }
+  animation-delay: calc(1860ms + var(--i, 0) * 110ms);
 }
 
 /* The dateline: the date slides over from the left, the chips click into place
    one at a time from oversized, the calorie total trickles in behind them. */
 .assembling .datenav {
   animation: hud-in-left 300ms cubic-bezier(0.2, 0.9, 0.3, 1) both;
-  animation-delay: 760ms;
+  animation-delay: 2060ms;
 }
 
 @keyframes hud-in-left {
@@ -5797,7 +5923,7 @@ html.paddle-out * {
 
 .assembling .filter {
   animation: hud-click 260ms cubic-bezier(0.3, 1.5, 0.5, 1) both;
-  animation-delay: calc(790ms + min(var(--i, 0), 10) * 55ms);
+  animation-delay: calc(2100ms + min(var(--i, 0), 10) * 50ms);
 }
 
 @keyframes hud-click {
@@ -5816,7 +5942,7 @@ html.paddle-out * {
 
 .assembling .total {
   animation: hud-trickle 320ms cubic-bezier(0.2, 0.9, 0.3, 1) both;
-  animation-delay: 900ms;
+  animation-delay: 2260ms;
 }
 
 /* The day's rows drop in behind the dateline. On the wrapper, never on .row -
@@ -5824,7 +5950,7 @@ html.paddle-out * {
 .assembling .day-list .row-wrap,
 .assembling .day-list .empty {
   animation: hud-drop 320ms cubic-bezier(0.35, 0, 0.2, 1) both;
-  animation-delay: calc(880ms + min(var(--i, 0), 12) * 55ms);
+  animation-delay: calc(2160ms + min(var(--i, 0), 12) * 50ms);
 }
 
 @keyframes hud-drop {
@@ -5843,32 +5969,58 @@ html.paddle-out * {
 
 /* The panel's own furniture, arriving under its slide-in rather than instead
    of it - .side-panel keeps panel-in and is not touched here. */
-.assembling .side-panel header,
-.assembling .side-panel .due-strip {
-  animation: hud-trickle 340ms cubic-bezier(0.2, 0.9, 0.3, 1) both;
+.assembling .side-panel > header {
+  animation-name: hud-gate, hud-trickle;
+  animation-duration: 1ms, 340ms;
+  animation-timing-function: linear, cubic-bezier(0.2, 0.9, 0.3, 1);
+  animation-delay: 2060ms, 2060ms;
+  animation-fill-mode: both, both;
 }
 
-.assembling .side-panel header {
-  animation-delay: 900ms;
+/* The day strip arrives the way you would get there by hand: thrown along and
+   left to run out, blurred while it is moving, settling on today. The columns
+   all carry the same transform, which is what makes it read as one strip
+   scrolling rather than a row of things sliding. Today is already the column
+   the strip is scrolled to - DueStrip does that on mount - so this only has to
+   look like the journey, and never touches scrollLeft, which the user may have
+   moved by then. */
+.assembling .side-panel .due-col {
+  animation: strip-spin 900ms cubic-bezier(0.1, 0.85, 0.15, 1) both;
+  animation-delay: 2140ms;
 }
 
-.assembling .side-panel .due-strip {
-  animation-delay: 980ms;
+@keyframes strip-spin {
+  0% {
+    opacity: 0;
+    transform: translateX(420px);
+    filter: blur(4px);
+  }
+  12% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
 }
 
 .assembling .side-panel .section-title {
   animation: hud-in-left 300ms cubic-bezier(0.2, 0.9, 0.3, 1) both;
-  animation-delay: 1000ms;
+  animation-delay: 2380ms;
 }
 
-/* Sidequests are the point of the whole sequence: one at a time, each falling
-   faster than it started - a plain ease-in, so it arrives at speed rather than
-   easing to a halt - and landing hard enough to knock a burst out of the row
-   under it. */
+/* Sidequests are the point of the whole sequence: one at a time and well
+   apart, each falling faster than it started - a plain ease-in, so it arrives
+   at speed rather than easing to a halt - and a red charge running the length
+   of the row as it lands. The ripple is one wide gradient walked across by
+   background-position, the same trick the solace reveal's light uses; it sits
+   over the row rather than behind it, which for a translucent accent is the
+   difference between the row flashing and the row being lit. */
 .assembling .task-row-wrap {
   position: relative;
   animation: hud-slamdown 280ms cubic-bezier(0.55, 0, 1, 0.5) both;
-  animation-delay: calc(1040ms + min(var(--i, 0), 10) * 85ms);
+  animation-delay: calc(2420ms + min(var(--i, 0), 6) * 150ms);
 }
 
 @keyframes hud-slamdown {
@@ -5885,80 +6037,138 @@ html.paddle-out * {
   }
 }
 
-/* The impact. Spokes rather than a ring: a repeating conic gradient is the
-   whole comic burst, and the mask keeps only the band of it that reads as
-   lines flying off rather than a wheel. Fires exactly when the row lands. */
 .assembling .task-row-wrap::after {
   content: '';
   position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 190px;
-  height: 190px;
-  margin: -95px 0 0 -95px;
+  inset: 0;
   pointer-events: none;
   z-index: 3;
-  background: repeating-conic-gradient(
-    from 8deg,
-    var(--ink) 0deg 1.4deg,
-    transparent 1.4deg 22.5deg
+  background-image: linear-gradient(
+    90deg,
+    transparent 30%,
+    color-mix(in srgb, var(--accent) 46%, transparent) 50%,
+    transparent 70%
   );
-  -webkit-mask-image: radial-gradient(
-    closest-side,
-    transparent 46%,
-    #000 58%,
-    #000 76%,
-    transparent 86%
-  );
-  mask-image: radial-gradient(
-    closest-side,
-    transparent 46%,
-    #000 58%,
-    #000 76%,
-    transparent 86%
-  );
-  animation: hud-impact 300ms cubic-bezier(0.2, 0.8, 0.4, 1) both;
-  animation-delay: calc(1320ms + min(var(--i, 0), 10) * 85ms);
+  background-repeat: no-repeat;
+  background-size: 240% 100%;
+  animation: hud-ripple 440ms cubic-bezier(0.25, 0.8, 0.4, 1) both;
+  animation-delay: calc(2600ms + min(var(--i, 0), 6) * 150ms);
 }
 
-@keyframes hud-impact {
+@keyframes hud-ripple {
   0% {
-    opacity: 0.9;
-    transform: scale(0.3);
+    opacity: 0;
+    background-position: 100% 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  75% {
+    opacity: 1;
   }
   100% {
     opacity: 0;
-    transform: scale(1.15);
+    background-position: 0 0;
   }
 }
 
-/* Below the shared reduced-motion block, so it needs its own. The two that
-   have to go rather than stand still are the ones with no resting state: a
-   flash line and the burst are only ever visible mid-animation. */
+/* The finale. Everything else is already standing when the stamp comes down,
+   oversized and crooked; it lands, flares, and throws five impressions of
+   itself that are gone almost before you see them. */
+.assembling .send-btn.stamp {
+  animation: hud-slam 320ms cubic-bezier(0.3, 1.5, 0.5, 1) both;
+  animation-delay: 3800ms;
+}
+
+@keyframes hud-slam {
+  0% {
+    opacity: 0;
+    transform: translateY(-34px) scale(1.7) rotate(-12deg);
+    filter: none;
+  }
+  55% {
+    opacity: 1;
+  }
+  82% {
+    transform: none;
+    filter: drop-shadow(0 0 14px var(--accent)) brightness(1.9);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+.assemble-stamp {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 4px;
+  margin: -2px 0 0 -7px;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.assembling .assemble-stamp {
+  animation: stamp-throw 380ms cubic-bezier(0.2, 0.9, 0.3, 1) both;
+  animation-delay: 4060ms;
+}
+
+@keyframes stamp-throw {
+  0% {
+    opacity: 0;
+    transform: none;
+  }
+  14% {
+    opacity: 0.95;
+    transform: translate(calc(var(--dx) * 0.2), calc(var(--dy) * 0.2)) rotate(var(--rot));
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--dx), var(--dy)) rotate(var(--rot)) scale(0.8);
+  }
+}
+
+/* Below the shared reduced-motion block, so it needs its own. The ones that
+   have to go rather than stand still are the ones with no resting state: the
+   title's two lines, a flash line, the ripple, the thrown marks. */
 @media (prefers-reduced-motion: reduce) {
+  .assembling .app > header .brand,
   .assembling .app > header .brand-link,
   .assembling .app > header .header-nav .guide-link,
   .assembling .input-wrap,
+  .assembling .entry-input,
+  .assembling .mic-btn,
+  .assembling .daily,
   .assembling .daily-field,
-  .assembling .daily-head,
-  .assembling .send-btn.stamp,
+  .assembling .dateline,
   .assembling .datenav,
   .assembling .filter,
   .assembling .total,
+  .assembling .day-list,
   .assembling .day-list .row-wrap,
   .assembling .day-list .empty,
-  .assembling .side-panel header,
+  .assembling .side-panel > header,
+  .assembling .side-panel > .list,
   .assembling .side-panel .due-strip,
+  .assembling .side-panel .due-col,
   .assembling .side-panel .section-title,
-  .assembling .task-row-wrap {
+  .assembling .task-row-wrap,
+  .assembling .send-btn.stamp {
     animation: none;
   }
 
   .assembling .app > header .brand::before,
   .assembling .app > header .brand::after,
-  .assembling .input-wrap::after,
+  .assembling .input-wrap::before,
+  .assembling .daily::after,
   .assembling .daily-field::after,
-  .assembling .task-row-wrap::after {
+  .assembling .task-row-wrap::after,
+  .assembling .assemble-stamp {
     display: none;
   }
 }

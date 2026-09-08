@@ -107,6 +107,17 @@ const MIC_BARS = 5
 
 const RETRY_DELAYS_MS = [2000, 5000, 10000, 20000]
 
+// The five impressions the stamp throws off when it lands at the end of an
+// assemble. Fixed rather than random: this fires on every run, and a scatter
+// that changes each time reads as a glitch rather than as the same gesture.
+const ASSEMBLE_MARKS = [
+  { x: -30, y: -20, r: -18 },
+  { x: 26, y: -26, r: 12 },
+  { x: -34, y: 16, r: 9 },
+  { x: 32, y: 18, r: -14 },
+  { x: 2, y: -36, r: 22 },
+]
+
 // How long a stamped mark sits there before it has finished fading, and how
 // many are allowed to pile up at once. Must match the stamp-mark keyframes -
 // the node is removed on this timer, so a shorter one cuts the fade off.
@@ -953,6 +964,14 @@ function Home() {
           >
             <span className="stamp-grip" />
             <span className="stamp-plate" />
+            {ASSEMBLE_MARKS.map((m, i) => (
+              <span
+                key={i}
+                className="assemble-stamp"
+                aria-hidden="true"
+                style={{ ['--dx' as string]: `${m.x}px`, ['--dy' as string]: `${m.y}px`, ['--rot' as string]: `${m.r}deg` }}
+              />
+            ))}
           </button>
         </div>
         {stampMarks.map((m) => (
