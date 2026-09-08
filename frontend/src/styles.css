@@ -5640,6 +5640,15 @@ html.paddle-out * {
   animation-delay: 4550ms;
 }
 
+/* The script, when today is the selected day. It has animations of its own all
+   through it, so the assemble does not touch anything inside it - but it does
+   have to be *gone* like everything else until its turn, or it sits there in
+   full on an otherwise empty screen for the whole opening. */
+.assembling .side-panel .planner {
+  animation: hud-fade 360ms ease-out both;
+  animation-delay: 5800ms;
+}
+
 .assembling .side-panel > .list {
   animation: hud-gate 1ms linear both;
   animation-delay: 6100ms;
@@ -6289,6 +6298,7 @@ html.paddle-out * {
   .assembling .day-list .row-wrap,
   .assembling .day-list .empty,
   .assembling .side-panel > header,
+  .assembling .side-panel .planner,
   .assembling .side-panel > header .brand-word,
   .assembling .side-panel > header .panel-quip,
   .assembling .side-panel > header .header-nav .guide-link,

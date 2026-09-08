@@ -15,6 +15,10 @@ const RUN_MS = 9800
 export const STRIP_START_MS = 4300
 export const STRIP_RUN_MS = 1400
 
+// When the title leaves the stage for the header - 82% of its 3300ms run, and
+// the last moment its landing place can still be measured.
+const FLY_AT = 2706
+
 let timer: number | undefined
 let startedAt = 0
 
@@ -33,15 +37,20 @@ export function runAssemble() {
   timer = window.setTimeout(() => root.classList.remove('assembling'), RUN_MS)
   // The click usually changes the route as well, and opening the panel moves
   // Home's whole column - so the reading taken a moment ago is against a layout
-  // that is about to stop being true, and the title flew to where it used to
-  // be. Re-read as React commits, and again once the panel has settled. All of
-  // it is long finished before the flight, which is the only thing the numbers
-  // are for.
+  // that is about to stop being true, and the title flies to where the title
+  // used to be. Re-read as React commits, and then keep re-reading right up to
+  // the last moment before the flight: whatever has settled by FLY_AT is what
+  // the word has to land on, and a custom property changed under a running
+  // animation does re-resolve its keyframes (checked, not assumed). Nothing is
+  // read after that, because from there the flight's own transform is in the
+  // rect and each reading would send the next one further out.
   requestAnimationFrame(() => {
     measureTitle(root)
     requestAnimationFrame(() => measureTitle(root))
   })
-  window.setTimeout(() => measureTitle(root), 400)
+  for (const at of [400, 1200, FLY_AT - 200]) {
+    window.setTimeout(() => measureTitle(root), at)
+  }
   window.dispatchEvent(new CustomEvent('life-assemble'))
 }
 
