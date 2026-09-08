@@ -326,11 +326,20 @@ export function Tasks({ open }: { open: boolean }) {
 
   if (!mounted) return null
 
+  // One cascade for the whole panel rather than one per section. The count runs
+  // straight down the list with the headings in it, so a category arrives and
+  // its own sidequests fall in behind it before the next heading shows up -
+  // counting per section landed every heading at once and then every row at
+  // once. Read only by the assemble, and a plain counter rather than a
+  // precomputed map because the order it wants is the order the JSX is in.
+  let step = 0
+  const at = () => step++
+
   return (
     <Panel closing={closing}>
       <header>
         <h1 className="brand">
-          {/* Wrapped so the assemble can type it: the caret's travel is a
+          {/* Wrapped so the assemble can type it: the reveal's travel is a
               percentage of its own box, so it needs one the width of the word
               rather than of the header. */}
           <span className="brand-word">sidequests</span>
@@ -380,12 +389,14 @@ export function Tasks({ open }: { open: boolean }) {
           <>
             {(overdue.length > 0 || overdueShown) && (
               <section className="music-section task-section" ref={overdueRef}>
-                <h2 className="section-title overdue-title">overdue ({lastOverdue.current})</h2>
-                {overdue.map((t, i) => (
+                <h2 className="section-title overdue-title" style={{ ['--i' as string]: at() }}>
+                  overdue ({lastOverdue.current})
+                </h2>
+                {overdue.map((t) => (
                   <TaskRow
                     key={t.id}
                     task={t}
-                    index={i}
+                    index={at()}
                     pending={isOptimistic(t.id)}
                     onCycle={() => void cycleStatus(t)}
                     onCheckpoint={toggleCheckpoint}
@@ -399,12 +410,14 @@ export function Tasks({ open }: { open: boolean }) {
               </section>
             )}
             <section className="music-section task-section">
-              <h2 className="section-title">due {dueLabel(selected)}</h2>
-              {dueOnDay.map((t, i) => (
+              <h2 className="section-title" style={{ ['--i' as string]: at() }}>
+                due {dueLabel(selected)}
+              </h2>
+              {dueOnDay.map((t) => (
                 <TaskRow
                   key={t.id}
                   task={t}
-                  index={i}
+                  index={at()}
                   pending={isOptimistic(t.id)}
                   onCycle={() => void cycleStatus(t)}
                   onCheckpoint={toggleCheckpoint}
@@ -447,12 +460,14 @@ export function Tasks({ open }: { open: boolean }) {
                 if (id) void moveToCategory(id, category)
               }}
             >
-              <h2 className="section-title">{category}</h2>
-              {items.map((t, i) => (
+              <h2 className="section-title" style={{ ['--i' as string]: at() }}>
+                {category}
+              </h2>
+              {items.map((t) => (
                 <TaskRow
                   key={t.id}
                   task={t}
-                  index={i}
+                  index={at()}
                   pending={isOptimistic(t.id)}
                   onCycle={() => void cycleStatus(t)}
                   onCheckpoint={toggleCheckpoint}
@@ -475,6 +490,7 @@ export function Tasks({ open }: { open: boolean }) {
                 screenful of rows into place. */}
             <button
               className="section-title resolved-summary"
+              style={{ ['--i' as string]: at() }}
               onClick={() => setShowResolved((v) => !v)}
             >
               resolved ({resolvedTasks.length})

@@ -5569,8 +5569,9 @@ html.paddle-out * {
            here - and 250ms before it fades in, so it is already going)
      5200  the day box's labels, then today and tomorrow typed out
      6300  the panel's quip types
-     6200  section titles, then sidequests, one at a time, rippling red
-     8700  the stamp comes down last, flashes, and throws five marks
+     6200  the panel fills top to bottom - a category, its own sidequests
+           slamming in one at a time and rippling red, then the next category
+     9300  the stamp comes down last, flashes, and throws five marks
 
    Two rules are load-bearing and both are the reveals' rules. **Nothing here
    may sit on an element that already carries an `animation` of its own** -
@@ -6149,9 +6150,12 @@ html.paddle-out * {
   pointer-events: none;
 }
 
+/* Headings take their place in the same count as the rows - see `at()` in
+   Tasks.tsx - so the panel fills top to bottom: a category, then its own
+   sidequests, then the next category. One delay formula, shared. */
 .assembling .side-panel .section-title {
   animation: hud-in-left 400ms cubic-bezier(0.2, 0.9, 0.3, 1) both;
-  animation-delay: 6200ms;
+  animation-delay: calc(6200ms + min(var(--i, 0), 12) * 180ms);
 }
 
 /* Sidequests are the point of the whole sequence: one at a time and well
@@ -6164,7 +6168,7 @@ html.paddle-out * {
 .assembling .task-row-wrap {
   position: relative;
   animation: hud-slamdown 380ms cubic-bezier(0.55, 0, 1, 0.5) both;
-  animation-delay: calc(6400ms + min(var(--i, 0), 6) * 220ms);
+  animation-delay: calc(6200ms + min(var(--i, 0), 12) * 180ms);
 }
 
 @keyframes hud-slamdown {
@@ -6196,7 +6200,7 @@ html.paddle-out * {
   background-repeat: no-repeat;
   background-size: 240% 100%;
   animation: hud-ripple 560ms cubic-bezier(0.25, 0.8, 0.4, 1) both;
-  animation-delay: calc(6660ms + min(var(--i, 0), 6) * 220ms);
+  animation-delay: calc(6460ms + min(var(--i, 0), 12) * 180ms);
 }
 
 @keyframes hud-ripple {
@@ -6221,7 +6225,7 @@ html.paddle-out * {
    itself that are gone almost before you see them. */
 .assembling .send-btn.stamp {
   animation: hud-slam 420ms cubic-bezier(0.3, 1.5, 0.5, 1) both;
-  animation-delay: 8700ms;
+  animation-delay: 9300ms;
 }
 
 @keyframes hud-slam {
@@ -6259,7 +6263,7 @@ html.paddle-out * {
 
 .assembling .assemble-stamp {
   animation: stamp-throw 480ms cubic-bezier(0.2, 0.9, 0.3, 1) both;
-  animation-delay: 9000ms;
+  animation-delay: 9600ms;
 }
 
 @keyframes stamp-throw {

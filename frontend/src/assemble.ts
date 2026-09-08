@@ -7,7 +7,7 @@
 // Has to outlast the last thing to finish, which is the stamp's own marks at
 // the very end. Cut this shorter and pieces lose their animation mid-flight,
 // the same coupling `justParsed` has with the row reveals.
-const RUN_MS = 9800
+const RUN_MS = 10300
 
 // The one part of the sequence that is not a CSS animation: the day strip is
 // scrolled by hand, so DueStrip needs to know when its turn is. Keep these in
