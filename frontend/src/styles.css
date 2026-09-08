@@ -5557,10 +5557,8 @@ html.paddle-out * {
      0     the title arrives on the stage, wiped in on a diagonal from the
            top left over two and a half seconds
      2706  it shrinks onto the header
-     3168  the two titles cross over - the last hundred and thirty
-           milliseconds, and no earlier: begun sooner it was fading while the
-           word was still travelling
-     3300  it has landed. nothing else has begun before this
+     3300  it has landed, and the stage and the real title swap in a single
+           frame. nothing else has begun before this
      3300  nav links trickle in
      3400  a line draws itself across the middle of the entry box
      3780  the line swoops down and becomes the underline; the placeholder and
@@ -5667,7 +5665,14 @@ html.paddle-out * {
   z-index: 80;
 }
 
+/* A block sized to its own text, so it is the same *shape* of box as the real
+   title's h1 and the two are geometrically similar. As an inline span its rect
+   carried the line box's strut above and below the glyphs, which the h1's does
+   not - so aligning their centres put the landing twenty pixels out and you
+   watched the word move as it handed over. */
 .brand-stage-word {
+  display: block;
+  width: fit-content;
   position: relative;
   font-family: 'mencken-std-text', serif;
   font-weight: 400;
@@ -5688,19 +5693,21 @@ html.paddle-out * {
   --bleed-y: 0.81em;
 }
 
+/* Not a crossfade. The stage's copy is 190px type scaled down and the real
+   title is 46px type drawn at 46px, and no two rasterisations of that are the
+   same - so any window where both are part-way visible is a window where you
+   watch one turn into the other. This and title-handoff below are both
+   steps(1, jump-end) over the same duration, so the swap is a single frame
+   with nothing dissolving: the same trick the day box's border uses. */
 .assembling .brand-stage {
-  animation: stage-hold 3300ms linear both;
+  animation: stage-hold 3300ms steps(1, jump-end) both;
 }
 
-/* The crossfade is the last hundred and thirty milliseconds and no earlier:
-   started sooner it was fading while the word was still travelling, so the
-   title arrived half gone. */
 @keyframes stage-hold {
-  0%,
-  96% {
+  from {
     opacity: 1;
   }
-  100% {
+  to {
     opacity: 0;
   }
 }
@@ -5743,15 +5750,14 @@ html.paddle-out * {
    sub's bleed padding is in px and does not scale perfectly - is crossed
    rather than cut. */
 .assembling .app > header .brand-link {
-  animation: title-handoff 3300ms linear both;
+  animation: title-handoff 3300ms steps(1, jump-end) both;
 }
 
 @keyframes title-handoff {
-  0%,
-  96% {
+  from {
     opacity: 0;
   }
-  100% {
+  to {
     opacity: 1;
   }
 }
@@ -6061,10 +6067,21 @@ html.paddle-out * {
 
 /* The day's rows drop in behind the dateline. On the wrapper, never on .row -
    that one has row-in of its own, and a reveal may be mid-flight on it. */
-.assembling .day-list .row-wrap,
-.assembling .day-list .empty {
+.assembling .day-list .row-wrap {
   animation: hud-drop 420ms cubic-bezier(0.35, 0, 0.2, 1) both;
   animation-delay: calc(4300ms + min(var(--i, 0), 12) * 90ms);
+}
+
+/* The empty state keeps `day-empty-in` at the head of its list rather than
+   being replaced by the drop, because it is one of the few things here that
+   already carries an animation - and a name that changes back when the class
+   comes off is a name that starts again. It swiped in a second time, seconds
+   after it had landed, which is the same bug the soma reveal shipped with. */
+.assembling .day-list .empty {
+  animation:
+    day-empty-in 300ms cubic-bezier(0.33, 1, 0.68, 1) backwards,
+    hud-drop 420ms cubic-bezier(0.35, 0, 0.2, 1) both;
+  animation-delay: 0ms, 4300ms;
 }
 
 @keyframes hud-drop {
