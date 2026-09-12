@@ -14,9 +14,11 @@ import type { TaskWithCheckpoints } from './types'
  * and the server's answer is a confirmation rather than the first thing you
  * see.
  *
- * `parseTaskEntry` returns null unless it is certain, and the caller falls
- * back to the plain pending row. Being wrong here means showing a row of the
- * wrong shape and correcting it a second later, which is worse than waiting.
+ * "Unmistakably" is narrowed to one signal: an explicit `task:` prefix (see
+ * the guard at the top of `parseTaskEntry`). `parseTaskEntry` returns null
+ * for everything else, and the caller falls back to the plain pending row.
+ * Being wrong here means showing a row of the wrong shape and correcting it a
+ * second later, which is worse than waiting.
  */
 export interface LocalTask {
   title: string
@@ -326,8 +328,13 @@ export function parseTaskEntry(
   // both are the server's to work out.
   if (trimmed.startsWith('/') || trimmed.toLowerCase().startsWith('wish:')) return null
 
+  // Only an explicit "task:" prefix is certain enough to parse locally; a
+  // bare #tag or a date phrase next to a schoolwork word used to trigger this
+  // too, but both are ordinary things to say about something that isn't a
+  // task - "dinner with sarah friday" and "#gift for mom" don't belong here.
   const forced = trimmed.toLowerCase().startsWith('task:')
-  const body = forced ? trimmed.slice(5).trim() : trimmed
+  if (!forced) return null
+  const body = trimmed.slice(5).trim()
   if (!body) return null
 
   const idx = noteMarker(body)
@@ -343,8 +350,6 @@ export function parseTaskEntry(
 
   const words = head.split(/\s+/).filter(Boolean)
   const hit = findDate(words, today)
-  const taskish = words.some((w) => TASK_WORDS.has(w.toLowerCase().replace(/[^a-z0-9]/g, '')))
-  if (!forced && !tag && !(hit && taskish)) return null
 
   const skipFrom = hit ? hit.from : -1
   const skipTo = hit ? hit.to : -1
