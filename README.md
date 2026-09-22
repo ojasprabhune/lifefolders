@@ -119,10 +119,16 @@ service with `rootDir: backend` and a health check at `/health`.
      nutrition entries keep the model's estimates and a null `usda_fdc_id`.
    - `WGER_API_KEY` — a wger.de account token; enables importing logged gym
      sessions.
-   - `CALDAV_APPLE_ID`, `CALDAV_APP_PASSWORD`, `CALDAV_CALENDAR_URL` — pushes
-     sidequests with due dates to Apple Calendar. The password is an
-     app-specific password from appleid.apple.com, not your real one. All
-     three must be set or the whole integration stays off.
+   - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`,
+     `GOOGLE_CALENDAR_ID` — pushes sidequests with due dates to a Google
+     Calendar. All four must be set or the whole integration stays off.
+     Create an OAuth client (Google Cloud Console → APIs & Services →
+     Credentials → Create OAuth client ID → Desktop app) with the Calendar
+     API enabled, then run `cargo run --bin gcal-auth` locally (with
+     `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` in your local `.env`) and
+     approve access in the browser it points you to — it prints the
+     `GOOGLE_REFRESH_TOKEN` line to copy in. `GOOGLE_CALENDAR_ID` is under
+     that calendar's settings → "Integrate calendar" on calendar.google.com.
    - `RESEND_API_KEY`, `RECAP_TO`, `RECAP_FROM`, `RECAP_TZ_OFFSET_MIN` — the
      weekly recap email. Without a key and a recipient, `/api/recap/send`
      just replies that it's unconfigured. `RECAP_FROM` defaults to

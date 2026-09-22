@@ -18,11 +18,13 @@ services:
         sync: false
       - key: WGER_API_KEY
         sync: false
-      - key: CALDAV_APPLE_ID
+      - key: GOOGLE_CLIENT_ID
         sync: false
-      - key: CALDAV_APP_PASSWORD
+      - key: GOOGLE_CLIENT_SECRET
         sync: false
-      - key: CALDAV_CALENDAR_URL
+      - key: GOOGLE_REFRESH_TOKEN
+        sync: false
+      - key: GOOGLE_CALENDAR_ID
         sync: false
       - key: RESEND_API_KEY
         sync: false

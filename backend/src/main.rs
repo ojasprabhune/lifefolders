@@ -13,11 +13,11 @@ use sqlx::PgPool;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
-mod caldav;
 mod commands;
 mod daily;
 mod dayplan;
 mod focus;
+mod gcal;
 mod groq;
 mod recap;
 mod cadences;
@@ -35,11 +35,12 @@ mod wger;
 mod wishlist;
 
 #[derive(Clone)]
-pub struct CaldavConfig {
+pub struct GcalConfig {
     pub http: reqwest::Client,
-    pub apple_id: String,
-    pub app_password: String,
-    pub calendar_url: String,
+    pub client_id: String,
+    pub client_secret: String,
+    pub refresh_token: String,
+    pub calendar_id: String,
 }
 
 #[derive(Clone)]
@@ -58,7 +59,7 @@ pub struct AppState {
     pub usda_key: String,
     pub auth_token: String,
     pub wger_key: Option<String>,
-    pub caldav: Option<CaldavConfig>,
+    pub gcal: Option<GcalConfig>,
     pub recap: Option<RecapConfig>,
     pub last_action: Arc<Mutex<Vec<undo::Effect>>>,
 }
@@ -107,12 +108,13 @@ async fn main() -> anyhow::Result<()> {
         .timeout(Duration::from_secs(20))
         .build()?;
 
-    let caldav = (|| {
-        Some(CaldavConfig {
+    let gcal = (|| {
+        Some(GcalConfig {
             http: http.clone(),
-            apple_id: env::var("CALDAV_APPLE_ID").ok().filter(|v| !v.is_empty())?,
-            app_password: env::var("CALDAV_APP_PASSWORD").ok().filter(|v| !v.is_empty())?,
-            calendar_url: env::var("CALDAV_CALENDAR_URL").ok().filter(|v| !v.is_empty())?,
+            client_id: env::var("GOOGLE_CLIENT_ID").ok().filter(|v| !v.is_empty())?,
+            client_secret: env::var("GOOGLE_CLIENT_SECRET").ok().filter(|v| !v.is_empty())?,
+            refresh_token: env::var("GOOGLE_REFRESH_TOKEN").ok().filter(|v| !v.is_empty())?,
+            calendar_id: env::var("GOOGLE_CALENDAR_ID").ok().filter(|v| !v.is_empty())?,
         })
     })();
 
@@ -153,7 +155,7 @@ async fn main() -> anyhow::Result<()> {
         usda_key,
         auth_token,
         wger_key,
-        caldav,
+        gcal,
         recap,
         last_action,
     };

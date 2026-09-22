@@ -154,30 +154,29 @@ async fn clear_pending_checkpoints(state: &AppState, task_id: Uuid) -> Result<()
 }
 
 fn spawn_checkpoint_sync(state: &AppState, checkpoint_id: Uuid, task_title: &str, offset_days: i32, due_date: NaiveDate) {
-    let Some(cfg) = state.caldav.clone() else { return };
+    let Some(cfg) = state.gcal.clone() else { return };
     let title = task_title.to_string();
     tokio::spawn(async move {
         let uid = format!("lf-checkpoint-{checkpoint_id}");
         let summary = format!("study: {title} ({offset_days}d out)");
-        let ical = crate::caldav::vevent(&uid, &summary, due_date, None);
-        if let Err(e) = crate::caldav::put_ical(&cfg.http, &cfg.calendar_url, &uid, &cfg.apple_id, &cfg.app_password, &ical).await {
+        if let Err(e) = crate::gcal::upsert_event(&cfg.http, &cfg.client_id, &cfg.client_secret, &cfg.refresh_token, &cfg.calendar_id, &uid, &summary, due_date, None).await {
             tracing::warn!("checkpoint calendar sync failed for {checkpoint_id}: {e:#}");
         }
     });
 }
 
 fn spawn_checkpoint_delete(state: &AppState, checkpoint_id: Uuid) {
-    let Some(cfg) = state.caldav.clone() else { return };
+    let Some(cfg) = state.gcal.clone() else { return };
     tokio::spawn(async move {
         let uid = format!("lf-checkpoint-{checkpoint_id}");
-        if let Err(e) = crate::caldav::delete_ical(&cfg.http, &cfg.calendar_url, &uid, &cfg.apple_id, &cfg.app_password).await {
+        if let Err(e) = crate::gcal::delete_event(&cfg.http, &cfg.client_id, &cfg.client_secret, &cfg.refresh_token, &cfg.calendar_id, &uid).await {
             tracing::warn!("checkpoint calendar delete failed for {checkpoint_id}: {e:#}");
         }
     });
 }
 
 fn spawn_calendar_sync(state: &AppState, task: &Task) {
-    let Some(cfg) = state.caldav.clone() else { return };
+    let Some(cfg) = state.gcal.clone() else { return };
     let task = task.clone();
     tokio::spawn(async move {
         let uid = format!("lf-task-{}", task.id);
@@ -185,10 +184,9 @@ fn spawn_calendar_sync(state: &AppState, task: &Task) {
             (Some(due), status) if status != "done" => {
                 let label = if task.is_exam { "exam" } else { task.category.as_str() };
                 let summary = format!("[{label}] {}", task.title);
-                let ical = crate::caldav::vevent(&uid, &summary, due, task.due_time);
-                crate::caldav::put_ical(&cfg.http, &cfg.calendar_url, &uid, &cfg.apple_id, &cfg.app_password, &ical).await
+                crate::gcal::upsert_event(&cfg.http, &cfg.client_id, &cfg.client_secret, &cfg.refresh_token, &cfg.calendar_id, &uid, &summary, due, task.due_time).await
             }
-            _ => crate::caldav::delete_ical(&cfg.http, &cfg.calendar_url, &uid, &cfg.apple_id, &cfg.app_password).await,
+            _ => crate::gcal::delete_event(&cfg.http, &cfg.client_id, &cfg.client_secret, &cfg.refresh_token, &cfg.calendar_id, &uid).await,
         };
         if let Err(e) = result {
             tracing::warn!("calendar sync failed for task {}: {e:#}", task.id);
@@ -197,10 +195,10 @@ fn spawn_calendar_sync(state: &AppState, task: &Task) {
 }
 
 fn spawn_calendar_delete(state: &AppState, task_id: Uuid) {
-    let Some(cfg) = state.caldav.clone() else { return };
+    let Some(cfg) = state.gcal.clone() else { return };
     tokio::spawn(async move {
         let uid = format!("lf-task-{task_id}");
-        if let Err(e) = crate::caldav::delete_ical(&cfg.http, &cfg.calendar_url, &uid, &cfg.apple_id, &cfg.app_password).await {
+        if let Err(e) = crate::gcal::delete_event(&cfg.http, &cfg.client_id, &cfg.client_secret, &cfg.refresh_token, &cfg.calendar_id, &uid).await {
             tracing::warn!("calendar delete failed for task {task_id}: {e:#}");
         }
     });
