@@ -3455,13 +3455,8 @@ header > .brand {
   background: transparent;
   border: 1px solid var(--line);
   padding: 6px 8px;
-  /* The drag handle from `resize: vertical` doesn't work at all on mobile
-     Safari, so a note past two lines had no way to become visible. Height is
-     grown from JS off scrollHeight instead (see Tasks.tsx), same pattern as
-     `.daily-text`. */
-  resize: none;
-  overflow: hidden;
-  transition: height 160ms cubic-bezier(0.33, 1, 0.68, 1);
+  resize: vertical;
+  overflow: auto;
   font-family: inherit;
 }
 

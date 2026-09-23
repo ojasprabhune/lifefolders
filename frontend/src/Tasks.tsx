@@ -952,15 +952,17 @@ function TaskRow({
   const wrapRef = useRef<HTMLDivElement>(null)
   const noteFieldRef = useRef<HTMLTextAreaElement>(null)
 
-  // The native resize handle doesn't drag on mobile Safari at all, so a note
-  // longer than two lines had no way to become visible - grow the box to fit
-  // instead of asking the user to drag it.
+  // Sized to fit whatever's already there the moment the card opens, so a
+  // long note isn't hidden behind a two-line box - but only on open. Doing
+  // this on every keystroke would stomp a height the user just dragged by
+  // hand, which is still how the box grows from here.
   useEffect(() => {
+    if (!expanded) return
     const el = noteFieldRef.current
     if (!el) return
-    el.style.height = 'auto'
     el.style.height = `${el.scrollHeight}px`
-  }, [noteDraft, expanded])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expanded])
 
   // Keyed to the hold rather than to the change, so it runs on the one render
   // where the hold begins - the change marker is cleared on a timer of its own
