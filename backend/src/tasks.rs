@@ -159,7 +159,7 @@ fn spawn_checkpoint_sync(state: &AppState, checkpoint_id: Uuid, task_title: &str
     tokio::spawn(async move {
         let uid = format!("lf-checkpoint-{checkpoint_id}");
         let summary = format!("study: {title} ({offset_days}d out)");
-        if let Err(e) = crate::gcal::upsert_event(&cfg.http, &cfg.client_id, &cfg.client_secret, &cfg.refresh_token, &cfg.calendar_id, &uid, &summary, due_date, None).await {
+        if let Err(e) = crate::gcal::upsert_event(&cfg.http, &cfg.client_id, &cfg.client_secret, &cfg.refresh_token, &cfg.calendar_id, &uid, &summary, due_date).await {
             tracing::warn!("checkpoint calendar sync failed for {checkpoint_id}: {e:#}");
         }
     });
@@ -182,9 +182,7 @@ fn spawn_calendar_sync(state: &AppState, task: &Task) {
         let uid = format!("lf-task-{}", task.id);
         let result = match (task.due_date, task.status.as_str()) {
             (Some(due), status) if status != "done" => {
-                let label = if task.is_exam { "exam" } else { task.category.as_str() };
-                let summary = format!("[{label}] {}", task.title);
-                crate::gcal::upsert_event(&cfg.http, &cfg.client_id, &cfg.client_secret, &cfg.refresh_token, &cfg.calendar_id, &uid, &summary, due, task.due_time).await
+                crate::gcal::upsert_event(&cfg.http, &cfg.client_id, &cfg.client_secret, &cfg.refresh_token, &cfg.calendar_id, &uid, &task.title, due).await
             }
             _ => crate::gcal::delete_event(&cfg.http, &cfg.client_id, &cfg.client_secret, &cfg.refresh_token, &cfg.calendar_id, &uid).await,
         };

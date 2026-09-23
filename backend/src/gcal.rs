@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use chrono::{Duration, NaiveDate, NaiveTime};
+use chrono::{Days, NaiveDate};
 use reqwest::StatusCode;
 use serde::Deserialize;
 use serde_json::json;
@@ -52,27 +52,18 @@ pub async fn upsert_event(
     uid: &str,
     summary: &str,
     due_date: NaiveDate,
-    due_time: Option<NaiveTime>,
 ) -> Result<()> {
     let token = access_token(http, client_id, client_secret, refresh_token).await?;
     let id = event_id(uid);
-    let start_time = due_time.unwrap_or_else(|| NaiveTime::from_hms_opt(15, 30, 0).unwrap());
-    let end_time = start_time + Duration::minutes(15);
+    // All-day events use a date-only start/end, and Google's end date is
+    // exclusive, so a single-day event ends the day after it starts.
+    let end_date = due_date + Days::new(1);
     let body = json!({
         "id": id,
         "summary": summary,
-        "start": {
-            "dateTime": due_date.and_time(start_time).format("%Y-%m-%dT%H:%M:%S").to_string(),
-            "timeZone": "America/Los_Angeles",
-        },
-        "end": {
-            "dateTime": due_date.and_time(end_time).format("%Y-%m-%dT%H:%M:%S").to_string(),
-            "timeZone": "America/Los_Angeles",
-        },
-        "reminders": {
-            "useDefault": false,
-            "overrides": [{ "method": "popup", "minutes": 0 }],
-        },
+        "start": { "date": due_date.format("%Y-%m-%d").to_string() },
+        "end": { "date": end_date.format("%Y-%m-%d").to_string() },
+        "reminders": { "useDefault": false },
     });
 
     let base = format!("https://www.googleapis.com/calendar/v3/calendars/{calendar_id}/events");
