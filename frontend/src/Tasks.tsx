@@ -950,6 +950,17 @@ function TaskRow({
   const [noteDraft, setNoteDraft] = useState(task.note ?? '')
   const [titleDraft, setTitleDraft] = useState(task.title)
   const wrapRef = useRef<HTMLDivElement>(null)
+  const noteFieldRef = useRef<HTMLTextAreaElement>(null)
+
+  // The native resize handle doesn't drag on mobile Safari at all, so a note
+  // longer than two lines had no way to become visible - grow the box to fit
+  // instead of asking the user to drag it.
+  useEffect(() => {
+    const el = noteFieldRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }, [noteDraft, expanded])
 
   // Keyed to the hold rather than to the change, so it runs on the one render
   // where the hold begins - the change marker is cleared on a timer of its own
@@ -1089,13 +1100,6 @@ function TaskRow({
           {task.effort_minutes && (
             <div className="task-effort">{formatEffort(task.effort_minutes)}</div>
           )}
-          {noteLines.length > 0 && (
-            <div className="task-note">
-              {noteLines.map((line, i) => (
-                <span key={i}>{line}</span>
-              ))}
-            </div>
-          )}
         </div>
         {task.is_exam && task.due_date && (
           <div className="checkpoints">
@@ -1116,6 +1120,13 @@ function TaskRow({
         <button className="delete-btn" onClick={onDelete}>
           ✕
         </button>
+        {noteLines.length > 0 && (
+          <div className="task-note" onClick={toggle}>
+            {noteLines.map((line, i) => (
+              <span key={i}>{line}</span>
+            ))}
+          </div>
+        )}
       </div>
       <Expand open={expanded}>
         <div className="task-note-edit">
@@ -1137,6 +1148,7 @@ function TaskRow({
             <EffortPill task={task} onRefresh={onRefresh} />
           </div>
           <textarea
+            ref={noteFieldRef}
             rows={2}
             value={noteDraft}
             placeholder="note"
