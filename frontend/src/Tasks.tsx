@@ -952,17 +952,16 @@ function TaskRow({
   const wrapRef = useRef<HTMLDivElement>(null)
   const noteFieldRef = useRef<HTMLTextAreaElement>(null)
 
-  // Sized to fit whatever's already there the moment the card opens, so a
-  // long note isn't hidden behind a two-line box - but only on open. Doing
-  // this on every keystroke would stomp a height the user just dragged by
-  // hand, which is still how the box grows from here.
+  // Grows with the text rather than needing a drag - same pattern as the
+  // daily-notes field. The surrounding <Expand> re-measures on every render
+  // anyway (its effect depends on `children`, a new node every keystroke),
+  // so it tracks this without any extra wiring.
   useEffect(() => {
-    if (!expanded) return
     const el = noteFieldRef.current
     if (!el) return
+    el.style.height = 'auto'
     el.style.height = `${el.scrollHeight}px`
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expanded])
+  }, [noteDraft, expanded])
 
   // Keyed to the hold rather than to the change, so it runs on the one render
   // where the hold begins - the change marker is cleared on a timer of its own

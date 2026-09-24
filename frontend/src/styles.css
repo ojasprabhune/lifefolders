@@ -2451,9 +2451,11 @@ header > .brand {
   /* A sibling of the title/checkpoint/focus/delete row rather than nested
      inside .task-main - those eat most of a 420px-wide panel, so the note
      stayed inside them wrapped to a sliver. Forcing it onto its own line
-     (flex-basis 100%, .task-row has flex-wrap for this) gives it the whole
-     row's width instead. */
-  flex: 0 0 100%;
+     (.task-row has flex-wrap for this) gives it the whole row's width
+     instead. The basis has to give back the 40px the margin adds, or the
+     box runs 40px past the row's right edge - a flex item's width doesn't
+     shrink for its own margin the way a block's auto width would. */
+  flex: 0 0 calc(100% - 40px);
   margin-left: 40px;
   cursor: pointer;
 }
@@ -3455,8 +3457,9 @@ header > .brand {
   background: transparent;
   border: 1px solid var(--line);
   padding: 6px 8px;
-  resize: vertical;
-  overflow: auto;
+  resize: none;
+  overflow: hidden;
+  transition: height 160ms cubic-bezier(0.33, 1, 0.68, 1);
   font-family: inherit;
 }
 
