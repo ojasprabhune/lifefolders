@@ -953,10 +953,12 @@ function TaskRow({
   const noteFieldRef = useRef<HTMLTextAreaElement>(null)
 
   // Grows with the text rather than needing a drag - same pattern as the
-  // daily-notes field. The surrounding <Expand> re-measures on every render
-  // anyway (its effect depends on `children`, a new node every keystroke),
-  // so it tracks this without any extra wiring.
-  useEffect(() => {
+  // daily-notes field. This has to be a layout effect, not a plain one:
+  // <Expand> measures its own height in a plain effect that also depends on
+  // `children` (a new node every keystroke), and effects fire parent-last,
+  // so on a shared commit its measurement would otherwise land before this
+  // resize did and cap the box at the pre-grow height every time.
+  useLayoutEffect(() => {
     const el = noteFieldRef.current
     if (!el) return
     el.style.height = 'auto'
