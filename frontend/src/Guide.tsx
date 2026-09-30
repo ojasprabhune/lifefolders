@@ -10,10 +10,13 @@ function resolvedTheme(stored: Theme | null): Theme {
 const THEME_OPTIONS: { id: Theme; label: string; swatch: [string, string, string] }[] = [
   { id: 'light', label: 'light', swatch: ['#fbf3ea', '#2b2521', '#e4402a'] },
   { id: 'dark', label: 'dark', swatch: ['#1c1713', '#f2ece3', '#ef4a34'] },
-  { id: 'slate', label: 'slate', swatch: ['#121212', '#e0e0e0', '#4c6df1'] },
+  { id: 'slate', label: 'slate', swatch: ['#10131a', '#e0e0e0', '#4c6df1'] },
   { id: 'graphite', label: 'graphite', swatch: ['#121212', '#e0e0e0', '#888888'] },
-  { id: 'teal', label: 'teal', swatch: ['#121212', '#e0e0e0', '#2a9d94'] },
-  { id: 'atlantic', label: 'atlantic', swatch: ['#121212', '#e0e0e0', '#3fa0e0'] },
+  { id: 'teal', label: 'teal', swatch: ['#0f1613', '#e0e0e0', '#2a9d94'] },
+  { id: 'atlantic', label: 'atlantic', swatch: ['#0d151c', '#e0e0e0', '#3fa0e0'] },
+  { id: 'moss', label: 'moss', swatch: ['#121710', '#e0e0e0', '#76af5a'] },
+  { id: 'plum', label: 'plum', swatch: ['#16121a', '#e0e0e0', '#a87dc0'] },
+  { id: 'clay', label: 'clay', swatch: ['#181410', '#e0e0e0', '#c7906b'] },
 ]
 
 export function Guide() {

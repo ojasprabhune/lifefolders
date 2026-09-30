@@ -52,20 +52,23 @@
   --flash: #fffaf4;
 }
 
-/* Slate: near-black and white, imperial blue as the sole accent - calm and
-   flat on purpose, so nothing but the accent ever draws the eye. */
+/* The dark/monochrome family: near-black and white with one muted accent.
+   --bg carries a whisper of the accent's own hue rather than one flat black
+   repeated six times, so the themes read as a family, not one skin. Every
+   accent is brightened and desaturated off its reference color - the raw
+   swatches are all too dark to read as text against near-black. */
 :root[data-theme='slate'] {
   --ink: #e0e0e0;
   --muted: #888888;
   --faint: #444444;
   --line: #444444;
   --accent: #4c6df1;
-  --bg: #121212;
+  --bg: #10131a;
   --flash: #f5f5f5;
 }
 
-/* Graphite: the same monochrome build as slate, with no color at all - the
-   accent is just a lighter gray instead of blue. */
+/* Graphite: no color at all - the accent is just a lighter gray, and the
+   background is the one true neutral black the rest are tinted against. */
 :root[data-theme='graphite'] {
   --ink: #e0e0e0;
   --muted: #888888;
@@ -76,27 +79,57 @@
   --flash: #f5f5f5;
 }
 
-/* Teal: same dark/gray build, accent brightened off Authentic Teal so it
-   still has some fire against the near-black. */
 :root[data-theme='teal'] {
   --ink: #e0e0e0;
   --muted: #888888;
   --faint: #444444;
   --line: #444444;
   --accent: #2a9d94;
-  --bg: #121212;
+  --bg: #0f1613;
   --flash: #f5f5f5;
 }
 
-/* Atlantic: same dark/gray build, accent brightened off Atlantic Blue
-   toward Soft Sky Blue. */
 :root[data-theme='atlantic'] {
   --ink: #e0e0e0;
   --muted: #888888;
   --faint: #444444;
   --line: #444444;
   --accent: #3fa0e0;
-  --bg: #121212;
+  --bg: #0d151c;
+  --flash: #f5f5f5;
+}
+
+/* Moss: a sage green, calmer and more olive than teal's blue-green. */
+:root[data-theme='moss'] {
+  --ink: #e0e0e0;
+  --muted: #888888;
+  --faint: #444444;
+  --line: #444444;
+  --accent: #76af5a;
+  --bg: #121710;
+  --flash: #f5f5f5;
+}
+
+/* Plum: a dusty orchid, the one theme without a cool base tone. */
+:root[data-theme='plum'] {
+  --ink: #e0e0e0;
+  --muted: #888888;
+  --faint: #444444;
+  --line: #444444;
+  --accent: #a87dc0;
+  --bg: #16121a;
+  --flash: #f5f5f5;
+}
+
+/* Clay: a muted terracotta - warm, still calm, the one non-blue-or-green
+   option next to slate/teal/atlantic/moss. */
+:root[data-theme='clay'] {
+  --ink: #e0e0e0;
+  --muted: #888888;
+  --faint: #444444;
+  --line: #444444;
+  --accent: #c7906b;
+  --bg: #181410;
   --flash: #f5f5f5;
 }
 
