@@ -12,6 +12,8 @@ const THEME_OPTIONS: { id: Theme; label: string; swatch: [string, string, string
   { id: 'dark', label: 'dark', swatch: ['#1c1713', '#f2ece3', '#ef4a34'] },
   { id: 'slate', label: 'slate', swatch: ['#121212', '#e0e0e0', '#4c6df1'] },
   { id: 'graphite', label: 'graphite', swatch: ['#121212', '#e0e0e0', '#888888'] },
+  { id: 'teal', label: 'teal', swatch: ['#121212', '#e0e0e0', '#2a9d94'] },
+  { id: 'atlantic', label: 'atlantic', swatch: ['#121212', '#e0e0e0', '#3fa0e0'] },
 ]
 
 export function Guide() {

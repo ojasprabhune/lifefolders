@@ -58,20 +58,24 @@ export function saveHiddenDomains(ids: string[]) {
   localStorage.setItem(HIDDEN_DOMAINS_KEY, JSON.stringify(ids))
 }
 
-export type Theme = 'light' | 'dark' | 'slate' | 'graphite'
+export type Theme = 'light' | 'dark' | 'slate' | 'graphite' | 'teal' | 'atlantic'
 const THEME_KEY = 'life_theme'
 const THEME_COLORS: Record<Theme, string> = {
   light: '#fbf3ea',
   dark: '#1c1713',
   slate: '#121212',
   graphite: '#121212',
+  teal: '#121212',
+  atlantic: '#121212',
 }
+
+const THEMES: Theme[] = ['light', 'dark', 'slate', 'graphite', 'teal', 'atlantic']
 
 // null means "no explicit choice yet" - CSS falls back to the OS preference
 // via prefers-color-scheme until the switch in the guide is used once.
 export function getTheme(): Theme | null {
   const t = localStorage.getItem(THEME_KEY)
-  return t === 'light' || t === 'dark' || t === 'slate' || t === 'graphite' ? t : null
+  return (THEMES as string[]).includes(t ?? '') ? (t as Theme) : null
 }
 
 export function setTheme(theme: Theme) {

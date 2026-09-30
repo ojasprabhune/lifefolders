@@ -76,6 +76,30 @@
   --flash: #f5f5f5;
 }
 
+/* Teal: same dark/gray build, accent brightened off Authentic Teal so it
+   still has some fire against the near-black. */
+:root[data-theme='teal'] {
+  --ink: #e0e0e0;
+  --muted: #888888;
+  --faint: #444444;
+  --line: #444444;
+  --accent: #2a9d94;
+  --bg: #121212;
+  --flash: #f5f5f5;
+}
+
+/* Atlantic: same dark/gray build, accent brightened off Atlantic Blue
+   toward Soft Sky Blue. */
+:root[data-theme='atlantic'] {
+  --ink: #e0e0e0;
+  --muted: #888888;
+  --faint: #444444;
+  --line: #444444;
+  --accent: #3fa0e0;
+  --bg: #121212;
+  --flash: #f5f5f5;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -2142,6 +2166,7 @@ header > .brand {
 
 .theme-picker {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   margin: 4px 0 14px;
 }
