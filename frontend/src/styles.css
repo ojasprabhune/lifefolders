@@ -52,16 +52,28 @@
   --flash: #fffaf4;
 }
 
-/* Slate: monochrome grays with imperial blue as the sole accent - calm and
+/* Slate: near-black and white, imperial blue as the sole accent - calm and
    flat on purpose, so nothing but the accent ever draws the eye. */
 :root[data-theme='slate'] {
-  --ink: #121212;
+  --ink: #e0e0e0;
   --muted: #888888;
-  --faint: #b0b0b0;
-  --line: #e0e0e0;
-  --accent: #021f94;
-  --bg: #f5f2f3;
-  --flash: #021f94;
+  --faint: #444444;
+  --line: #444444;
+  --accent: #4c6df1;
+  --bg: #121212;
+  --flash: #f5f5f5;
+}
+
+/* Graphite: the same monochrome build as slate, with no color at all - the
+   accent is just a lighter gray instead of blue. */
+:root[data-theme='graphite'] {
+  --ink: #e0e0e0;
+  --muted: #888888;
+  --faint: #444444;
+  --line: #444444;
+  --accent: #888888;
+  --bg: #121212;
+  --flash: #f5f5f5;
 }
 
 * {

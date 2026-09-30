@@ -10,7 +10,8 @@ function resolvedTheme(stored: Theme | null): Theme {
 const THEME_OPTIONS: { id: Theme; label: string; swatch: [string, string, string] }[] = [
   { id: 'light', label: 'light', swatch: ['#fbf3ea', '#2b2521', '#e4402a'] },
   { id: 'dark', label: 'dark', swatch: ['#1c1713', '#f2ece3', '#ef4a34'] },
-  { id: 'slate', label: 'slate', swatch: ['#f5f2f3', '#121212', '#021f94'] },
+  { id: 'slate', label: 'slate', swatch: ['#121212', '#e0e0e0', '#4c6df1'] },
+  { id: 'graphite', label: 'graphite', swatch: ['#121212', '#e0e0e0', '#888888'] },
 ]
 
 export function Guide() {

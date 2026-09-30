@@ -12,7 +12,7 @@
       // (explicit choice, else the OS preference).
       try {
         var stored = localStorage.getItem('life_theme')
-        var colors = { light: '#fbf3ea', dark: '#1c1713', slate: '#f5f2f3' }
+        var colors = { light: '#fbf3ea', dark: '#1c1713', slate: '#121212', graphite: '#121212' }
         if (colors[stored]) document.documentElement.setAttribute('data-theme', stored)
         var color = colors[stored] || (window.matchMedia('(prefers-color-scheme: dark)').matches ? '#1c1713' : '#fbf3ea')
         document.getElementById('theme-color-meta').setAttribute('content', color)
