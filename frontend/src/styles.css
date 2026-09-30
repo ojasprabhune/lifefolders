@@ -27,11 +27,11 @@
   --wishlist: #c2410c;
 }
 
-/* Dark mode: applied automatically from the OS preference, unless an
-   explicit choice (the switch in the guide) is stored, in which case
-   :root[data-theme] below wins in either direction. */
+/* Dark mode: applied automatically from the OS preference, but only when no
+   explicit choice has been stored - an explicit 'slate' choice must not be
+   clobbered just because the OS happens to prefer dark. */
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
+  :root:not([data-theme]) {
     --ink: #f2ece3;
     --muted: #a89a8d;
     --faint: #5c5148;
@@ -50,6 +50,18 @@
   --accent: #ef4a34;
   --bg: #1c1713;
   --flash: #fffaf4;
+}
+
+/* Slate: monochrome grays with imperial blue as the sole accent - calm and
+   flat on purpose, so nothing but the accent ever draws the eye. */
+:root[data-theme='slate'] {
+  --ink: #121212;
+  --muted: #888888;
+  --faint: #b0b0b0;
+  --line: #e0e0e0;
+  --accent: #021f94;
+  --bg: #f5f2f3;
+  --flash: #021f94;
 }
 
 * {
@@ -2114,6 +2126,50 @@ header > .brand {
   height: 15px;
   accent-color: var(--accent);
   cursor: pointer;
+}
+
+.theme-picker {
+  display: flex;
+  gap: 10px;
+  margin: 4px 0 14px;
+}
+
+.theme-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  transition: border-color 150ms ease, color 150ms ease;
+}
+
+.theme-option:hover {
+  border-color: var(--faint);
+}
+
+.theme-option.active {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+.theme-swatch {
+  display: flex;
+  width: 44px;
+  height: 28px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+
+.theme-swatch span {
+  flex: 1;
 }
 
 .theme-switches {

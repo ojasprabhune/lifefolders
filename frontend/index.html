@@ -12,9 +12,10 @@
       // (explicit choice, else the OS preference).
       try {
         var stored = localStorage.getItem('life_theme')
-        var dark = stored ? stored === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches
-        if (stored === 'light' || stored === 'dark') document.documentElement.setAttribute('data-theme', stored)
-        document.getElementById('theme-color-meta').setAttribute('content', dark ? '#1c1713' : '#fbf3ea')
+        var colors = { light: '#fbf3ea', dark: '#1c1713', slate: '#f5f2f3' }
+        if (colors[stored]) document.documentElement.setAttribute('data-theme', stored)
+        var color = colors[stored] || (window.matchMedia('(prefers-color-scheme: dark)').matches ? '#1c1713' : '#fbf3ea')
+        document.getElementById('theme-color-meta').setAttribute('content', color)
       } catch (e) {}
     </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />

@@ -1,11 +1,17 @@
 import { useState } from 'react'
-import { getHiddenDomains, getShowClock, getTheme, saveHiddenDomains, setShowClock, setTheme } from './api'
+import { getHiddenDomains, getShowClock, getTheme, saveHiddenDomains, setShowClock, setTheme, type Theme } from './api'
 import { DOMAINS } from './domains'
 import { lastPanel } from './lastPanel'
 
-function resolvedTheme(stored: 'light' | 'dark' | null): 'light' | 'dark' {
+function resolvedTheme(stored: Theme | null): Theme {
   return stored ?? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
 }
+
+const THEME_OPTIONS: { id: Theme; label: string; swatch: [string, string, string] }[] = [
+  { id: 'light', label: 'light', swatch: ['#fbf3ea', '#2b2521', '#e4402a'] },
+  { id: 'dark', label: 'dark', swatch: ['#1c1713', '#f2ece3', '#ef4a34'] },
+  { id: 'slate', label: 'slate', swatch: ['#f5f2f3', '#121212', '#021f94'] },
+]
 
 export function Guide() {
   const [hidden, setHidden] = useState<string[]>(() => getHiddenDomains())
@@ -18,10 +24,9 @@ export function Guide() {
     saveHiddenDomains(next)
   }
 
-  const toggleTheme = (dark: boolean) => {
-    const next = dark ? 'dark' : 'light'
-    setTheme(next)
-    setThemeState(next)
+  const chooseTheme = (id: Theme) => {
+    setTheme(id)
+    setThemeState(id)
   }
 
   const toggleClock = (show: boolean) => {
@@ -420,18 +425,28 @@ export function Guide() {
       <section>
         <h2>appearance</h2>
         <p>
-          Dark mode follows your system's light/dark setting until you flip this, which pins it.
+          Light and dark follow your system's setting until you pick one here, which pins it.
           The clock is a small Pacific-time readout pinned to the top right, digits fading in as
           they change. Both are stored on this device only.
         </p>
+        <div className="theme-picker">
+          {THEME_OPTIONS.map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              className={`theme-option${theme === opt.id ? ' active' : ''}`}
+              onClick={() => chooseTheme(opt.id)}
+            >
+              <span className="theme-swatch">
+                <span style={{ background: opt.swatch[0] }} />
+                <span style={{ background: opt.swatch[1] }} />
+                <span style={{ background: opt.swatch[2] }} />
+              </span>
+              {opt.label}
+            </button>
+          ))}
+        </div>
         <div className="theme-switches">
-          <label className="theme-switch">
-            <input type="checkbox" checked={theme === 'dark'} onChange={(e) => toggleTheme(e.target.checked)} />
-            <span className="theme-switch-track">
-              <span className="theme-switch-thumb" />
-            </span>
-            dark mode
-          </label>
           <label className="theme-switch">
             <input type="checkbox" checked={showClock} onChange={(e) => toggleClock(e.target.checked)} />
             <span className="theme-switch-track">

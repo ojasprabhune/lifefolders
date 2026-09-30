@@ -58,22 +58,21 @@ export function saveHiddenDomains(ids: string[]) {
   localStorage.setItem(HIDDEN_DOMAINS_KEY, JSON.stringify(ids))
 }
 
-export type Theme = 'light' | 'dark'
+export type Theme = 'light' | 'dark' | 'slate'
 const THEME_KEY = 'life_theme'
+const THEME_COLORS: Record<Theme, string> = { light: '#fbf3ea', dark: '#1c1713', slate: '#f5f2f3' }
 
 // null means "no explicit choice yet" - CSS falls back to the OS preference
 // via prefers-color-scheme until the switch in the guide is used once.
 export function getTheme(): Theme | null {
   const t = localStorage.getItem(THEME_KEY)
-  return t === 'light' || t === 'dark' ? t : null
+  return t === 'light' || t === 'dark' || t === 'slate' ? t : null
 }
 
 export function setTheme(theme: Theme) {
   localStorage.setItem(THEME_KEY, theme)
   document.documentElement.setAttribute('data-theme', theme)
-  document
-    .getElementById('theme-color-meta')
-    ?.setAttribute('content', theme === 'dark' ? '#1c1713' : '#fbf3ea')
+  document.getElementById('theme-color-meta')?.setAttribute('content', THEME_COLORS[theme])
 }
 
 const SHOW_CLOCK_KEY = 'life_show_clock'
