@@ -6,12 +6,16 @@
     <meta name="color-scheme" content="light dark" />
     <meta id="theme-color-meta" name="theme-color" content="#fbf3ea" />
     <script>
-      // Applied before the stylesheet paints, so an explicit choice (made via
-      // the switch in the guide) doesn't flash the wrong theme on load, and
-      // the browser chrome/status bar tint matches whichever theme resolves
-      // (explicit choice, else the OS preference).
+      // Applied before the stylesheet paints, so the resolved theme doesn't
+      // flash the wrong color on load, and the browser chrome/status bar
+      // tint matches it. The theme itself rotates once per calendar day to
+      // a random pick from the dark family (never 'light') - life_theme_day
+      // is the date the current pick was made for, so reloads within the
+      // same day keep whatever that day already landed on instead of
+      // re-rolling, and a manual choice from the guide only lasts until the
+      // next day's roll.
       try {
-        var stored = localStorage.getItem('life_theme')
+        var darkThemes = ['dark', 'slate', 'graphite', 'teal', 'atlantic', 'moss', 'plum', 'clay']
         var colors = {
           light: '#fbf3ea',
           dark: '#1c1713',
@@ -23,9 +27,15 @@
           plum: '#16121a',
           clay: '#181410',
         }
-        if (colors[stored]) document.documentElement.setAttribute('data-theme', stored)
-        var color = colors[stored] || (window.matchMedia('(prefers-color-scheme: dark)').matches ? '#1c1713' : '#fbf3ea')
-        document.getElementById('theme-color-meta').setAttribute('content', color)
+        var today = new Date().toDateString()
+        var stored = localStorage.getItem('life_theme')
+        if (localStorage.getItem('life_theme_day') !== today || !colors[stored]) {
+          stored = darkThemes[Math.floor(Math.random() * darkThemes.length)]
+          localStorage.setItem('life_theme', stored)
+          localStorage.setItem('life_theme_day', today)
+        }
+        document.documentElement.setAttribute('data-theme', stored)
+        document.getElementById('theme-color-meta').setAttribute('content', colors[stored])
       } catch (e) {}
     </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
