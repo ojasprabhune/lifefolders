@@ -1,5 +1,16 @@
 import { useState } from 'react'
-import { getHiddenDomains, getShowClock, getTheme, saveHiddenDomains, setShowClock, setTheme, type Theme } from './api'
+import {
+  getFontTheme,
+  getHiddenDomains,
+  getShowClock,
+  getTheme,
+  saveHiddenDomains,
+  setFontTheme,
+  setShowClock,
+  setTheme,
+  type FontTheme,
+  type Theme,
+} from './api'
 import { DOMAINS } from './domains'
 import { lastPanel } from './lastPanel'
 
@@ -19,9 +30,23 @@ const THEME_OPTIONS: { id: Theme; label: string; swatch: [string, string, string
   { id: 'clay', label: 'clay', swatch: ['#181410', '#e0e0e0', '#c7906b'] },
 ]
 
+const FONT_OPTIONS: {
+  id: FontTheme
+  label: string
+  family: string
+  italic: boolean
+  weight: number
+}[] = [
+  { id: 'default', label: 'default', family: "'mencken-std-text', serif", italic: true, weight: 400 },
+  { id: 'folio', label: 'folio', family: "'Libron', Georgia, serif", italic: true, weight: 400 },
+  { id: 'press', label: 'press', family: "'Space Grotesk', sans-serif", italic: false, weight: 600 },
+  { id: 'signal', label: 'signal', family: "'Archivo', sans-serif", italic: false, weight: 800 },
+]
+
 export function Guide() {
   const [hidden, setHidden] = useState<string[]>(() => getHiddenDomains())
   const [theme, setThemeState] = useState(() => resolvedTheme(getTheme()))
+  const [font, setFontState] = useState(() => getFontTheme())
   const [showClock, setShowClockState] = useState(() => getShowClock())
 
   const toggle = (id: string) => {
@@ -33,6 +58,11 @@ export function Guide() {
   const chooseTheme = (id: Theme) => {
     setTheme(id)
     setThemeState(id)
+  }
+
+  const chooseFont = (id: FontTheme) => {
+    setFontTheme(id)
+    setFontState(id)
   }
 
   const toggleClock = (show: boolean) => {
@@ -460,6 +490,34 @@ export function Guide() {
             </span>
             pst clock
           </label>
+        </div>
+      </section>
+
+      <section>
+        <h2>type</h2>
+        <p>
+          The wordmark and body copy rotate through one of these pairings each day, picked
+          at random. Pick one here to pin it. Folio and press both set their reading text in
+          Libron, an open-license serif; signal drops serif entirely. Stored on this device
+          only.
+        </p>
+        <div className="theme-picker font-picker">
+          {FONT_OPTIONS.map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              className={`theme-option${font === opt.id ? ' active' : ''}`}
+              onClick={() => chooseFont(opt.id)}
+            >
+              <span
+                className="font-sample"
+                style={{ fontFamily: opt.family, fontStyle: opt.italic ? 'italic' : 'normal', fontWeight: opt.weight }}
+              >
+                life
+              </span>
+              {opt.label}
+            </button>
+          ))}
         </div>
       </section>
 

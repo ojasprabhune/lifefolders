@@ -87,6 +87,26 @@ export function setTheme(theme: Theme) {
   document.getElementById('theme-color-meta')?.setAttribute('content', THEME_COLORS[theme])
 }
 
+export type FontTheme = 'default' | 'folio' | 'press' | 'signal'
+const FONT_KEY = 'life_font'
+const FONT_THEMES: FontTheme[] = ['default', 'folio', 'press', 'signal']
+
+// 'default' falls back to the Typekit trio in :root and is never written by
+// the daily rotation in index.html - only the other three are.
+export function getFontTheme(): FontTheme {
+  const f = localStorage.getItem(FONT_KEY)
+  return (FONT_THEMES as string[]).includes(f ?? '') ? (f as FontTheme) : 'default'
+}
+
+export function setFontTheme(font: FontTheme) {
+  localStorage.setItem(FONT_KEY, font)
+  if (font === 'default') {
+    document.documentElement.removeAttribute('data-font')
+  } else {
+    document.documentElement.setAttribute('data-font', font)
+  }
+}
+
 const SHOW_CLOCK_KEY = 'life_show_clock'
 
 export function getShowClock(): boolean {

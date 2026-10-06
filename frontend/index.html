@@ -37,6 +37,20 @@
         document.documentElement.setAttribute('data-theme', stored)
         document.getElementById('theme-color-meta').setAttribute('content', colors[stored])
       } catch (e) {}
+      // Same rotation shape as the color theme above, kept in its own
+      // try/catch and its own day key (life_font_day) so the two rotate
+      // independently of each other.
+      try {
+        var fontThemes = ['folio', 'press', 'signal']
+        var todayFont = new Date().toDateString()
+        var storedFont = localStorage.getItem('life_font')
+        if (localStorage.getItem('life_font_day') !== todayFont || fontThemes.indexOf(storedFont) === -1) {
+          storedFont = fontThemes[Math.floor(Math.random() * fontThemes.length)]
+          localStorage.setItem('life_font', storedFont)
+          localStorage.setItem('life_font_day', todayFont)
+        }
+        document.documentElement.setAttribute('data-font', storedFont)
+      } catch (e) {}
     </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="manifest" href="/manifest.json" />
@@ -46,6 +60,12 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="life" />
     <link rel="stylesheet" href="https://use.typekit.net/hck5xcw.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:ital,wght@0,400;1,400;0,700&display=swap"
+    />
     <title>life</title>
   </head>
   <body>
