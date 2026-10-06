@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use chrono::{Days, NaiveDate};
+use chrono::{Days, Duration, NaiveDate, NaiveTime};
 use reqwest::StatusCode;
 use serde::Deserialize;
 use serde_json::json;
@@ -52,19 +52,48 @@ pub async fn upsert_event(
     uid: &str,
     summary: &str,
     due_date: NaiveDate,
+    due_time: Option<NaiveTime>,
+    effort_minutes: Option<i32>,
 ) -> Result<()> {
     let token = access_token(http, client_id, client_secret, refresh_token).await?;
     let id = event_id(uid);
-    // All-day events use a date-only start/end, and Google's end date is
-    // exclusive, so a single-day event ends the day after it starts.
-    let end_date = due_date + Days::new(1);
-    let body = json!({
-        "id": id,
-        "summary": summary,
-        "start": { "date": due_date.format("%Y-%m-%d").to_string() },
-        "end": { "date": end_date.format("%Y-%m-%d").to_string() },
-        "reminders": { "useDefault": false },
-    });
+    // A task with a clock time ("@1230pm") is a real appointment - it becomes
+    // a timed event with a popup notification at its start, the length taken
+    // from effort_minutes the same way the day planner sizes a block. A task
+    // with only a date is "sometime today," not a specific hour, and stays an
+    // all-day marker with no reminder - that was the common case this synced
+    // as before and a notification on every one of those would be noise.
+    let body = if let Some(time) = due_time {
+        let start = due_date.and_time(time);
+        let end = start + Duration::minutes(effort_minutes.unwrap_or(30).max(5) as i64);
+        json!({
+            "id": id,
+            "summary": summary,
+            "start": {
+                "dateTime": start.format("%Y-%m-%dT%H:%M:%S").to_string(),
+                "timeZone": "America/Los_Angeles",
+            },
+            "end": {
+                "dateTime": end.format("%Y-%m-%dT%H:%M:%S").to_string(),
+                "timeZone": "America/Los_Angeles",
+            },
+            "reminders": {
+                "useDefault": false,
+                "overrides": [{ "method": "popup", "minutes": 0 }],
+            },
+        })
+    } else {
+        // All-day events use a date-only start/end, and Google's end date is
+        // exclusive, so a single-day event ends the day after it starts.
+        let end_date = due_date + Days::new(1);
+        json!({
+            "id": id,
+            "summary": summary,
+            "start": { "date": due_date.format("%Y-%m-%d").to_string() },
+            "end": { "date": end_date.format("%Y-%m-%d").to_string() },
+            "reminders": { "useDefault": false },
+        })
+    };
 
     let base = format!("https://www.googleapis.com/calendar/v3/calendars/{calendar_id}/events");
 

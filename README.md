@@ -59,7 +59,7 @@ Optional, each one degrades gracefully if left unset:
 |---|---|
 | [USDA FoodData Central](https://fdc.nal.usda.gov/api-key-signup.html) | real nutrition numbers instead of model estimates |
 | [wger.de](https://wger.de) | importing gym workouts |
-| Apple iCloud (CalDAV) | pushing sidequest due dates into Apple Calendar |
+| [Google Calendar](https://console.cloud.google.com) | pushing sidequest due dates into a calendar |
 | [Resend](https://resend.com) | weekly recap email |
 | [Adobe Fonts](https://fonts.adobe.com) | the typefaces (see step 5) |
 
