@@ -23,10 +23,11 @@ pub struct FocusSession {
     pub completed: bool,
     pub paused_at: Option<DateTime<Utc>>,
     pub paused_seconds: i32,
+    pub timed_out: bool,
 }
 
 const SESSION_COLUMNS: &str = "id, task_id, cadence_id, planned_minutes, actual_minutes, \
-    started_at, ended_at, completed, paused_at, paused_seconds";
+    started_at, ended_at, completed, paused_at, paused_seconds, timed_out";
 
 #[derive(Debug, Deserialize)]
 pub struct NewTask {
@@ -173,11 +174,46 @@ pub async fn active_session(
     Ok(Json(Some(StartedSession { session, title: title.0 })))
 }
 
+/// The most recently ended session, `timed_out` and all - polled by a local
+/// script (not the web app) so a desktop notification can fire when a
+/// session's planned time actually ran out while you were away from the
+/// screen, which is the one moment the in-tab chime can't reach you.
+pub async fn last_ended_session(
+    State(state): State<AppState>,
+) -> Result<Json<Option<StartedSession>>, AppError> {
+    let ended: Option<FocusSession> = sqlx::query_as(&format!(
+        "SELECT {SESSION_COLUMNS} FROM focus_sessions \
+         WHERE ended_at IS NOT NULL ORDER BY ended_at DESC LIMIT 1"
+    ))
+    .fetch_optional(&state.pool)
+    .await?;
+    let Some(session) = ended else { return Ok(Json(None)) };
+
+    let title: (String,) = sqlx::query_as(
+        "SELECT COALESCE(t.title, c.name, 'something') FROM focus_sessions f \
+         LEFT JOIN tasks t ON t.id = f.task_id \
+         LEFT JOIN cadences c ON c.id = f.cadence_id \
+         WHERE f.id = $1",
+    )
+    .bind(session.id)
+    .fetch_one(&state.pool)
+    .await?;
+    Ok(Json(Some(StartedSession { session, title: title.0 })))
+}
+
 #[derive(Debug, Deserialize)]
 struct EndBody {
     completed: bool,
     token: Option<String>,
     tz_offset_min: Option<i32>,
+    // Set only by the client's own planned-time-elapsed detection
+    // (focusEngine.ts's scheduleTick), never by the Stop/finish-early buttons -
+    // the one place that can tell a timeout from a deliberate early stop,
+    // since the server sees identical requests for both. Drives whether the
+    // local poller in scripts/clarity-notify.sh/.plist should ping a desktop
+    // notification for this session.
+    #[serde(default)]
+    timed_out: bool,
 }
 
 fn authorized(state: &AppState, headers: &HeaderMap, body_token: Option<&str>) -> bool {
@@ -221,12 +257,14 @@ pub async fn end_session(
                 EXTRACT(EPOCH FROM (now() - started_at)) - paused_seconds \
                 - COALESCE(EXTRACT(EPOCH FROM (now() - paused_at)), 0) \
             ) / 60.0))::int, \
-            completed = $2 \
+            completed = $2, \
+            timed_out = $3 \
          WHERE id = $1 AND ended_at IS NULL \
          RETURNING {SESSION_COLUMNS}"
     ))
     .bind(id)
     .bind(end.completed)
+    .bind(end.timed_out)
     .fetch_optional(&state.pool)
     .await?;
 

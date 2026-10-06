@@ -584,11 +584,15 @@ export async function extendFocusSession(id: string, minutes: number): Promise<F
   return (await check(res)).json()
 }
 
-export async function endFocusSession(id: string, completed: boolean): Promise<void> {
+export async function endFocusSession(id: string, completed: boolean, timedOut = false): Promise<void> {
   const res = await fetch(`${API}/api/focus-sessions/${id}/end`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...authHeaders() },
-    body: JSON.stringify({ completed, tz_offset_min: new Date().getTimezoneOffset() }),
+    body: JSON.stringify({
+      completed,
+      timed_out: timedOut,
+      tz_offset_min: new Date().getTimezoneOffset(),
+    }),
   })
   await check(res)
 }

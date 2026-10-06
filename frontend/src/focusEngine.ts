@@ -93,7 +93,7 @@ function scheduleTick() {
   tickTimer = window.setInterval(() => {
     if (!current) return
     if (current.pausedAtMs === null && remainingSeconds(current) <= 0) {
-      void stopFocusSession(true)
+      void stopFocusSession(true, true)
       return
     }
     broadcast()
@@ -238,7 +238,13 @@ export async function extendFocus(minutes: number): Promise<void> {
   broadcast()
 }
 
-export async function stopFocusSession(completed: boolean): Promise<void> {
+// timedOut is true only from scheduleTick's own detection that the planned
+// time elapsed - never from the Stop/finish-early buttons - since that's the
+// one call site that can tell a timeout from a deliberate early stop. It
+// rides along to the server so a local script polling /focus-sessions/last-ended
+// can fire a desktop notification for a timeout without also firing one every
+// time a session is stopped on purpose.
+export async function stopFocusSession(completed: boolean, timedOut = false): Promise<void> {
   const s = current
   if (!s || ended) return
   ended = true
@@ -251,7 +257,7 @@ export async function stopFocusSession(completed: boolean): Promise<void> {
   persist()
   broadcast({ title: s.title, planned: s.planned, actual, completed })
   try {
-    await endFocusSession(s.id, completed)
+    await endFocusSession(s.id, completed, timedOut)
     window.dispatchEvent(new Event('life-log-created'))
   } catch {
     // the session is already ended locally; a failed report is non-fatal
