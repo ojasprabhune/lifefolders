@@ -206,7 +206,7 @@ type DateHit = { date: string; from: number; to: number }
  * over a bare one anywhere else in the entry; failing that the last hit does,
  * since a deadline is normally the tail of the sentence.
  */
-function findDate(words: string[], today: string): DateHit | null {
+export function findDate(words: string[], today: string): DateHit | null {
   const lead = new Set(['due', 'by', 'on', 'before'])
   const hits: DateHit[] = []
   let consumed = -1
@@ -256,6 +256,26 @@ function findDate(words: string[], today: string): DateHit | null {
   return led ?? hits[hits.length - 1]
 }
 
+/** Whether a word (and, for a spaced duration, the word right after it) is
+ *  one of the markers `stripMarkers` pulls out of a title - shared with
+ *  `titleSpan`, which needs the same test applied word by word rather than
+ *  as a single pass over the whole list. */
+export function isMarkerWord(
+  word: string,
+  nextWord: string | undefined,
+): { marker: boolean; consumesNext: boolean } {
+  const lower = word.toLowerCase()
+  if (word.startsWith('#') || word.startsWith('@') || isGluedDuration(lower)) {
+    return { marker: true, consumesNext: false }
+  }
+  // A bare number is only a duration when the word after it is a unit, which
+  // is what keeps "read 30 pages" intact.
+  if (isNumber(lower) && UNIT_WORDS.has((nextWord ?? '').toLowerCase())) {
+    return { marker: true, consumesNext: true }
+  }
+  return { marker: false, consumesNext: false }
+}
+
 /** Port of `tasks::strip_markers`, plus the date phrase, which the model
  *  normally leaves out of the title on its own. */
 function stripMarkers(words: string[], skip: (i: number) => boolean): string {
@@ -266,19 +286,12 @@ function stripMarkers(words: string[], skip: (i: number) => boolean): string {
       i += 1
       continue
     }
-    const w = words[i]
-    const lower = w.toLowerCase()
-    if (w.startsWith('#') || w.startsWith('@') || isGluedDuration(lower)) {
-      i += 1
+    const { marker, consumesNext } = isMarkerWord(words[i], words[i + 1])
+    if (marker) {
+      i += consumesNext ? 2 : 1
       continue
     }
-    // A bare number is only a duration when the word after it is a unit,
-    // which is what keeps "read 30 pages" intact.
-    if (isNumber(lower) && UNIT_WORDS.has((words[i + 1] ?? '').toLowerCase())) {
-      i += 2
-      continue
-    }
-    out.push(w)
+    out.push(words[i])
     i += 1
   }
   return out.join(' ')
@@ -314,6 +327,111 @@ export function bestMatch(
     if (!best || score > best.score) best = { item, score }
   }
   return best?.item ?? null
+}
+
+/**
+ * A separate, much more eager matcher than `bestMatch`, for a different job:
+ * surfacing candidates in an autocomplete dropdown while a title is still
+ * being typed, not deciding at submit time whether an entry updates
+ * something that already exists. Must not be unified with `bestMatch` - that
+ * one encodes the server's own decision and has to stay exactly as loose as
+ * `tasks.rs`, win or lose.
+ */
+export function suggestTasks(
+  query: string,
+  openTasks: TaskWithCheckpoints[],
+  limit = 6,
+): TaskWithCheckpoints[] {
+  const q = query.trim().toLowerCase()
+  // Three characters and not a bare number - long enough to mean something,
+  // and what keeps "101" (a weight) from ever being scanned at all. This is a
+  // narrow special case, not a general "this looks like some other domain"
+  // filter - the real guard is that nothing without a real word-prefix match
+  // against an open title ever produces a candidate in the first place.
+  if (q.length < 3 || /^[0-9.]+$/.test(q)) return []
+  const qWords = q.split(/\s+/).filter(Boolean)
+  const scored: { item: TaskWithCheckpoints; score: number }[] = []
+  for (const item of openTasks) {
+    const title = item.title.trim().toLowerCase()
+    if (!title) continue
+    const titleWords = title.split(/\s+/).filter(Boolean)
+    // Every typed word has to prefix something in the title - an anywhere
+    // substring match (bestMatch's rule) is too loose for a popup that
+    // reconsiders itself on every keystroke.
+    if (!qWords.every((qw) => titleWords.some((tw) => tw.startsWith(qw)))) continue
+    const score = title === q ? 3 : title.startsWith(q) ? 2 : 1
+    scored.push({ item, score })
+  }
+  scored.sort((a, b) => b.score - a.score || a.item.title.length - b.item.title.length)
+  return scored.slice(0, limit).map((s) => s.item)
+}
+
+/**
+ * The character range of "the title you're composing so far" inside a raw
+ * entry, so accepting a suggestion can splice the matched task's full title
+ * into exactly that range and leave an already-typed `#tag`, `@time` or
+ * `task:` prefix alone. Only meaningful while the caret sits at the end of
+ * the string - the normal case while typing - which the caller checks.
+ */
+export function titleSpan(
+  raw: string,
+  today: string,
+): { start: number; end: number; title: string } | null {
+  const trimmed = raw.trim()
+  const lower = trimmed.toLowerCase()
+  // A command acts on things that already exist and a wish is its own
+  // domain - same early-out as `parseTaskEntry`.
+  if (lower.startsWith('/') || lower.startsWith('wish:')) return null
+
+  const leadingWs = raw.length - raw.trimStart().length
+  const forced = lower.startsWith('task:')
+  const bodyStart = leadingWs + (forced ? 5 : 0)
+
+  // Everything after `note:` is time already spent, not a title - never part
+  // of the span.
+  const noteIdx = noteMarker(raw)
+  const headEnd = noteIdx === -1 ? raw.length : noteIdx
+
+  const tokens = Array.from(raw.matchAll(/\S+/g)).filter((m) => {
+    const at = m.index ?? 0
+    return at >= bodyStart && at < headEnd
+  })
+  if (tokens.length === 0) return null
+
+  const words = tokens.map((t) => t[0])
+  const hit = findDate(words, today)
+  // The lead-in belongs to the date, not the title - same rule as
+  // `parseTaskEntry`.
+  const leadIn =
+    hit && hit.from > 0 && ['due', 'by', 'on', 'before'].includes(words[hit.from - 1].toLowerCase())
+      ? hit.from - 1
+      : -1
+
+  const isBoundary = (i: number): boolean => {
+    if (hit && (i === leadIn || (i >= hit.from && i <= hit.to))) return true
+    if (isMarkerWord(words[i], words[i + 1]).marker) return true
+    // Scanning backward meets a spaced duration's unit word before its
+    // number - "30 min" - so a unit word preceded by a number is a boundary
+    // too, even though `isMarkerWord` only recognizes the pair starting from
+    // the number.
+    return UNIT_WORDS.has(words[i].toLowerCase()) && i > 0 && isNumber(words[i - 1].toLowerCase())
+  }
+
+  // Walk back from the end past any trailing date phrase or marker, then
+  // collect the contiguous run of plain words right before it - that run is
+  // the title. A date or marker stuck in the middle of the sentence simply
+  // ends the walk there, the same way it would end a sentence read backward.
+  let idx = tokens.length - 1
+  while (idx >= 0 && isBoundary(idx)) idx -= 1
+  if (idx < 0) return null
+  const last = idx
+  while (idx >= 0 && !isBoundary(idx)) idx -= 1
+  const first = idx + 1
+
+  const start = tokens[first].index ?? 0
+  const lastTok = tokens[last]
+  const end = (lastTok.index ?? 0) + lastTok[0].length
+  return { start, end, title: raw.slice(start, end) }
 }
 
 export function parseTaskEntry(

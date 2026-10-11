@@ -11,9 +11,11 @@ import {
   undoLast,
 } from './api'
 import { getBackendState, markBackendOffline, markBackendOnline, type BackendState } from './backendStatus'
-import type { Category, Log, PendingLog, TaskData } from './types'
+import type { Category, Log, PendingLog, TaskData, TaskWithCheckpoints } from './types'
 import { cacheLogs, cacheTasks, cachedLogs, cachedTasks } from './cache'
-import { parseTaskEntry } from './localParse'
+import { parseTaskEntry, suggestTasks, titleSpan } from './localParse'
+import { measureCaretOffset } from './caret'
+import { TaskAutocomplete } from './TaskAutocomplete'
 import {
   LOCAL_ID_PREFIX,
   addOptimistic,
@@ -504,6 +506,18 @@ function Home() {
   const [text, setText] = useState('')
   const [greeting] = useState(pickGreeting)
   const inputRef = useRef<HTMLInputElement>(null)
+  const [ac, setAc] = useState<{
+    items: TaskWithCheckpoints[]
+    index: number
+    left: number
+    top: number
+    closing: boolean
+  } | null>(null)
+  const acSpanRef = useRef<{ start: number; end: number } | null>(null)
+  const acClosingTimer = useRef<number | undefined>(undefined)
+  // setText doesn't move the DOM caret - the restore has to happen after
+  // React has actually committed the new value to the input.
+  const pendingCaretRef = useRef<number | null>(null)
   const today = localDateStr(new Date())
   const isToday = date === today
   const { ref: listRef, capture: captureRows } = useFlipList<HTMLElement>()
@@ -800,6 +814,7 @@ function Home() {
   // An empty box still gets a stamp. Nothing is parsed, nothing is sent - the
   // stamp is a stamp before it is a submit button.
   const send = () => {
+    closeAutocomplete()
     thunk()
     const value = text.trim()
     if (!value) return
@@ -807,7 +822,93 @@ function Home() {
     void submit(value)
   }
 
+  const closeAutocomplete = useCallback(() => {
+    setAc((a) => {
+      if (!a || a.closing) return a
+      return { ...a, closing: true }
+    })
+    window.clearTimeout(acClosingTimer.current)
+    acClosingTimer.current = window.setTimeout(() => setAc(null), 150)
+  }, [])
+
+  const updateAutocomplete = useCallback(
+    (value: string, caret: number) => {
+      if (caret !== value.length) {
+        closeAutocomplete()
+        return
+      }
+      const span = titleSpan(value, today)
+      if (!span) {
+        closeAutocomplete()
+        return
+      }
+      const openTasks = (cachedTasks() ?? []).filter((t) => t.status !== 'done')
+      const items = suggestTasks(span.title, openTasks)
+      const el = inputRef.current
+      if (items.length === 0 || !el) {
+        closeAutocomplete()
+        return
+      }
+      window.clearTimeout(acClosingTimer.current)
+      acSpanRef.current = { start: span.start, end: span.end }
+      setAc({
+        items,
+        index: 0,
+        left: measureCaretOffset(el, caret),
+        top: el.offsetHeight,
+        closing: false,
+      })
+    },
+    [today, closeAutocomplete],
+  )
+
+  const acceptSuggestion = useCallback(
+    (item: TaskWithCheckpoints) => {
+      const span = acSpanRef.current
+      if (!span) return
+      const next = text.slice(0, span.start) + item.title + text.slice(span.end)
+      pendingCaretRef.current = span.start + item.title.length
+      setText(next)
+      closeAutocomplete()
+    },
+    [text, closeAutocomplete],
+  )
+
+  // Runs after React has committed the spliced-in title to the input's DOM
+  // value - setting selectionRange any earlier would land against the old
+  // value and silently do nothing.
+  useLayoutEffect(() => {
+    const pos = pendingCaretRef.current
+    const el = inputRef.current
+    if (pos == null || !el) return
+    pendingCaretRef.current = null
+    el.focus()
+    el.setSelectionRange(pos, pos)
+  }, [text])
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (ac) {
+      if (e.key === 'ArrowDown' || (e.ctrlKey && e.key === 'j')) {
+        e.preventDefault()
+        setAc((a) => (a ? { ...a, index: (a.index + 1) % a.items.length } : a))
+        return
+      }
+      if (e.key === 'ArrowUp' || (e.ctrlKey && e.key === 'k')) {
+        e.preventDefault()
+        setAc((a) => (a ? { ...a, index: (a.index - 1 + a.items.length) % a.items.length } : a))
+        return
+      }
+      if (e.key === 'Tab' || e.key === 'Enter') {
+        e.preventDefault()
+        acceptSuggestion(ac.items[ac.index])
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        closeAutocomplete()
+        return
+      }
+    }
     if (e.key === 'Enter') send()
   }
 
@@ -883,6 +984,7 @@ function Home() {
           const transcript = await transcribe(blob)
           if (transcript) {
             setText((t) => (t ? `${t} ${transcript}` : transcript))
+            closeAutocomplete()
           }
         } catch {
           // leave the textbox as it was
@@ -937,7 +1039,23 @@ function Home() {
           className="entry-input"
           type="text"
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value)
+            // Mid-composition (an IME) the value is provisional and
+            // selectionStart unreliable - wait for onCompositionEnd instead.
+            if (!(e.nativeEvent as InputEvent).isComposing) {
+              updateAutocomplete(e.target.value, e.target.selectionStart ?? e.target.value.length)
+            }
+          }}
+          onCompositionEnd={(e) =>
+            updateAutocomplete(e.currentTarget.value, e.currentTarget.selectionStart ?? e.currentTarget.value.length)
+          }
+          onSelect={(e) => {
+            // A caret moved away from the end without a text change (arrow
+            // keys, a click) leaves a stale dropdown open at the old spot.
+            if (ac && e.currentTarget.selectionStart !== text.length) closeAutocomplete()
+          }}
+          onBlur={closeAutocomplete}
           onKeyDown={onKeyDown}
           placeholder={
             recState === 'recording'
@@ -951,6 +1069,17 @@ function Home() {
           autoFocus
           enterKeyHint="send"
         />
+        {ac && (
+          <TaskAutocomplete
+            items={ac.items}
+            activeIndex={ac.index}
+            left={ac.left}
+            top={ac.top}
+            closing={ac.closing}
+            onHover={(i) => setAc((a) => (a ? { ...a, index: i } : a))}
+            onAccept={acceptSuggestion}
+          />
+        )}
         <div className="input-actions">
           <button
             className={`mic-btn ${recState}`}
