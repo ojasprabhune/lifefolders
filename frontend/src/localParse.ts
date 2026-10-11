@@ -354,12 +354,18 @@ export function suggestTasks(
   for (const item of openTasks) {
     const title = item.title.trim().toLowerCase()
     if (!title) continue
+    // An exact match is already complete - there's nothing left to offer, and
+    // suggesting it back is what reopened the dropdown after accepting one
+    // (typing a trailing space, or "due today" collapsing out of the title
+    // once `titleSpan` recognizes the date phrase and the title underneath it
+    // turns out to be whole again).
+    if (title === q) continue
     const titleWords = title.split(/\s+/).filter(Boolean)
     // Every typed word has to prefix something in the title - an anywhere
     // substring match (bestMatch's rule) is too loose for a popup that
     // reconsiders itself on every keystroke.
     if (!qWords.every((qw) => titleWords.some((tw) => tw.startsWith(qw)))) continue
-    const score = title === q ? 3 : title.startsWith(q) ? 2 : 1
+    const score = title.startsWith(q) ? 2 : 1
     scored.push({ item, score })
   }
   scored.sort((a, b) => b.score - a.score || a.item.title.length - b.item.title.length)
