@@ -2718,6 +2718,12 @@ header > .brand {
   color: var(--faint);
 }
 
+.task-checkpoint-reason {
+  font-size: 12px;
+  color: var(--accent);
+  margin-top: 2px;
+}
+
 .task-note {
   display: flex;
   flex-direction: column;

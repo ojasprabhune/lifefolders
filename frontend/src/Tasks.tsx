@@ -240,22 +240,33 @@ export function Tasks({ open }: { open: boolean }) {
   // today themselves. Anything with such a date already behind us is overdue
   // and belongs on the same screen: a deadline you missed is still today's
   // problem, and hiding it here was the only place it could go unnoticed.
-  const { overdue, dueOnDay } = useMemo(() => {
+  const { overdue, dueOnDay, checkpointReasons } = useMemo(() => {
     const today = dateToStr(new Date())
     const day = selected ?? today
     const late: TaskWithCheckpoints[] = []
     const on: TaskWithCheckpoints[] = []
+    const reasons = new Map<string, TaskCheckpoint>()
     for (const t of openTasks) {
       if (!onPlate(t, day, today)) continue
       // Overdue hangs off today only, which onPlate is already the rule for.
       // On a day you picked from the strip it would be a list of things that
       // have nothing to do with that day.
-      if (plateDates(t).includes(day)) on.push(t)
-      else late.push(t)
+      if (plateDates(t).includes(day)) {
+        on.push(t)
+        // The heading above this list reads "due {day}", so a task that only
+        // landed here via a spaced-review checkpoint (not its own due_date)
+        // needs to say so on the row, or it looks like Oct 26 is the
+        // deadline when the task card right below it says Oct 29.
+        if (t.due_date !== day) {
+          const cp = t.checkpoints.find((c) => c.status === 'todo' && c.due_date === day)
+          if (cp) reasons.set(t.id, cp)
+        }
+      } else late.push(t)
     }
     return {
       overdue: late.sort((a, b) => oldestPlateDate(a).localeCompare(oldestPlateDate(b))),
       dueOnDay: on.sort((a, b) => (a.due_time ?? '99:99').localeCompare(b.due_time ?? '99:99')),
+      checkpointReasons: reasons,
     }
   }, [openTasks, selected])
   const dayCounts = useMemo(
@@ -426,6 +437,7 @@ export function Tasks({ open }: { open: boolean }) {
                   change={changes.get(t.id) ?? null}
                   leaving={heldMode.get(t.id) ?? null}
                   onLeft={() => setLeaving((l) => l.filter((h) => h.task.id !== t.id))}
+                  checkpointReason={checkpointReasons.get(t.id) ?? null}
                 />
               ))}
               {dueOnDay.length === 0 && (
@@ -915,6 +927,7 @@ function TaskRow({
   change,
   leaving,
   onLeft,
+  checkpointReason = null,
 }: {
   task: TaskWithCheckpoints
   // Place in the list, read only by the assemble cascade in styles.css.
@@ -930,6 +943,11 @@ function TaskRow({
   change: TaskChange | null
   leaving: 'done' | 'away' | null
   onLeft: () => void
+  // Set when this row only appears in the selected day's list because a
+  // spaced-review checkpoint falls here, not the task's own due date - the
+  // section heading above still reads "due {day}", so the row has to say
+  // why it's on the plate or the real due date in task-due reads as wrong.
+  checkpointReason?: TaskCheckpoint | null
 }) {
   // A row on its way off the day is the copy from before the change, so its
   // reschedule marker would roll the old date up against itself. It is leaving
@@ -1098,6 +1116,14 @@ function TaskRow({
                   {dueLabel(marker.from)}
                 </span>
               )}
+            </div>
+          )}
+          {checkpointReason && (
+            <div
+              className="task-checkpoint-reason"
+              title={`due date is still ${dueLabel(task.due_date!)} - this is its ${checkpointReason.offset_days}d review checkpoint`}
+            >
+              {checkpointReason.offset_days}d review
             </div>
           )}
           {task.effort_minutes && (
