@@ -13,7 +13,7 @@ import {
 import { getBackendState, markBackendOffline, markBackendOnline, type BackendState } from './backendStatus'
 import type { Category, Log, PendingLog, TaskData, TaskWithCheckpoints } from './types'
 import { cacheLogs, cacheTasks, cachedLogs, cachedTasks } from './cache'
-import { parseTaskEntry, suggestTasks, titleSpan } from './localParse'
+import { parseTaskEntry, suggestFromEntry } from './localParse'
 import { measureCaretOffset } from './caret'
 import { TaskAutocomplete } from './TaskAutocomplete'
 import {
@@ -837,22 +837,17 @@ function Home() {
         closeAutocomplete()
         return
       }
-      const span = titleSpan(value, today)
-      if (!span) {
-        closeAutocomplete()
-        return
-      }
       const openTasks = (cachedTasks() ?? []).filter((t) => t.status !== 'done')
-      const items = suggestTasks(span.title, openTasks)
+      const found = suggestFromEntry(value, today, openTasks)
       const el = inputRef.current
-      if (items.length === 0 || !el) {
+      if (!found || !el) {
         closeAutocomplete()
         return
       }
       window.clearTimeout(acClosingTimer.current)
-      acSpanRef.current = { start: span.start, end: span.end }
+      acSpanRef.current = { start: found.start, end: found.end }
       setAc({
-        items,
+        items: found.items,
         index: 0,
         left: measureCaretOffset(el, caret),
         top: el.offsetHeight,

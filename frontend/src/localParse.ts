@@ -354,18 +354,14 @@ export function suggestTasks(
   for (const item of openTasks) {
     const title = item.title.trim().toLowerCase()
     if (!title) continue
-    // An exact match is already complete - there's nothing left to offer, and
-    // suggesting it back is what reopened the dropdown after accepting one
-    // (typing a trailing space, or "due today" collapsing out of the title
-    // once `titleSpan` recognizes the date phrase and the title underneath it
-    // turns out to be whole again).
-    if (title === q) continue
     const titleWords = title.split(/\s+/).filter(Boolean)
     // Every typed word has to prefix something in the title - an anywhere
     // substring match (bestMatch's rule) is too loose for a popup that
-    // reconsiders itself on every keystroke.
+    // reconsiders itself on every keystroke. Whether an exact match should
+    // still be offered depends on where it sits in the sentence, which this
+    // function has no view of - that call belongs to the caller.
     if (!qWords.every((qw) => titleWords.some((tw) => tw.startsWith(qw)))) continue
-    const score = title.startsWith(q) ? 2 : 1
+    const score = title === q ? 3 : title.startsWith(q) ? 2 : 1
     scored.push({ item, score })
   }
   scored.sort((a, b) => b.score - a.score || a.item.title.length - b.item.title.length)
@@ -373,19 +369,18 @@ export function suggestTasks(
 }
 
 /**
- * The character range of "the title you're composing so far" inside a raw
- * entry, so accepting a suggestion can splice the matched task's full title
- * into exactly that range and leave an already-typed `#tag`, `@time` or
- * `task:` prefix alone. Only meaningful while the caret sits at the end of
- * the string - the normal case while typing - which the caller checks.
+ * The words available to search for a task name in, scanning back from the
+ * end of the entry: a `#tag`, `@time`, a `task:` prefix, or a recognized date
+ * phrase (with its lead-in word) still hard-stop the window exactly as a
+ * title-only entry would. Everything else - "reschedule", "focus 20 on",
+ * "move", "delete" - is left in, because which of these words are a command
+ * and which are the task name isn't knowable here; `suggestFromEntry` works
+ * that out by trying where in this list the name actually starts.
  */
-export function titleSpan(
-  raw: string,
-  today: string,
-): { start: number; end: number; title: string } | null {
+function tailWindow(raw: string, today: string): { word: string; index: number }[] | null {
   const trimmed = raw.trim()
   const lower = trimmed.toLowerCase()
-  // A command acts on things that already exist and a wish is its own
+  // A slash command acts on things that already exist and a wish is its own
   // domain - same early-out as `parseTaskEntry`.
   if (lower.startsWith('/') || lower.startsWith('wish:')) return null
 
@@ -394,7 +389,7 @@ export function titleSpan(
   const bodyStart = leadingWs + (forced ? 5 : 0)
 
   // Everything after `note:` is time already spent, not a title - never part
-  // of the span.
+  // of the window.
   const noteIdx = noteMarker(raw)
   const headEnd = noteIdx === -1 ? raw.length : noteIdx
 
@@ -423,10 +418,8 @@ export function titleSpan(
     return UNIT_WORDS.has(words[i].toLowerCase()) && i > 0 && isNumber(words[i - 1].toLowerCase())
   }
 
-  // Walk back from the end past any trailing date phrase or marker, then
-  // collect the contiguous run of plain words right before it - that run is
-  // the title. A date or marker stuck in the middle of the sentence simply
-  // ends the walk there, the same way it would end a sentence read backward.
+  // Walk back from the end past any trailing date phrase or marker - the rest
+  // is fair game for `suggestFromEntry` to search.
   let idx = tokens.length - 1
   while (idx >= 0 && isBoundary(idx)) idx -= 1
   if (idx < 0) return null
@@ -434,10 +427,68 @@ export function titleSpan(
   while (idx >= 0 && !isBoundary(idx)) idx -= 1
   const first = idx + 1
 
-  const start = tokens[first].index ?? 0
-  const lastTok = tokens[last]
-  const end = (lastTok.index ?? 0) + lastTok[0].length
-  return { start, end, title: raw.slice(start, end) }
+  return tokens.slice(first, last + 1).map((t) => ({ word: t[0], index: t.index ?? 0 }))
+}
+
+/**
+ * Finds a task name anywhere in the trailing part of the entry, not only
+ * when the entry is nothing but the title - "reschedule figure out noteb",
+ * "focus 20 on figure out noteb" and plain "figure out noteb" all have to
+ * open the same dropdown. Tries the single last word first, then keeps
+ * prepending one more word at a time - "noteb", "out noteb", "figure out
+ * noteb" - for as long as `suggestTasks` keeps matching. A command word or
+ * preposition never prefixes a title word, so the first prepend that breaks
+ * the match is exactly the boundary between the command and the name; the
+ * window just before it is kept.
+ *
+ * An exact match that swallows the *entire* available window (nothing before
+ * it was excluded as a command) is a title with nothing left to complete -
+ * that's what reopened the dropdown after accepting a suggestion and typing
+ * a trailing space, or after "due today" got recognized and parsed back out
+ * of the title. A match that stops short of the window's start, because
+ * something before it broke the search, still has a command sitting in front
+ * of it and is kept either way.
+ */
+export function suggestFromEntry(
+  raw: string,
+  today: string,
+  openTasks: TaskWithCheckpoints[],
+  limit = 6,
+): { start: number; end: number; items: TaskWithCheckpoints[] } | null {
+  const tokens = tailWindow(raw, today)
+  if (!tokens || tokens.length === 0) return null
+
+  let best: { start: number; items: TaskWithCheckpoints[] } | null = null
+  for (let i = tokens.length - 1; i >= 0; i--) {
+    const q = tokens
+      .slice(i)
+      .map((t) => t.word)
+      .join(' ')
+    const items = suggestTasks(q, openTasks, limit)
+    if (items.length === 0) {
+      // Nothing matched yet, even at the very end of the entry - keep
+      // widening in case a later (further-back) word is where a real match
+      // starts. Something already matched and widening just broke it - that
+      // break is the command/name boundary, so stop here.
+      if (best) break
+      continue
+    }
+    best = { start: i, items }
+  }
+  if (!best) return null
+
+  const q = tokens
+    .slice(best.start)
+    .map((t) => t.word)
+    .join(' ')
+    .trim()
+    .toLowerCase()
+  if (best.start === 0 && best.items.some((it) => it.title.trim().toLowerCase() === q)) return null
+
+  const start = tokens[best.start].index
+  const lastTok = tokens[tokens.length - 1]
+  const end = lastTok.index + lastTok.word.length
+  return { start, end, items: best.items }
 }
 
 export function parseTaskEntry(
