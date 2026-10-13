@@ -45,7 +45,7 @@ export function FocusPill({ route }: { route: string }) {
       className={`focus-pill ${paused ? 'paused' : ''} ${closing ? 'closing' : ''}`}
       onClick={() => (window.location.hash = '#/focus')}
     >
-      <span className="focus-pill-icon">{paused ? '⏸' : '⏵'}</span>
+      <span className="focus-pill-icon">{paused ? '⏵' : '⏸'}</span>
       <span className="focus-pill-time">{mmss(remaining)}</span>
       <span className="focus-pill-title">{session.title}</span>
     </button>
