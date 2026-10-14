@@ -256,7 +256,7 @@ export async function addWishlistItem(body: {
 
 export async function patchWishlistItem(
   id: string,
-  body: { title?: string; detail?: string; resolved?: boolean },
+  body: { kind?: string; title?: string; detail?: string; resolved?: boolean },
 ): Promise<WishlistItem> {
   const res = await fetch(`${API}/api/wishlist/${id}`, {
     method: 'PATCH',

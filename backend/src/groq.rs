@@ -502,18 +502,43 @@ fn wishlist_tool() -> Value {
     })
 }
 
+/// A command, but kept out of `command_tools()`'s literal so "wish:" can offer
+/// it next to the add tool on its own.
+fn edit_wish_tool() -> Value {
+    json!({
+        "type": "function",
+        "function": {
+            "name": "edit_wishlist_item",
+            "description": "Change something already on the wishlist: rename it, move it to another kind, add a note, cross it off, or delete it.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": { "type": "string", "description": "The wishlist item, phrased close to its listed title" },
+                    "new_title": { "type": "string", "description": "Only when renaming" },
+                    "kind": { "type": "string", "enum": ["album", "song", "place", "trip", "learning", "other"], "description": "Only when moving it" },
+                    "note": { "type": "string", "description": "Only when adding a note" },
+                    "done": { "type": "boolean", "description": "Cross it off" },
+                    "delete": { "type": "boolean", "description": "Remove it from the list" }
+                },
+                "required": ["title"]
+            }
+        }
+    })
+}
+
 /// One flat list so a single call with tool_choice "required" can land on
 /// either kind. `command_only` narrows it to commands for the "/" prefix,
 /// which makes that override deterministic instead of a hint.
 fn tools(command_only: bool, wishlist: bool) -> Value {
     if wishlist {
-        return json!([wishlist_tool()]);
+        return json!([wishlist_tool(), edit_wish_tool()]);
     }
+    let mut commands = command_tools();
+    commands.as_array_mut().unwrap().push(edit_wish_tool());
     if command_only {
-        return command_tools();
+        return commands;
     }
     let mut all = log_tools();
-    let commands = command_tools();
     all.as_array_mut()
         .unwrap()
         .extend(commands.as_array().unwrap().iter().cloned());
@@ -600,7 +625,7 @@ A stated body weight (\"weighed 158 this morning\", \"158 lbs\", \"72 kg\", \"bo
 155\") is log_weight, with the number as value and lb or kg as unit, defaulting to lb \
 when no unit is given. Body weight is never a food portion: \"2 rotis\", \"150g of rice\", \
 or \"a 200g steak\" is log_nutrition, not log_weight. \
-An entry starting with \"wish:\" is always add_wishlist_item, and it is the only way anything reaches the wishlist - exclude that literal prefix from the title. Without that prefix, wanting phrasing is not special: classify the entry by whatever it is actually about, exactly as you would have anyway. \"want to listen to X\" is still the music tool, \"need to change the tires by today\" is still log_task, and a stated deadline always means log_task. Most entries are records of something that happened, and get a log_ tool. Some are instructions aimed at things you are already tracking, and get a command tool instead. The test is the verb: \"finished the essay\", \"ate 2 rotis\", \"slept 7 hours\" report something that already happened and are logs. \"push the essay to friday\", \"move everything due tomorrow to monday\", \"reschedule\", \"delete the poster\", \"rename\", \"mark X done\", \"start a 30 minute timer on X\" tell you to change something that already exists, and are commands. A brand new thing with a deadline (\"psych quiz next friday\") is log_task, never reschedule_tasks - there is nothing to move yet. An entry phrased as an order - starting with mark, set, move, push, reschedule, delete, remove, rename, or start - is a command even when the name it uses matches nothing in the lists below. The command reports that nothing matched, which is what the user wants; quietly creating a duplicate task from a mistyped name is not. Past-tense reports of what you did yourself (\"finished the essay\", \"turned in the lab\", \"started the poster\") stay logs. Always call at least one tool.";
+An entry starting with \"wish:\" is add_wishlist_item, and it is the only way anything new reaches the wishlist - exclude that literal prefix from the title. The one exception: when it names something already on the wishlist listed below and asks to change it or adds to it, it is edit_wishlist_item. An instruction about an item on the wishlist - rename it, move it to songs or places, add a note, cross it off, delete it - is edit_wishlist_item, with or without the prefix. When the name matches a wishlist item and no open task, it is the wishlist item, never a task command. Without that prefix, wanting phrasing is not special: classify the entry by whatever it is actually about, exactly as you would have anyway. \"want to listen to X\" is still the music tool, \"need to change the tires by today\" is still log_task, and a stated deadline always means log_task. Most entries are records of something that happened, and get a log_ tool. Some are instructions aimed at things you are already tracking, and get a command tool instead. The test is the verb: \"finished the essay\", \"ate 2 rotis\", \"slept 7 hours\" report something that already happened and are logs. \"push the essay to friday\", \"move everything due tomorrow to monday\", \"reschedule\", \"delete the poster\", \"rename\", \"mark X done\", \"start a 30 minute timer on X\" tell you to change something that already exists, and are commands. A brand new thing with a deadline (\"psych quiz next friday\") is log_task, never reschedule_tasks - there is nothing to move yet. An entry phrased as an order - starting with mark, set, move, push, reschedule, delete, remove, rename, or start - is a command even when the name it uses matches nothing in the lists below. The command reports that nothing matched, which is what the user wants; quietly creating a duplicate task from a mistyped name is not. Past-tense reports of what you did yourself (\"finished the essay\", \"turned in the lab\", \"started the poster\") stay logs. Always call at least one tool.";
 
 async fn chat(
     http: &reqwest::Client,
@@ -1028,6 +1053,7 @@ It has to be finished by 23:30.\n\
                 CommandRequest::SetTaskStatus { .. } => "cmd:set_status".into(),
                 CommandRequest::DeleteTask { .. } => "cmd:delete_task".into(),
                 CommandRequest::RecategorizeTask { .. } => "cmd:recategorize".into(),
+                CommandRequest::EditWish(_) => "cmd:edit_wish".into(),
                 CommandRequest::StartFocus { .. } => "cmd:start_focus".into(),
                 CommandRequest::DeleteLastEntry => "cmd:delete_last".into(),
                 CommandRequest::PlanToday => "cmd:plan_today".into(),
@@ -1134,9 +1160,9 @@ pub async fn parse(
     // the tool isn't in the list at all otherwise, so nothing can drift onto
     // the list on the strength of sounding like a want.
     let wishlist = head.starts_with("wish:");
-    let forced_tool = if wishlist {
-        Some("add_wishlist_item")
-    } else if head.starts_with("task:") {
+    // The add tool is no longer forced, only the pair offered: a "wish:" entry
+    // about something already on the list is an edit of it, not a duplicate.
+    let forced_tool = if head.starts_with("task:") {
         Some("log_task")
     } else {
         None
@@ -1261,6 +1287,16 @@ pub async fn parse(
             })),
             "delete_last_entry" => results.push(Action::Command(CommandRequest::DeleteLastEntry)),
             "plan_today" => results.push(Action::Command(CommandRequest::PlanToday)),
+            "edit_wishlist_item" => {
+                results.push(Action::Command(CommandRequest::EditWish(crate::wishlist::Edit {
+                    title: as_str(&args, "title")?,
+                    new_title: opt_str(&args, "new_title"),
+                    kind: opt_str(&args, "kind"),
+                    note: opt_str(&args, "note"),
+                    done: args.get("done").and_then(Value::as_bool).unwrap_or(false),
+                    remove: args.get("delete").and_then(Value::as_bool).unwrap_or(false),
+                })))
+            }
             "add_wishlist_item" => results.push(Action::Wishlist(WishlistRequest {
                 kind: opt_str(&args, "kind")
                     .filter(|k| crate::wishlist::KINDS.contains(&k.as_str()))

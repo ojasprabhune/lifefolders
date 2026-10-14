@@ -337,11 +337,11 @@ export function bestMatch(
  * one encodes the server's own decision and has to stay exactly as loose as
  * `tasks.rs`, win or lose.
  */
-export function suggestTasks(
+export function suggestTasks<T extends { title: string }>(
   query: string,
-  openTasks: TaskWithCheckpoints[],
+  openTasks: T[],
   limit = 6,
-): TaskWithCheckpoints[] {
+): T[] {
   const q = query.trim().toLowerCase()
   // Three characters and not a bare number - long enough to mean something,
   // and what keeps "101" (a weight) from ever being scanned at all. This is a
@@ -350,7 +350,7 @@ export function suggestTasks(
   // against an open title ever produces a candidate in the first place.
   if (q.length < 3 || /^[0-9.]+$/.test(q)) return []
   const qWords = q.split(/\s+/).filter(Boolean)
-  const scored: { item: TaskWithCheckpoints; score: number }[] = []
+  const scored: { item: T; score: number }[] = []
   for (const item of openTasks) {
     const title = item.title.trim().toLowerCase()
     if (!title) continue
@@ -380,12 +380,12 @@ export function suggestTasks(
 function tailWindow(raw: string, today: string): { word: string; index: number }[] | null {
   const trimmed = raw.trim()
   const lower = trimmed.toLowerCase()
-  // A slash command acts on things that already exist and a wish is its own
-  // domain - same early-out as `parseTaskEntry`.
-  if (lower.startsWith('/') || lower.startsWith('wish:')) return null
+  // A slash command acts on things that already exist - same early-out as
+  // `parseTaskEntry`.
+  if (lower.startsWith('/')) return null
 
   const leadingWs = raw.length - raw.trimStart().length
-  const forced = lower.startsWith('task:')
+  const forced = lower.startsWith('task:') || lower.startsWith('wish:')
   const bodyStart = leadingWs + (forced ? 5 : 0)
 
   // Everything after `note:` is time already spent, not a title - never part
@@ -449,16 +449,16 @@ function tailWindow(raw: string, today: string): { word: string; index: number }
  * something before it broke the search, still has a command sitting in front
  * of it and is kept either way.
  */
-export function suggestFromEntry(
+export function suggestFromEntry<T extends { title: string }>(
   raw: string,
   today: string,
-  openTasks: TaskWithCheckpoints[],
+  openTasks: T[],
   limit = 6,
-): { start: number; end: number; items: TaskWithCheckpoints[] } | null {
+): { start: number; end: number; items: T[] } | null {
   const tokens = tailWindow(raw, today)
   if (!tokens || tokens.length === 0) return null
 
-  let best: { start: number; items: TaskWithCheckpoints[] } | null = null
+  let best: { start: number; items: T[] } | null = null
   for (let i = tokens.length - 1; i >= 0; i--) {
     const q = tokens
       .slice(i)

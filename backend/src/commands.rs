@@ -7,7 +7,7 @@ use crate::dayplan;
 use crate::routes::AppError;
 use crate::tasks::{self, Task};
 use crate::undo::{self, Effect};
-use crate::{cadences, sleep, AppState};
+use crate::{cadences, sleep, wishlist, AppState};
 
 /// A command changes existing state and reports back in words - it never
 /// writes a logs row of its own, so `create_log` gets a notice and an empty
@@ -262,6 +262,8 @@ pub async fn apply(
             let log = write_history(state, raw, &updated, "moved").await?;
             Ok(undoable(format!("moved {} to {category}", existing.title), vec![log]))
         }
+
+        CommandRequest::EditWish(edit) => Ok(say(wishlist::edit(state, edit).await?)),
 
         CommandRequest::StartFocus { title, cadence_name, minutes } => {
             let minutes = minutes.clamp(1, 600);

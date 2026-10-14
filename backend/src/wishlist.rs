@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 use crate::models::Log;
 use crate::routes::AppError;
+use crate::undo::{self, Effect};
 use crate::AppState;
 
 pub const KINDS: &[&str] = &["album", "song", "place", "trip", "learning", "other"];
@@ -32,6 +33,117 @@ async fn open_items(state: &AppState) -> Result<Vec<WishlistItem>, AppError> {
     ))
     .fetch_all(&state.pool)
     .await?)
+}
+
+/// Same rule as `tasks::best_match`, so an entry finds a wish exactly the way
+/// it would find a sidequest.
+fn best_match<'a>(items: &'a [WishlistItem], query: &str) -> Option<&'a WishlistItem> {
+    let q = query.trim().to_lowercase();
+    if q.is_empty() {
+        return None;
+    }
+    let mut best: Option<(&WishlistItem, i32)> = None;
+    for item in items {
+        let n = item.title.trim().to_lowercase();
+        let score = if n == q {
+            2
+        } else if n.contains(&q) || q.contains(&n) {
+            1
+        } else {
+            continue;
+        };
+        if best.map(|(_, s)| score > s).unwrap_or(true) {
+            best = Some((item, score));
+        }
+    }
+    best.map(|(item, _)| item)
+}
+
+/// Put an item back exactly as it was, un-archiving it too - one snapshot
+/// covers an edit, a done and a delete.
+pub async fn restore(state: &AppState, snapshot: &WishlistItem) -> Result<(), AppError> {
+    sqlx::query(
+        "UPDATE wishlist_items SET kind = $2, title = $3, detail = $4, resolved_at = $5, \
+         resolved_log_id = $6, archived_at = NULL WHERE id = $1",
+    )
+    .bind(snapshot.id)
+    .bind(&snapshot.kind)
+    .bind(&snapshot.title)
+    .bind(&snapshot.detail)
+    .bind(snapshot.resolved_at)
+    .bind(snapshot.resolved_log_id)
+    .execute(&state.pool)
+    .await?;
+    Ok(())
+}
+
+#[derive(Debug, Default)]
+pub struct Edit {
+    pub title: String,
+    pub new_title: Option<String>,
+    pub kind: Option<String>,
+    pub note: Option<String>,
+    pub done: bool,
+    pub remove: bool,
+}
+
+/// A typed instruction about something already on the list. Like a sidequest,
+/// a typed note appends a line rather than replacing what's there.
+pub async fn edit(state: &AppState, req: Edit) -> Result<String, AppError> {
+    let open = open_items(state).await?;
+    let Some(item) = best_match(&open, &req.title).cloned() else {
+        return Ok(format!("nothing on your wishlist matches \"{}\".", req.title));
+    };
+    undo::record(state, Effect::WishUpdated(item.clone()));
+
+    if req.remove {
+        sqlx::query("UPDATE wishlist_items SET archived_at = now() WHERE id = $1")
+            .bind(item.id)
+            .execute(&state.pool)
+            .await?;
+        return Ok(format!("took {} off your wishlist — cmd+Z to undo", item.title));
+    }
+
+    let new_title = req.new_title.as_deref().map(str::trim).filter(|t| !t.is_empty());
+    let kind = req.kind.as_deref().map(str::trim).map(str::to_lowercase);
+    let kind = kind.as_deref().map(|k| k.trim_end_matches('s')).filter(|k| KINDS.contains(k));
+    let note = req.note.as_deref().map(str::trim).filter(|n| !n.is_empty());
+    sqlx::query(
+        "UPDATE wishlist_items SET \
+            title = COALESCE($2, title), \
+            kind = COALESCE($3, kind), \
+            detail = CASE WHEN $4::text IS NULL THEN detail \
+                          WHEN detail IS NULL OR detail = '' THEN $4 \
+                          ELSE detail || E'\\n' || $4 END, \
+            resolved_at = CASE WHEN $5 THEN COALESCE(resolved_at, now()) ELSE resolved_at END \
+         WHERE id = $1",
+    )
+    .bind(item.id)
+    .bind(new_title)
+    .bind(kind)
+    .bind(note)
+    .bind(req.done)
+    .execute(&state.pool)
+    .await?;
+
+    let mut parts = Vec::new();
+    if let Some(t) = new_title.filter(|t| *t != item.title) {
+        parts.push(format!("renamed {} to {t}", item.title));
+    }
+    let name = new_title.unwrap_or(&item.title);
+    if let Some(k) = kind.filter(|k| *k != item.kind) {
+        parts.push(format!("moved {name} to {k}"));
+    }
+    if note.is_some() {
+        parts.push(format!("added a note to {name}"));
+    }
+    if req.done {
+        parts.push(format!("crossed {name} off"));
+    }
+    if parts.is_empty() {
+        return Ok(format!("{name} is already like that."));
+    }
+    Ok(format!("{} — cmd+Z to undo", parts.join(", ")))
 }
 
 pub async fn context_block(state: &AppState) -> String {
@@ -191,6 +303,7 @@ pub async fn create(
 
 #[derive(Debug, Deserialize)]
 pub struct PatchItem {
+    pub kind: Option<String>,
     pub title: Option<String>,
     pub detail: Option<String>,
     pub resolved: Option<bool>,
@@ -201,10 +314,16 @@ pub async fn patch(
     Path(id): Path<Uuid>,
     Json(body): Json<PatchItem>,
 ) -> Result<Json<WishlistItem>, AppError> {
+    if body.kind.as_deref().is_some_and(|k| !KINDS.contains(&k)) {
+        return Err(AppError::BadRequest("unknown kind".into()));
+    }
+    // Replaces rather than appends, the same split as a sidequest's note: this
+    // is the editor, and a correction has to be able to shorten it.
     let item: Option<WishlistItem> = sqlx::query_as(&format!(
         "UPDATE wishlist_items SET \
             title = COALESCE($2, title), \
-            detail = COALESCE($3, detail), \
+            detail = CASE WHEN $3::text IS NULL THEN detail ELSE NULLIF($3, '') END, \
+            kind = COALESCE($5, kind), \
             resolved_at = CASE WHEN $4::bool IS NULL THEN resolved_at \
                                WHEN $4 THEN COALESCE(resolved_at, now()) \
                                ELSE NULL END \
@@ -214,6 +333,7 @@ pub async fn patch(
     .bind(body.title.as_deref().map(str::trim).filter(|s| !s.is_empty()))
     .bind(body.detail)
     .bind(body.resolved)
+    .bind(body.kind)
     .fetch_optional(&state.pool)
     .await?;
     item.map(Json).ok_or(AppError::NotFound)

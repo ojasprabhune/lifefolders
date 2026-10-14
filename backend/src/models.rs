@@ -271,6 +271,7 @@ pub enum CommandRequest {
     SetTaskStatus { title: String, status: String },
     DeleteTask { title: String },
     RecategorizeTask { title: String, category: String },
+    EditWish(crate::wishlist::Edit),
     StartFocus { title: Option<String>, cadence_name: Option<String>, minutes: i32 },
     DeleteLastEntry,
     PlanToday,

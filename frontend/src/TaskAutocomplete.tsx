@@ -1,14 +1,20 @@
 import { useEffect, useRef } from 'react'
-import type { TaskWithCheckpoints } from './types'
+// A wish is offered alongside the open sidequests and marked as one, so a
+// name shared by both is never a guess.
+export interface Suggestion {
+  id: string
+  title: string
+  wish?: boolean
+}
 
 interface TaskAutocompleteProps {
-  items: TaskWithCheckpoints[]
+  items: Suggestion[]
   activeIndex: number
   left: number
   top: number
   closing: boolean
   onHover: (index: number) => void
-  onAccept: (item: TaskWithCheckpoints) => void
+  onAccept: (item: Suggestion) => void
 }
 
 export function TaskAutocomplete({
@@ -40,6 +46,7 @@ export function TaskAutocomplete({
           onClick={() => onAccept(item)}
         >
           {item.title}
+          {item.wish && <span className="ac-tag">wish</span>}
         </li>
       ))}
     </ul>

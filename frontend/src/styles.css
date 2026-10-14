@@ -570,6 +570,36 @@ header {
   padding: 6px 8px;
 }
 
+.wish-row-wrap {
+  border-bottom: 1px solid var(--line);
+}
+
+.wish-row.dragging {
+  opacity: 0.4;
+  transition: none;
+}
+
+.wish-note {
+  display: flex;
+  flex-direction: column;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 400;
+  font-style: italic;
+  color: var(--muted);
+}
+
+.task-note-edit.wish-edit {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.wish-drop {
+  padding: 14px 0;
+  font-size: 13px;
+  color: var(--faint);
+}
+
 .wish-age {
   color: var(--faint);
   font-size: 13px;
@@ -911,6 +941,12 @@ header {
 .task-autocomplete li.active {
   background: var(--accent);
   color: var(--bg);
+}
+
+.task-autocomplete .ac-tag {
+  margin-left: 8px;
+  font-size: 11px;
+  opacity: 0.6;
 }
 
 /* Its own block rather than folded into the file's shared reduced-motion

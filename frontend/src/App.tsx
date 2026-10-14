@@ -6,16 +6,17 @@ import {
   getToken,
   listLogs,
   listTasks,
+  listWishlist,
   setToken,
   transcribe,
   undoLast,
 } from './api'
 import { getBackendState, markBackendOffline, markBackendOnline, type BackendState } from './backendStatus'
-import type { Category, Log, PendingLog, TaskData, TaskWithCheckpoints } from './types'
-import { cacheLogs, cacheTasks, cachedLogs, cachedTasks } from './cache'
+import type { Category, Log, PendingLog, TaskData } from './types'
+import { cacheLogs, cacheTasks, cacheWishlist, cachedLogs, cachedTasks, cachedWishlist } from './cache'
 import { parseTaskEntry, suggestFromEntry } from './localParse'
 import { measureCaretOffset } from './caret'
-import { TaskAutocomplete } from './TaskAutocomplete'
+import { TaskAutocomplete, type Suggestion } from './TaskAutocomplete'
 import {
   LOCAL_ID_PREFIX,
   addOptimistic,
@@ -507,7 +508,7 @@ function Home() {
   const [greeting] = useState(pickGreeting)
   const inputRef = useRef<HTMLInputElement>(null)
   const [ac, setAc] = useState<{
-    items: TaskWithCheckpoints[]
+    items: Suggestion[]
     index: number
     left: number
     top: number
@@ -564,6 +565,12 @@ function Home() {
   useEffect(() => {
     if (cachedTasks()) return
     listTasks().then(cacheTasks).catch(() => {})
+  }, [])
+
+  // The autocomplete offers wishes by name too. Small, and the panel keeps it
+  // fresh once opened, so one read per visit is enough.
+  useEffect(() => {
+    listWishlist().then(cacheWishlist).catch(() => {})
   }, [])
 
   // Anything that was still in flight when the tab last closed. Offered rather
@@ -750,6 +757,11 @@ function Home() {
         // panel and any open dashboard still need to pick up the change.
         window.dispatchEvent(new Event('life-log-created'))
         if (message) showNotice(message, 6000)
+        // A wish added, edited or crossed off from here - the autocomplete's
+        // copy has to follow without waiting for the panel to be opened.
+        if (message || /^\s*wish:/i.test(rawText)) {
+          listWishlist().then(cacheWishlist).catch(() => {})
+        }
         if (focus_session) {
           adoptFocusSession(focus_session)
           window.location.hash = '#/focus'
@@ -837,8 +849,19 @@ function Home() {
         closeAutocomplete()
         return
       }
-      const openTasks = (cachedTasks() ?? []).filter((t) => t.status !== 'done')
-      const found = suggestFromEntry(value, today, openTasks)
+      // The prefix narrows it the way it narrows the parse: "wish:" offers only
+      // wishes, "task:" only sidequests, and a plain entry could be about
+      // either.
+      const head = value.trimStart().toLowerCase()
+      const tasks: Suggestion[] = head.startsWith('wish:')
+        ? []
+        : (cachedTasks() ?? []).filter((t) => t.status !== 'done').map((t) => ({ id: t.id, title: t.title }))
+      const wishes: Suggestion[] = head.startsWith('task:')
+        ? []
+        : (cachedWishlist() ?? [])
+            .filter((w) => !w.resolved_at)
+            .map((w) => ({ id: w.id, title: w.title, wish: true }))
+      const found = suggestFromEntry(value, today, [...tasks, ...wishes])
       const el = inputRef.current
       if (!found || !el) {
         closeAutocomplete()
@@ -858,7 +881,7 @@ function Home() {
   )
 
   const acceptSuggestion = useCallback(
-    (item: TaskWithCheckpoints) => {
+    (item: Suggestion) => {
       const span = acSpanRef.current
       if (!span) return
       const next = text.slice(0, span.start) + item.title + text.slice(span.end)

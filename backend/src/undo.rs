@@ -5,6 +5,7 @@ use uuid::Uuid;
 use crate::models::Log;
 use crate::routes::AppError;
 use crate::tasks::{self, Checkpoint, Task};
+use crate::wishlist::{self, WishlistItem};
 use crate::AppState;
 
 // One thing a mutation did. A single user action usually does several: moving
@@ -23,6 +24,7 @@ pub enum Effect {
     TaskCreated(Uuid),
     TasksUpdated(Vec<Task>),
     TaskDeleted { snapshot: Task, checkpoints: Vec<Checkpoint> },
+    WishUpdated(WishlistItem),
 }
 
 /// Start a new undoable action, discarding whatever the last one was. One HTTP
@@ -89,6 +91,7 @@ pub async fn undo_last(State(state): State<AppState>) -> Result<StatusCode, AppE
             Effect::TaskDeleted { snapshot, checkpoints } => {
                 tasks::undo_deleted(&state, &snapshot, &checkpoints).await?
             }
+            Effect::WishUpdated(snapshot) => wishlist::restore(&state, &snapshot).await?,
         }
     }
     Ok(StatusCode::NO_CONTENT)

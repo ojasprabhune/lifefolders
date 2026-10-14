@@ -253,9 +253,13 @@ export function Guide() {
         <ul>
           <li>Start with <em>wish:</em> to add something you want to do later.</li>
           <li>Crosses itself off when you log the real thing.</li>
+          <li>Rename, move, note, cross off or delete a wish from the entry box.</li>
+          <li>In the panel: drag between kinds, click to edit the name and note.</li>
         </ul>
         <ul className="examples">
           <li>wish: Igor</li>
+          <li>move igor to songs</li>
+          <li>igor note: sam's pick</li>
         </ul>
       </section>
 

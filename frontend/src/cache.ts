@@ -1,4 +1,4 @@
-import type { Log, TaskWithCheckpoints } from './types'
+import type { Log, TaskWithCheckpoints, WishlistItem } from './types'
 
 /**
  * A first-frame copy of the two lists you look at most.
@@ -15,6 +15,7 @@ import type { Log, TaskWithCheckpoints } from './types'
 const VERSION = 1
 const TASKS_KEY = 'life_cache_tasks'
 const LOGS_KEY = 'life_cache_logs'
+const WISHLIST_KEY = 'life_cache_wishlist'
 
 function read<T>(key: string): T | null {
   try {
@@ -44,6 +45,16 @@ export function cacheTasks(tasks: TaskWithCheckpoints[]) {
   write(TASKS_KEY, tasks)
 }
 
+// Only the entry box's autocomplete reads this, to offer wishes by name.
+export function cachedWishlist(): WishlistItem[] | null {
+  const rows = read<WishlistItem[]>(WISHLIST_KEY)
+  return Array.isArray(rows) ? rows : null
+}
+
+export function cacheWishlist(items: WishlistItem[]) {
+  write(WISHLIST_KEY, items)
+}
+
 // One day only - the day you were last on, which on any normal visit is today.
 // Painting yesterday's rows under today's heading would be worse than blank.
 export function cachedLogs(date: string): Log[] | null {
@@ -59,6 +70,7 @@ export function clearCaches() {
   try {
     localStorage.removeItem(TASKS_KEY)
     localStorage.removeItem(LOGS_KEY)
+    localStorage.removeItem(WISHLIST_KEY)
   } catch {
     // nothing to do
   }
