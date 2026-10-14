@@ -13,7 +13,8 @@
       // is the date the current pick was made for, so reloads within the
       // same day keep whatever that day already landed on instead of
       // re-rolling, and a manual choice from the guide only lasts until the
-      // next day's roll.
+      // next day's roll. life_theme_rotate = '0' (the guide's toggle) turns
+      // the roll off and keeps whatever is stored.
       try {
         var darkThemes = ['dark', 'slate', 'graphite', 'teal', 'atlantic', 'moss', 'plum', 'clay']
         var colors = {
@@ -29,7 +30,8 @@
         }
         var today = new Date().toDateString()
         var stored = localStorage.getItem('life_theme')
-        if (localStorage.getItem('life_theme_day') !== today || !colors[stored]) {
+        var rotateTheme = localStorage.getItem('life_theme_rotate') !== '0'
+        if ((rotateTheme && localStorage.getItem('life_theme_day') !== today) || !colors[stored]) {
           stored = darkThemes[Math.floor(Math.random() * darkThemes.length)]
           localStorage.setItem('life_theme', stored)
           localStorage.setItem('life_theme_day', today)
@@ -39,17 +41,21 @@
       } catch (e) {}
       // Same rotation shape as the color theme above, kept in its own
       // try/catch and its own day key (life_font_day) so the two rotate
-      // independently of each other.
+      // independently of each other. With life_font_rotate = '0', 'default'
+      // is a valid pin too - the roll never picks it, but a person can.
       try {
         var fontThemes = ['folio', 'press', 'signal']
         var todayFont = new Date().toDateString()
         var storedFont = localStorage.getItem('life_font')
-        if (localStorage.getItem('life_font_day') !== todayFont || fontThemes.indexOf(storedFont) === -1) {
+        var rotateFont = localStorage.getItem('life_font_rotate') !== '0'
+        if (!rotateFont && storedFont === 'default') {
+          storedFont = null
+        } else if ((rotateFont && localStorage.getItem('life_font_day') !== todayFont) || fontThemes.indexOf(storedFont) === -1) {
           storedFont = fontThemes[Math.floor(Math.random() * fontThemes.length)]
           localStorage.setItem('life_font', storedFont)
           localStorage.setItem('life_font_day', todayFont)
         }
-        document.documentElement.setAttribute('data-font', storedFont)
+        if (storedFont) document.documentElement.setAttribute('data-font', storedFont)
       } catch (e) {}
     </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />

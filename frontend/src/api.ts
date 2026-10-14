@@ -107,6 +107,27 @@ export function setFontTheme(font: FontTheme) {
   }
 }
 
+// Read by the boot script in index.html, so turning one off takes effect on
+// the next load: whatever is pinned then stays pinned past midnight.
+const THEME_ROTATE_KEY = 'life_theme_rotate'
+const FONT_ROTATE_KEY = 'life_font_rotate'
+
+export function getThemeRotates(): boolean {
+  return localStorage.getItem(THEME_ROTATE_KEY) !== '0'
+}
+
+export function setThemeRotates(on: boolean) {
+  localStorage.setItem(THEME_ROTATE_KEY, on ? '1' : '0')
+}
+
+export function getFontRotates(): boolean {
+  return localStorage.getItem(FONT_ROTATE_KEY) !== '0'
+}
+
+export function setFontRotates(on: boolean) {
+  localStorage.setItem(FONT_ROTATE_KEY, on ? '1' : '0')
+}
+
 const SHOW_CLOCK_KEY = 'life_show_clock'
 
 export function getShowClock(): boolean {

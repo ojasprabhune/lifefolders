@@ -1,13 +1,17 @@
 import { useState } from 'react'
 import {
+  getFontRotates,
   getFontTheme,
   getHiddenDomains,
   getShowClock,
   getTheme,
+  getThemeRotates,
   saveHiddenDomains,
+  setFontRotates,
   setFontTheme,
   setShowClock,
   setTheme,
+  setThemeRotates,
   type FontTheme,
   type Theme,
 } from './api'
@@ -48,6 +52,8 @@ export function Guide() {
   const [theme, setThemeState] = useState(() => resolvedTheme(getTheme()))
   const [font, setFontState] = useState(() => getFontTheme())
   const [showClock, setShowClockState] = useState(() => getShowClock())
+  const [themeRotates, setThemeRotatesState] = useState(() => getThemeRotates())
+  const [fontRotates, setFontRotatesState] = useState(() => getFontRotates())
 
   const toggle = (id: string) => {
     const next = hidden.includes(id) ? hidden.filter((h) => h !== id) : [...hidden, id]
@@ -63,6 +69,16 @@ export function Guide() {
   const chooseFont = (id: FontTheme) => {
     setFontTheme(id)
     setFontState(id)
+  }
+
+  const toggleThemeRotates = (on: boolean) => {
+    setThemeRotates(on)
+    setThemeRotatesState(on)
+  }
+
+  const toggleFontRotates = (on: boolean) => {
+    setFontRotates(on)
+    setFontRotatesState(on)
   }
 
   const toggleClock = (show: boolean) => {
@@ -461,8 +477,8 @@ export function Guide() {
       <section>
         <h2>appearance</h2>
         <p>
-          Light and dark follow your system's setting until you pick one here, which pins it.
-          The clock is a small Pacific-time readout pinned to the top right, digits fading in as
+          The color changes to a random dark theme each day. Picking one here holds it until
+          tomorrow; turn off change daily to keep it for good. The clock is a small Pacific-time readout pinned to the top right, digits fading in as
           they change. Both are stored on this device only.
         </p>
         <div className="theme-picker">
@@ -484,6 +500,13 @@ export function Guide() {
         </div>
         <div className="theme-switches">
           <label className="theme-switch">
+            <input type="checkbox" checked={themeRotates} onChange={(e) => toggleThemeRotates(e.target.checked)} />
+            <span className="theme-switch-track">
+              <span className="theme-switch-thumb" />
+            </span>
+            change daily
+          </label>
+          <label className="theme-switch">
             <input type="checkbox" checked={showClock} onChange={(e) => toggleClock(e.target.checked)} />
             <span className="theme-switch-track">
               <span className="theme-switch-thumb" />
@@ -497,7 +520,8 @@ export function Guide() {
         <h2>type</h2>
         <p>
           The wordmark and body copy rotate through one of these pairings each day, picked
-          at random. Pick one here to pin it. Folio and press both set their reading text in
+          at random. Picking one holds it until tomorrow; turn off change daily to keep it.
+          Folio and press both set their reading text in
           Libron, an open-license serif; signal drops serif entirely. Stored on this device
           only.
         </p>
@@ -518,6 +542,15 @@ export function Guide() {
               {opt.label}
             </button>
           ))}
+        </div>
+        <div className="theme-switches">
+          <label className="theme-switch">
+            <input type="checkbox" checked={fontRotates} onChange={(e) => toggleFontRotates(e.target.checked)} />
+            <span className="theme-switch-track">
+              <span className="theme-switch-thumb" />
+            </span>
+            change daily
+          </label>
         </div>
       </section>
 
