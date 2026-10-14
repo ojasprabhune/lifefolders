@@ -2304,9 +2304,13 @@ header > .brand {
   background: var(--accent);
 }
 
-.guide .schema {
-  font-size: 13px;
+.guide .examples li {
+  font-size: 14px;
   color: var(--muted);
+}
+
+.guide .examples li::before {
+  background: var(--muted);
 }
 
 .hidden-list {
