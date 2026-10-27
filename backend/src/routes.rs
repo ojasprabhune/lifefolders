@@ -5,7 +5,7 @@ use axum::Json;
 use chrono::{Duration, NaiveDate, TimeZone, Utc};
 use uuid::Uuid;
 
-use crate::models::{Action, CreateLog, ItineraryEntry, ListQuery, Log, SleepData, UpdateLog};
+use crate::models::{Action, CommandRequest, CreateLog, ItineraryEntry, ListQuery, Log, SleepData, UpdateLog};
 use crate::undo::{self, Effect};
 use crate::{commands, groq, cadences, learning, tasks, wger, wishlist, AppState};
 
@@ -274,6 +274,14 @@ pub async fn create_log(
         now_local.format("%Y-%m-%dT%H:%M"),
         now_local.format("%A")
     );
+    let today = for_date.unwrap_or(now_local.date_naive());
+    let week: Vec<String> = (1..=7)
+        .map(|n| {
+            let d = today + Duration::days(n);
+            format!("{} {}", d.format("%A"), d)
+        })
+        .collect();
+    context.push_str(&format!("Coming days: {}.\n", week.join(", ")));
     if let Some(d) = for_date {
         context.push_str(&format!(
             "This entry is being logged for {} ({}), not for today. Resolve \"today\", \
@@ -289,8 +297,23 @@ pub async fn create_log(
     context.push_str(&cadences::context_block(&state).await);
     context.push_str(&wishlist::context_block(&state).await);
 
-    let actions =
+    let mut actions =
         groq::parse(&state.http, &state.groq_key, &state.usda_key, raw, &context).await?;
+
+    // Only correct a date the model already chose: a weekday that's part of a
+    // title ("friday quiz review done") must not invent a deadline.
+    if let Some(due) = tasks::explicit_due(raw, today) {
+        let due = due.format("%Y-%m-%d").to_string();
+        for action in &mut actions {
+            match action {
+                Action::Task(req) if req.due_date.is_some() => req.due_date = Some(due.clone()),
+                Action::Command(CommandRequest::RescheduleTasks { new_due_date, .. }) => {
+                    *new_due_date = due.clone()
+                }
+                _ => {}
+            }
+        }
+    }
 
     let mut logs = Vec::with_capacity(actions.len());
     let mut notices = Vec::new();

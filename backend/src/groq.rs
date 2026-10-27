@@ -592,8 +592,9 @@ when the task is actually tied to that activity, and reserve \"personal\" for \
 non-school errands and to-dos, not schoolwork. \
 When a deadline is given as a bare weekday name (\"due Friday\", \"by Monday\") with no \
 qualifier, resolve it to the nearest upcoming occurrence of that weekday - today itself \
-if today is that weekday, otherwise the next date forward within the next 7 days. Only \
-skip ahead to the following week when \"next\" is stated explicitly (\"next Friday\"). For \
+if today is that weekday, otherwise read the date off the \"Coming days\" list rather \
+than counting. \"next Friday\" is the same day as \"Friday\" except when today is Friday, \
+where it means a week from today. For \
 \"in N days/weeks,\" add exactly that many days/weeks to the current local date given above. \
 An entry starting with \"task:\" is always log_task, no matter what it otherwise sounds \
 like - exclude that literal prefix from the title. An entry containing a \"#tag\" (e.g. \

@@ -2,7 +2,7 @@ use anyhow::Result;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
-use chrono::{Duration, NaiveDate, NaiveTime, Utc};
+use chrono::{Datelike, Duration, NaiveDate, NaiveTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
@@ -482,6 +482,143 @@ fn explicit_effort(raw: &str) -> Option<i32> {
         None => raw,
     };
     effort_from_text(head)
+}
+
+fn weekday_alias(w: &str) -> Option<u32> {
+    Some(match w {
+        "sunday" | "sun" => 0,
+        "monday" | "mon" => 1,
+        "tuesday" | "tue" | "tues" => 2,
+        "wednesday" | "wed" | "weds" => 3,
+        "thursday" | "thu" | "thur" | "thurs" => 4,
+        "friday" | "fri" => 5,
+        "saturday" | "sat" => 6,
+        _ => return None,
+    })
+}
+
+fn month_alias(w: &str) -> Option<u32> {
+    Some(match w {
+        "jan" | "january" => 1,
+        "feb" | "february" => 2,
+        "mar" | "march" => 3,
+        "apr" | "april" => 4,
+        "may" => 5,
+        "jun" | "june" => 6,
+        "jul" | "july" => 7,
+        "aug" | "august" => 8,
+        "sep" | "sept" | "september" => 9,
+        "oct" | "october" => 10,
+        "nov" | "november" => 11,
+        "dec" | "december" => 12,
+        _ => return None,
+    })
+}
+
+// The nearest occurrence on or after today; "next" only differs on the day
+// itself. Same rule as `nextWeekday` in localParse.ts.
+fn next_weekday(today: NaiveDate, target: u32, strict: bool) -> NaiveDate {
+    let from = today.weekday().num_days_from_sunday();
+    let mut delta = (target + 7 - from) % 7;
+    if delta == 0 && strict {
+        delta = 7;
+    }
+    today + Duration::days(delta as i64)
+}
+
+fn month_day(today: NaiveDate, month: u32, day: u32) -> Option<NaiveDate> {
+    let this_year = NaiveDate::from_ymd_opt(today.year(), month, day)?;
+    if this_year >= today {
+        Some(this_year)
+    } else {
+        NaiveDate::from_ymd_opt(today.year() + 1, month, day)
+    }
+}
+
+fn date_word(w: &str) -> String {
+    let w = w.to_lowercase();
+    let w = w.trim_matches(|c: char| !(c.is_ascii_alphanumeric() || c == '/' || c == '-'));
+    w.strip_suffix("'s").unwrap_or(w).to_string()
+}
+
+/// The deadline an entry names, worked out here rather than by the model,
+/// which gets weekday arithmetic wrong often enough to matter ("due saturday"
+/// landing on friday). A port of `findDate` in localParse.ts, so the row drawn
+/// before the request leaves agrees with the one that comes back.
+///
+/// Only an unambiguous answer counts: phrases led by "due"/"by"/"to"/... win
+/// over bare ones (so "friday quiz due monday" is monday), and if what's left
+/// still names two different days the model is trusted instead, since that is
+/// usually two tasks in one entry. Read from the head only, as with effort.
+pub fn explicit_due(raw: &str, today: NaiveDate) -> Option<NaiveDate> {
+    let head = match note_marker(raw) {
+        Some(idx) => &raw[..idx],
+        None => raw,
+    };
+    let words: Vec<&str> = head
+        .split_whitespace()
+        .filter(|w| !w.starts_with('#') && !w.starts_with('@'))
+        .collect();
+    let lead = |i: usize| {
+        i > 0
+            && matches!(
+                date_word(words[i - 1]).as_str(),
+                "due" | "by" | "on" | "before" | "to" | "until" | "till" | "til"
+            )
+    };
+
+    let mut hits: Vec<(NaiveDate, bool)> = Vec::new();
+    let mut i = 0;
+    while i < words.len() {
+        let w = date_word(words[i]);
+        let next = words.get(i + 1).map(|s| date_word(s)).unwrap_or_default();
+        let after = words.get(i + 2).map(|s| date_word(s)).unwrap_or_default();
+        let (date, used) = match w.as_str() {
+            "today" | "tonight" | "tonite" => (Some(today), 1),
+            "tomorrow" | "tmrw" | "tmr" | "tmw" | "tomo" => (Some(today + Duration::days(1)), 1),
+            "next" if next == "week" => (Some(today + Duration::days(7)), 2),
+            "next" => (weekday_alias(&next).map(|d| next_weekday(today, d, true)), 2),
+            "this" | "coming" => (weekday_alias(&next).map(|d| next_weekday(today, d, false)), 2),
+            "in" if is_number(&next) && matches!(after.as_str(), "day" | "days" | "week" | "weeks") => {
+                let n = next.parse::<f64>().unwrap_or(0.0) as i64;
+                let days = if after.starts_with("week") { n * 7 } else { n };
+                (Some(today + Duration::days(days)), 3)
+            }
+            "in" if matches!(next.as_str(), "a" | "one") && after == "week" => {
+                (Some(today + Duration::days(7)), 3)
+            }
+            _ => {
+                if let Some(d) = weekday_alias(&w) {
+                    (Some(next_weekday(today, d, false)), 1)
+                } else if let (Some(m), Ok(d)) = (month_alias(&w), next.parse::<u32>()) {
+                    (month_day(today, m, d), 2)
+                } else if let Ok(d) = NaiveDate::parse_from_str(&w, "%Y-%m-%d") {
+                    (Some(d), 1)
+                } else {
+                    let parts: Vec<&str> = w.split('/').collect();
+                    match parts[..] {
+                        [m, d] | [m, d, _] => match (m.parse::<u32>(), d.parse::<u32>()) {
+                            (Ok(m), Ok(d)) => (month_day(today, m, d), 1),
+                            _ => (None, 1),
+                        },
+                        _ => (None, 1),
+                    }
+                }
+            }
+        };
+        match date {
+            Some(d) => {
+                hits.push((d, lead(i)));
+                i += used;
+            }
+            None => i += 1,
+        }
+    }
+
+    let led: Vec<NaiveDate> = hits.iter().filter(|h| h.1).map(|h| h.0).collect();
+    let pool = if led.is_empty() { hits.iter().map(|h| h.0).collect() } else { led };
+    let first = *pool.first()?;
+    pool.iter().all(|d| *d == first).then_some(first)
 }
 
 fn strip_markers(title: &str) -> String {
@@ -983,7 +1120,44 @@ pub(crate) fn effort_from_text(s: &str) -> Option<i32> {
 
 #[cfg(test)]
 mod tests {
-    use super::{effort_from_text, explicit_effort, explicit_note, strip_markers};
+    use super::{effort_from_text, explicit_due, explicit_effort, explicit_note, strip_markers};
+    use chrono::NaiveDate;
+
+    fn day(s: &str) -> Option<NaiveDate> {
+        NaiveDate::parse_from_str(s, "%Y-%m-%d").ok()
+    }
+
+    #[test]
+    fn a_weekday_resolves_to_the_coming_one() {
+        // 2026-10-27 is a tuesday.
+        let today = day("2026-10-27").unwrap();
+        assert_eq!(explicit_due("chem lab due saturday", today), day("2026-10-31"));
+        assert_eq!(explicit_due("move chem lab to sat", today), day("2026-10-31"));
+        assert_eq!(explicit_due("chem lab due tuesday", today), day("2026-10-27"));
+        assert_eq!(explicit_due("chem lab due monday", today), day("2026-11-02"));
+        assert_eq!(explicit_due("chem lab next tuesday", today), day("2026-11-03"));
+        assert_eq!(explicit_due("chem lab next friday", today), day("2026-10-30"));
+        assert_eq!(explicit_due("chem lab tomorrow", today), day("2026-10-28"));
+        assert_eq!(explicit_due("chem lab in 3 days", today), day("2026-10-30"));
+        assert_eq!(explicit_due("chem lab due nov 3", today), day("2026-11-03"));
+        assert_eq!(explicit_due("chem lab due 1/5", today), day("2027-01-05"));
+    }
+
+    #[test]
+    fn a_weekday_in_the_title_loses_to_the_deadline() {
+        let today = day("2026-10-27").unwrap();
+        assert_eq!(explicit_due("friday quiz review due monday", today), day("2026-11-02"));
+        assert_eq!(explicit_due("study for friday's quiz by thursday", today), day("2026-10-29"));
+        assert_eq!(explicit_due("chem lab due saturday #homework @3pm", today), day("2026-10-31"));
+    }
+
+    #[test]
+    fn two_different_deadlines_are_left_to_the_model() {
+        let today = day("2026-10-27").unwrap();
+        assert_eq!(explicit_due("chem lab due friday and essay due monday", today), None);
+        assert_eq!(explicit_due("chem lab note: moved from friday", today), None);
+        assert_eq!(explicit_due("chem lab done", today), None);
+    }
 
     #[test]
     fn a_duration_typed_into_an_entry_becomes_the_estimate() {
