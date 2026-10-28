@@ -30,6 +30,7 @@ import { forgetOutbox, rememberOutbox, takeOutbox } from './outbox'
 import { DOMAINS } from './domains'
 import { Row } from './Row'
 import { adoptFocusSession, restoreFocusSession } from './focusEngine'
+import { startPlanAutostart } from './planAutostart'
 import { DailyPlan } from './DailyPlan'
 import { Fidgets } from './Fidgets'
 import { STAMP_WORDS, pickNot } from './remarks'
@@ -274,6 +275,12 @@ export default function App() {
   useEffect(() => {
     if (!authed) return
     void restoreFocusSession()
+  }, [authed])
+
+  // Starts the next block's timer when a break ends, on any page.
+  useEffect(() => {
+    if (!authed) return
+    return startPlanAutostart()
   }, [authed])
 
   // The toggle lives in the guide, a separately mounted page, so it can't
