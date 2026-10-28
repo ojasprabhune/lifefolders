@@ -55,6 +55,8 @@ import { SleepReminder } from './SleepReminder'
 import { Tasks } from './Tasks'
 import { Travel } from './Travel'
 import { Wishlist } from './Wishlist'
+import { KeyboardNav } from './keyboardNav'
+import { HISTORY_EVENT, type HistoryEvent } from './history'
 
 function localDateStr(d: Date): string {
   const y = d.getFullYear()
@@ -291,23 +293,6 @@ export default function App() {
     return () => window.removeEventListener('life-clock-pref-changed', onChange)
   }, [])
 
-  // "/" jumps to search from anywhere, except while typing - it lives here
-  // rather than in Home so it still works from the guide and focus pages.
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return
-      if (getHiddenDomains().includes('search')) return
-      const target = e.target as HTMLElement | null
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
-        return
-      }
-      e.preventDefault()
-      window.location.hash = '#/search'
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
-
   if (!authed) return <Gate onUnlock={() => setAuthed(true)} />
 
   // Guide, focus and the two walls stay full-page swaps - guide isn't a
@@ -348,6 +333,7 @@ export default function App() {
       <SleepReminder />
       <FocusPill route={route} />
       <Fidgets route={route} showClock={showClock} />
+      <KeyboardNav route={route} />
     </>
   )
 }
@@ -623,20 +609,28 @@ function Home() {
     }, 700)
   }, [])
 
-  // Something outside the timeline wrote a row - renaming a sidequest in its
-  // panel is the only one today. Home deliberately doesn't listen to the
-  // broader `life-log-created`: it applies its own writes locally, and
-  // refetching on each of those would add a round trip per entry to a backend
-  // that sleeps between visits.
+  // A sidequest changed by clicking in its panel (history.ts). Its row is
+  // drawn before the request goes, and the server's copy takes its place
+  // under the same key, the same handover a locally-parsed entry gets. Only
+  // today's timeline takes it: the row is stamped now, and on an earlier day
+  // it would be drawn somewhere it doesn't belong.
   useEffect(() => {
-    const onStale = async () => {
-      const before = new Set(logsRef.current.map((l) => l.id))
-      await refresh(date)
-      flashParsed(logsRef.current.filter((l) => !before.has(l.id)).map((l) => l.id))
+    const onHistory = (e: Event) => {
+      const ev = (e as CustomEvent<HistoryEvent>).detail
+      if (!isToday) return
+      if (ev.kind === 'draw') {
+        setLogs((l) => [ev.log, ...l])
+        flashParsed([ev.log.id])
+      } else if (ev.log) {
+        const server = { ...ev.log, localId: ev.localId }
+        setLogs((l) => l.map((x) => (x.id === ev.localId ? server : x)))
+      } else {
+        setLogs((l) => l.filter((x) => x.id !== ev.localId))
+      }
     }
-    window.addEventListener('life-timeline-stale', onStale)
-    return () => window.removeEventListener('life-timeline-stale', onStale)
-  }, [date, refresh, flashParsed])
+    window.addEventListener(HISTORY_EVENT, onHistory)
+    return () => window.removeEventListener(HISTORY_EVENT, onHistory)
+  }, [isToday, flashParsed])
 
   // Shown, then let go of rather than yanked: it fades while its height comes
   // down, so the day below rises to meet it instead of jumping up a line.
@@ -1198,6 +1192,7 @@ function Home() {
         className={`list day-list ${view.slide ? `slide-${view.slide}` : ''}`}
         key={view.date}
         ref={listRef}
+        data-kb-scope="timeline"
       >
         {notice && (
           <div className="notice" ref={noticeRef}>

@@ -16,6 +16,7 @@ import {
   type Theme,
 } from './api'
 import { DOMAINS } from './domains'
+import { ShortcutList } from './keyboardNav'
 import { lastPanel } from './lastPanel'
 
 function resolvedTheme(stored: Theme | null): Theme {
@@ -282,8 +283,18 @@ export function Guide() {
         <h2>search</h2>
         <ul>
           <li>Finds any old entry by its text or fields, grouped by day.</li>
-          <li>Press <em>/</em> outside a text box to open it. Rows edit in place.</li>
+          <li>Press <em>g</em> then <em>s</em> outside a text box to open it. Rows edit in place.</li>
         </ul>
+      </section>
+
+      <section>
+        <h2>keyboard</h2>
+        <ul>
+          <li>Works anywhere except inside a text box, where only esc does anything (it leaves the box).</li>
+          <li>With a panel open, the keys move through the panel; h from its first section crosses to the timeline.</li>
+          <li>Press <em>?</em> to see this list from any page.</li>
+        </ul>
+        <ShortcutList />
       </section>
 
       <section>

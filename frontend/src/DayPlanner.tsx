@@ -6,9 +6,13 @@ import {
   getDayPlan,
   patchDayPlan,
   patchPlanBlock,
+  patchTask,
   type DayPlan,
   type PlanBlock,
 } from './api'
+import { beginFocusSession, getFocusSession } from './focusEngine'
+import { withHistory } from './history'
+import { useKbAction } from './keyboardNav'
 import { collapseAndRemove, prefersReducedMotion } from './motion'
 import { formatEffort } from './Tasks'
 import type { TaskWithCheckpoints } from './types'
@@ -97,6 +101,28 @@ export function DayPlanner({
   // would land on changes only when you cross a neighbour, and that one is
   // state because it re-lays-out the rows around it.
   const listRef = useRef<HTMLOListElement>(null)
+  // x on a block is x on the sidequest behind it; a custom block has none.
+  useKbAction(listRef, 'done', (item) => {
+    const t = tasks.find((x) => x.id === item.dataset.taskId)
+    if (!t) return
+    const status = t.status === 'done' ? 'not_started' : 'done'
+    void withHistory(t, { status }, () => patchTask(t.id, { status }).then((r) => r.history)).then(onChanged)
+  })
+  // f on a sidequest's block is its ▷. A custom block has no ▷ - it only
+  // ever started on its own, when its time came - so f starts the same
+  // session the autostart would, named by the block. One already running is
+  // left alone and shown instead; replacing it is the autostart's call.
+  useKbAction(listRef, 'focus', (item) => {
+    const link = item.querySelector<HTMLElement>('[data-kb-focus]')
+    if (link) return link.click()
+    const b = plan?.blocks.find((x) => x.id === item.dataset.blockId)
+    if (!b || b.kind === 'break') return
+    const open = () => {
+      window.location.hash = '#/focus'
+    }
+    if (getFocusSession()) return open()
+    beginFocusSession({ label: b.label, planned_minutes: b.minutes }).then(open, () => {})
+  })
   const [held, setHeld] = useState<{ id: string; from: number; height: number } | null>(null)
   const [overIndex, setOverIndex] = useState<number | null>(null)
   const dragRef = useRef<{
@@ -375,6 +401,7 @@ export function DayPlanner({
             className={`planner-list ${held ? 'plan-dragging' : ''} ${settled ? 'plan-settled' : ''}`}
             ref={listRef}
             style={{ ['--n' as string]: blocks.length }}
+            data-kb-section="script"
           >
             {blocks.flatMap((b, i) => [
               // --i drives the stagger. The body unmounts when collapsed, so
@@ -385,6 +412,9 @@ export function DayPlanner({
                 className={`planner-block ${b.kind} ${isCurrent(b, isToday) ? 'now' : ''} ${
                   held?.id === b.id ? 'plan-held' : ''
                 }`}
+                data-kb-item=""
+                data-block-id={b.id}
+                data-task-id={b.task_id ?? undefined}
                 style={{
                   ['--i' as string]: i,
                   ['--r' as string]: blocks.length - 1 - i,
@@ -410,6 +440,7 @@ export function DayPlanner({
                     className="task-focus"
                     href={`#/focus?task=${b.task_id}&minutes=${b.minutes}&start=1`}
                     aria-label="start a clarity session for this block"
+                    data-kb-focus=""
                   >
                     ▷
                   </a>
@@ -588,6 +619,7 @@ function LabelField({ value, onSave }: { value: string; onSave: (v: string) => v
       <span
         className="planner-label"
         title="double-click to reword this line"
+        data-kb-open="dblclick"
         onDoubleClick={() => {
           // The double-click has already selected the word under the pointer;
           // leaving it highlighted behind the input just looks like a mistake.

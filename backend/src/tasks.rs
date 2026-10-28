@@ -760,13 +760,93 @@ pub struct PatchTask {
     // alone" and there is otherwise no way to take an estimate back off.
     #[serde(default)]
     pub clear_effort: bool,
+    // Set by the timeline's own row editor. That row is already the history
+    // of the change it is correcting, so writing another one beside it would
+    // log the correction twice.
+    #[serde(default)]
+    pub quiet: bool,
+}
+
+/// What a click in the sidequests panel did, worded the way the timeline
+/// words the same change typed. One row per click, so a patch touching
+/// several fields reports the one you would see: status, then the date, the
+/// section, the name, the note. The frontend draws its own copy of this row
+/// before the response lands (`history.ts`), so the two have to agree word
+/// for word or the swap reads as an edit.
+pub(crate) fn history_of(before: &Task, after: &Task, note_changed: bool) -> Option<(String, TaskData)> {
+    let mut data = TaskData {
+        task_id: after.id,
+        title: after.title.clone(),
+        category: after.category.clone(),
+        due_date: after.due_date,
+        due_time: after.due_time,
+        status: after.status.clone(),
+        is_exam: after.is_exam,
+        action: String::new(),
+        note: None,
+        previous_due_date: None,
+        previous_title: None,
+    };
+    let title = &after.title;
+    let raw = if after.status != before.status {
+        data.action = "status".into();
+        match after.status.as_str() {
+            "done" => format!("finished {title}"),
+            "in_progress" => format!("started {title}"),
+            _ => format!("reopened {title}"),
+        }
+    } else if after.due_date != before.due_date {
+        data.action = "rescheduled".into();
+        data.previous_due_date = before.due_date;
+        match after.due_date {
+            Some(d) => format!("moved {title} to {}", d.format("%a %b %-d")),
+            None => format!("cleared the due date on {title}"),
+        }
+    } else if after.is_exam != before.is_exam || after.category != before.category {
+        data.action = "moved".into();
+        format!("moved {title} to {}", if after.is_exam { "exam" } else { &after.category })
+    } else if after.title != before.title {
+        data.action = "renamed".into();
+        data.previous_title = Some(before.title.clone());
+        format!("renamed {} to {title}", before.title)
+    } else if note_changed && after.note != before.note {
+        data.action = "note".into();
+        data.note = after.note.clone();
+        match &after.note {
+            Some(n) => format!("{title}: {n}"),
+            None => format!("cleared the note on {title}"),
+        }
+    } else {
+        return None;
+    };
+    Some((raw, data))
+}
+
+async fn insert_history(state: &AppState, raw: &str, data: &TaskData) -> Result<Log, AppError> {
+    Ok(sqlx::query_as(
+        "INSERT INTO logs (raw_input, parsed_type, data) VALUES ($1, 'task', $2) \
+         RETURNING id, created_at, raw_input, parsed_type, data",
+    )
+    .bind(raw)
+    .bind(serde_json::to_value(data).unwrap())
+    .fetch_one(&state.pool)
+    .await?)
+}
+
+// The timeline row rides back with the task, so the panel can hand it to the
+// timeline without the timeline having to go and fetch the day again.
+#[derive(Debug, Serialize)]
+pub struct Patched {
+    #[serde(flatten)]
+    task: Task,
+    history: Option<Log>,
 }
 
 pub async fn patch_task(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
     Json(body): Json<PatchTask>,
-) -> Result<Json<Task>, AppError> {
+) -> Result<Json<Patched>, AppError> {
     if let Some(s) = &body.status {
         if !matches!(s.as_str(), "not_started" | "in_progress" | "done") {
             return Err(AppError::BadRequest("bad status".into()));
@@ -827,7 +907,6 @@ pub async fn patch_task(
     // The title is baked into the calendar event summaries - the task's own
     // and each pending checkpoint's ("study: X (7d out)") - so a rename has to
     // push them again. update_task already synced, but with the old name.
-    let mut renamed_log: Option<Uuid> = None;
     if new_title.is_some_and(|t| t != existing.title) {
         spawn_calendar_sync(&state, &task);
         let pending: Vec<Checkpoint> = sqlx::query_as(
@@ -840,42 +919,20 @@ pub async fn patch_task(
         for cp in pending {
             spawn_checkpoint_sync(&state, cp.id, &task.title, cp.offset_days, cp.due_date);
         }
-
-        // The one edit made from this handler that earns a place in the day's
-        // timeline. The others it can apply - a due date, a status, a category,
-        // a note - are either already logged when they come through an entry,
-        // or are tweaks you make several of in a row and would only clutter it.
-        let data = TaskData {
-            task_id: task.id,
-            title: task.title.clone(),
-            category: task.category.clone(),
-            due_date: task.due_date,
-            due_time: task.due_time,
-            status: task.status.clone(),
-            is_exam: task.is_exam,
-            action: "renamed".to_string(),
-            note: None,
-            previous_due_date: None,
-            previous_title: Some(existing.title.clone()),
-        };
-        let log: Log = sqlx::query_as(
-            "INSERT INTO logs (raw_input, parsed_type, data) VALUES ($1, 'task', $2) \
-             RETURNING id, created_at, raw_input, parsed_type, data",
-        )
-        .bind(format!("renamed {} to {}", existing.title, task.title))
-        .bind(serde_json::to_value(&data).unwrap())
-        .fetch_one(&state.pool)
-        .await?;
-        renamed_log = Some(log.id);
     }
+
+    let history = match history_of(&existing, &task, body.note.is_some()) {
+        Some((raw, data)) if !body.quiet => Some(insert_history(&state, &raw, &data).await?),
+        _ => None,
+    };
 
     undo::record(&state, Effect::TasksUpdated(vec![snapshot]));
     // Recorded after the task snapshot so undo replays them in reverse and the
-    // timeline row goes before the title is put back.
-    if let Some(log_id) = renamed_log {
-        undo::record(&state, Effect::LogsCreated(vec![log_id]));
+    // timeline row goes before the task is put back.
+    if let Some(log) = &history {
+        undo::record(&state, Effect::LogsCreated(vec![log.id]));
     }
-    Ok(Json(task))
+    Ok(Json(Patched { task, history }))
 }
 
 pub(crate) async fn archive_task(state: &AppState, id: Uuid) -> Result<bool, AppError> {
@@ -916,12 +973,34 @@ pub(crate) async fn cascade_delete(state: &AppState, task_id: Uuid) -> Result<()
 pub async fn delete_task(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
-) -> Result<StatusCode, AppError> {
+) -> Result<Json<Log>, AppError> {
+    let existing: Option<Task> = sqlx::query_as(&format!(
+        "SELECT {TASK_COLUMNS} FROM tasks WHERE id = $1 AND archived_at IS NULL"
+    ))
+    .bind(id)
+    .fetch_optional(&state.pool)
+    .await?;
+    let existing = existing.ok_or(AppError::NotFound)?;
     undo::begin(&state);
-    if !archive_task(&state, id).await? {
-        return Err(AppError::NotFound);
-    }
-    Ok(StatusCode::NO_CONTENT)
+    archive_task(&state, id).await?;
+    let data = TaskData {
+        task_id: existing.id,
+        title: existing.title.clone(),
+        category: existing.category.clone(),
+        due_date: existing.due_date,
+        due_time: existing.due_time,
+        status: existing.status.clone(),
+        is_exam: existing.is_exam,
+        action: "deleted".to_string(),
+        note: None,
+        previous_due_date: None,
+        previous_title: None,
+    };
+    // Recorded after archive_task's own snapshot, so undo takes the row away
+    // before it brings the sidequest back.
+    let log = insert_history(&state, &format!("deleted {}", existing.title), &data).await?;
+    undo::record(&state, Effect::LogsCreated(vec![log.id]));
+    Ok(Json(log))
 }
 
 #[derive(Debug, Deserialize)]
@@ -1120,11 +1199,55 @@ pub(crate) fn effort_from_text(s: &str) -> Option<i32> {
 
 #[cfg(test)]
 mod tests {
-    use super::{effort_from_text, explicit_due, explicit_effort, explicit_note, strip_markers};
+    use super::{effort_from_text, explicit_due, explicit_effort, explicit_note, history_of, strip_markers, Task};
     use chrono::NaiveDate;
 
     fn day(s: &str) -> Option<NaiveDate> {
         NaiveDate::parse_from_str(s, "%Y-%m-%d").ok()
+    }
+
+    fn task() -> Task {
+        Task {
+            id: uuid::Uuid::nil(),
+            title: "chem lab".into(),
+            category: "homework".into(),
+            due_date: day("2026-10-30"),
+            due_time: None,
+            effort_minutes: None,
+            status: "not_started".into(),
+            is_exam: false,
+            note: None,
+            created_at: chrono::Utc::now(),
+            completed_at: None,
+        }
+    }
+
+    // history.ts draws these same words before the server answers.
+    #[test]
+    fn history_wording() {
+        let before = task();
+        let raw = |after: Task, note: bool| history_of(&before, &after, note).map(|(r, d)| (r, d.action));
+
+        let done = Task { status: "done".into(), ..task() };
+        assert_eq!(raw(done, false), Some(("finished chem lab".into(), "status".into())));
+        let started = Task { status: "in_progress".into(), ..task() };
+        assert_eq!(raw(started, false), Some(("started chem lab".into(), "status".into())));
+        let exam = Task { is_exam: true, ..task() };
+        assert_eq!(raw(exam, false), Some(("moved chem lab to exam".into(), "moved".into())));
+        let club = Task { category: "club".into(), ..task() };
+        assert_eq!(raw(club, false), Some(("moved chem lab to club".into(), "moved".into())));
+        let later = Task { due_date: day("2026-11-02"), ..task() };
+        assert_eq!(raw(later, false), Some(("moved chem lab to Mon Nov 2".into(), "rescheduled".into())));
+        let renamed = Task { title: "chem writeup".into(), ..task() };
+        assert_eq!(
+            raw(renamed, false),
+            Some(("renamed chem lab to chem writeup".into(), "renamed".into()))
+        );
+        let noted = Task { note: Some("just the graphs".into()), ..task() };
+        assert_eq!(raw(noted.clone(), true), Some(("chem lab: just the graphs".into(), "note".into())));
+        // A patch that names the note but leaves it as it was writes nothing.
+        assert_eq!(raw(task(), true), None);
+        assert_eq!(raw(noted, false), None);
     }
 
     #[test]

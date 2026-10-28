@@ -20,6 +20,8 @@ import { clearSettled, isOptimistic, optimisticTasks, subscribeOptimistic } from
 import { Panel, usePanelState } from './Panel'
 import type { FocusSession, TaskCheckpoint, TaskWithCheckpoints } from './types'
 import { Quip } from './Quip'
+import { withHistory } from './history'
+import { useKbAction } from './keyboardNav'
 
 const DUE_STRIP_DAYS_BEFORE = 5
 const DUE_STRIP_DAYS_AFTER = 16
@@ -175,20 +177,25 @@ export function Tasks({ open }: { open: boolean }) {
     return () => window.removeEventListener('life-log-created', refresh)
   }, [mounted, refresh])
 
-  const cycleStatus = async (t: TaskWithCheckpoints) => {
-    const next =
-      t.status === 'not_started' ? 'in_progress' : t.status === 'in_progress' ? 'done' : 'not_started'
-    await patchTask(t.id, { status: next }).catch(() => {})
+  const setStatus = async (t: TaskWithCheckpoints, status: TaskWithCheckpoints['status']) => {
+    await withHistory(t, { status }, () => patchTask(t.id, { status }).then((r) => r.history))
     refresh()
   }
+
+  const cycleStatus = (t: TaskWithCheckpoints) =>
+    setStatus(t, t.status === 'not_started' ? 'in_progress' : t.status === 'in_progress' ? 'done' : 'not_started')
+
+  // x from the keyboard means done, not "one step along the cycle" - and on
+  // something already done, it takes it back.
+  const toggleDone = (t: TaskWithCheckpoints) => setStatus(t, t.status === 'done' ? 'not_started' : 'done')
 
   const toggleCheckpoint = async (id: string, status: 'todo' | 'done') => {
     await patchCheckpoint(id, { status }).catch(() => {})
     refresh()
   }
 
-  const remove = async (id: string) => {
-    await deleteTask(id).catch(() => {})
+  const remove = async (t: TaskWithCheckpoints) => {
+    await withHistory(t, 'deleted', () => deleteTask(t.id))
     refresh()
   }
 
@@ -200,7 +207,9 @@ export function Tasks({ open }: { open: boolean }) {
   // study checkpoints away.
   const moveToCategory = async (id: string, category: string) => {
     const patch = category === 'exam' ? { is_exam: true } : { category, is_exam: false }
-    await patchTask(id, patch).catch(() => {})
+    const t = tasks.find((x) => x.id === id)
+    if (!t) return
+    await withHistory(t, patch, () => patchTask(id, patch).then((r) => r.history))
     refresh()
   }
 
@@ -311,6 +320,21 @@ export function Tasks({ open }: { open: boolean }) {
     setSelected(next)
   }
 
+  // g t and g d (keyboardNav.tsx) name a day outright, where pick toggles -
+  // asking for today while already on it must not drop you on the backlog.
+  // Kept in a ref so the listener isn't re-added on every render.
+  const showDay = useRef((_: string | null) => {})
+  showDay.current = (day) => {
+    if (day === selected) return
+    setView({ key: day ?? 'all', dir: selected && day ? (day > selected ? 'right' : 'left') : 'in' })
+    setSelected(day)
+  }
+  useEffect(() => {
+    const on = (e: Event) => showDay.current((e as CustomEvent<string | null>).detail)
+    window.addEventListener('life-task-day', on)
+    return () => window.removeEventListener('life-task-day', on)
+  }, [])
+
   const resolvedTasks = useMemo(
     () =>
       tasks
@@ -417,7 +441,7 @@ export function Tasks({ open }: { open: boolean }) {
         {selected ? (
           <>
             {(overdue.length > 0 || overdueShown) && (
-              <section className="music-section task-section" ref={overdueRef}>
+              <section className="music-section task-section" ref={overdueRef} data-kb-section="overdue">
                 <h2 className="section-title overdue-title" style={{ ['--i' as string]: at() }}>
                   overdue ({lastOverdue.current})
                 </h2>
@@ -427,9 +451,9 @@ export function Tasks({ open }: { open: boolean }) {
                     task={t}
                     index={at()}
                     pending={isOptimistic(t.id)}
-                    onCycle={() => void cycleStatus(t)}
+                    onCycle={() => void cycleStatus(t)} onDone={() => void toggleDone(t)}
                     onCheckpoint={toggleCheckpoint}
-                    onDelete={() => void remove(t.id)}
+                    onDelete={() => void remove(t)}
                     onRefresh={refresh}
                     change={changes.get(t.id) ?? null}
                     leaving={heldMode.get(t.id) ?? null}
@@ -438,7 +462,7 @@ export function Tasks({ open }: { open: boolean }) {
                 ))}
               </section>
             )}
-            <section className="music-section task-section">
+            <section className="music-section task-section" data-kb-section="due">
               <h2 className="section-title" style={{ ['--i' as string]: at() }}>
                 due {dueLabel(selected)}
               </h2>
@@ -448,9 +472,9 @@ export function Tasks({ open }: { open: boolean }) {
                   task={t}
                   index={at()}
                   pending={isOptimistic(t.id)}
-                  onCycle={() => void cycleStatus(t)}
+                  onCycle={() => void cycleStatus(t)} onDone={() => void toggleDone(t)}
                   onCheckpoint={toggleCheckpoint}
-                  onDelete={() => void remove(t.id)}
+                  onDelete={() => void remove(t)}
                   onRefresh={refresh}
                   change={changes.get(t.id) ?? null}
                   leaving={heldMode.get(t.id) ?? null}
@@ -468,6 +492,7 @@ export function Tasks({ open }: { open: boolean }) {
             <section
               key={category}
               className={`music-section task-section ${dragOver === category ? 'drag-over' : ''}`}
+              data-kb-section={category}
               onDragOver={(e) => {
                 e.preventDefault()
                 if (dragOver !== category) setDragOver(category)
@@ -499,9 +524,9 @@ export function Tasks({ open }: { open: boolean }) {
                   task={t}
                   index={at()}
                   pending={isOptimistic(t.id)}
-                  onCycle={() => void cycleStatus(t)}
+                  onCycle={() => void cycleStatus(t)} onDone={() => void toggleDone(t)}
                   onCheckpoint={toggleCheckpoint}
-                  onDelete={() => void remove(t.id)}
+                  onDelete={() => void remove(t)}
                   onRefresh={refresh}
                   change={changes.get(t.id) ?? null}
                   leaving={heldMode.get(t.id) ?? null}
@@ -526,9 +551,9 @@ export function Tasks({ open }: { open: boolean }) {
               resolved ({resolvedTasks.length})
             </button>
             <Expand open={showResolved}>
-              <div className="resolved-list">
+              <div className="resolved-list" data-kb-section="resolved">
                 {resolvedTasks.map((t) => (
-                  <ResolvedRow key={t.id} task={t} onCycle={() => void cycleStatus(t)} onDelete={() => void remove(t.id)} />
+                  <ResolvedRow key={t.id} task={t} onCycle={() => void cycleStatus(t)} onDone={() => void toggleDone(t)} onDelete={() => void remove(t)} />
                 ))}
               </div>
             </Expand>
@@ -958,6 +983,7 @@ function TaskRow({
   index = 0,
   pending = false,
   onCycle,
+  onDone,
   onCheckpoint,
   onDelete,
   onRefresh,
@@ -974,6 +1000,7 @@ function TaskRow({
   // before its write lands, because there is no id to act against.
   pending?: boolean
   onCycle: () => void
+  onDone: () => void
   onCheckpoint: (id: string, status: 'todo' | 'done') => void
   onDelete: () => void
   onRefresh: () => void
@@ -1006,6 +1033,7 @@ function TaskRow({
   const [titleDraft, setTitleDraft] = useState(task.title)
   const wrapRef = useRef<HTMLDivElement>(null)
   const noteFieldRef = useRef<HTMLTextAreaElement>(null)
+  useKbAction(wrapRef, 'done', onDone)
 
   // Grows with the text rather than needing a drag - same pattern as the
   // daily-notes field. This has to be a layout effect, not a plain one:
@@ -1064,7 +1092,7 @@ function TaskRow({
   const saveNote = async () => {
     const next = noteDraft.trim()
     if (next === (task.note ?? '')) return
-    await patchTask(task.id, { note: next }).catch(() => {})
+    await withHistory(task, { note: next || null }, () => patchTask(task.id, { note: next }).then((r) => r.history))
     onRefresh()
   }
 
@@ -1077,11 +1105,8 @@ function TaskRow({
       return
     }
     if (next === task.title) return
-    await patchTask(task.id, { title: next }).catch(() => {})
+    await withHistory(task, { title: next }, () => patchTask(task.id, { title: next }).then((r) => r.history))
     onRefresh()
-    // A rename is the one panel edit that writes a timeline row, so the day's
-    // list has to go and fetch it.
-    window.dispatchEvent(new Event('life-timeline-stale'))
   }
 
   const toggle = () => {
@@ -1099,6 +1124,10 @@ function TaskRow({
       }`}
       ref={wrapRef}
       data-flip-id={task.id}
+      // Neither a row still waiting on its write nor one on its way out has
+      // anything a key could act on.
+      data-kb-item={pending || leaving ? undefined : ''}
+      data-kb-expanded={expanded || undefined}
       style={{ ['--i' as string]: index }}
     >
       <div
@@ -1134,7 +1163,7 @@ function TaskRow({
         <button className={`task-status ${task.status}`} onClick={onCycle}>
           {task.status === 'done' ? '✓' : task.status === 'in_progress' ? '→' : '○'}
         </button>
-        <div className="task-main" onClick={toggle}>
+        <div className="task-main" onClick={toggle} data-kb-open="">
           <div className="task-title">{task.title}</div>
           {task.due_date && (
             <div
@@ -1180,7 +1209,12 @@ function TaskRow({
             <AddCheckpointPill taskId={task.id} onRefresh={onRefresh} />
           </div>
         )}
-        <a className="task-focus" href={`#/focus?task=${task.id}`} aria-label="clarity session for this sidequest">
+        <a
+          className="task-focus"
+          href={`#/focus?task=${task.id}`}
+          aria-label="clarity session for this sidequest"
+          data-kb-focus=""
+        >
           ▷
         </a>
         <button className="delete-btn" onClick={onDelete}>
@@ -1294,6 +1328,7 @@ function TaskRow({
 function ResolvedRow({
   task,
   onCycle,
+  onDone,
   onDelete,
 }: {
   task: TaskWithCheckpoints
@@ -1304,10 +1339,13 @@ function ResolvedRow({
   // before its write lands, because there is no id to act against.
   pending?: boolean
   onCycle: () => void
+  onDone: () => void
   onDelete: () => void
 }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useKbAction(ref, 'done', onDone)
   return (
-    <div className="resolved-row">
+    <div className="resolved-row" ref={ref} data-kb-item="">
       <div className="task-row">
         <button className={`task-status ${task.status}`} onClick={onCycle}>
           ✓

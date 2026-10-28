@@ -450,8 +450,9 @@ export async function patchTask(
     clear_effort: boolean
     is_exam: boolean
     note: string
+    quiet: boolean
   }>,
-): Promise<Task> {
+): Promise<Task & { history: Log | null }> {
   const res = await fetch(`${API}/api/tasks/${id}`, {
     method: 'PATCH',
     headers: { 'content-type': 'application/json', ...authHeaders() },
@@ -460,9 +461,10 @@ export async function patchTask(
   return (await check(res)).json()
 }
 
-export async function deleteTask(id: string): Promise<void> {
+// Resolves to the "deleted" row it leaves on the timeline.
+export async function deleteTask(id: string): Promise<Log> {
   const res = await fetch(`${API}/api/tasks/${id}`, { method: 'DELETE', headers: authHeaders() })
-  await check(res)
+  return (await check(res)).json()
 }
 
 export async function createCheckpoint(taskId: string, offsetDays: number): Promise<TaskCheckpoint> {

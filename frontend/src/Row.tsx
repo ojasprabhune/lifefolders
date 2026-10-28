@@ -380,9 +380,11 @@ export function Row({
       className={`row-wrap ${expanded ? 'open' : ''} ${restored ? 'restored' : ''}`}
       ref={wrapRef}
       data-flip-id={log.id}
+      data-kb-item=""
+      data-kb-expanded={expanded || undefined}
       style={{ ['--i' as string]: index }}
     >
-      <div className={`row ${reveal ? `reveal-${reveal}` : ''}`} onClick={onToggle}>
+      <div className={`row ${reveal ? `reveal-${reveal}` : ''}`} onClick={onToggle} data-kb-open="">
         <span className="row-time">{rowTime(log)}</span>
         <span className={`badge ${badge(log).kind}`}>{badge(log).label}</span>
         <span className="row-main" ref={mainRef}>
@@ -720,7 +722,7 @@ function TaskLogEditor({ log, onChange, onDelete }: EditorProps) {
   // type another entry.
   const submit = async () => {
     if (data.task_id) {
-      await patchTask(data.task_id, { note: note.trim() })
+      await patchTask(data.task_id, { note: note.trim(), quiet: true })
         .then(() => window.dispatchEvent(new Event('life-log-created')))
         .catch(() => {})
     }

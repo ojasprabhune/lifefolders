@@ -34,7 +34,9 @@ export function Panel({ closing, children }: { closing: boolean; children: React
           window.location.hash = '#/'
         }}
       />
-      <div className={`side-panel ${closing ? 'closing' : ''}`}>{children}</div>
+      <div className={`side-panel ${closing ? 'closing' : ''}`} data-kb-scope="panel">
+        {children}
+      </div>
     </>
   )
 }

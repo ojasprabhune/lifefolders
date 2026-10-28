@@ -6699,3 +6699,119 @@ html.paddle-out * {
   opacity: 0.35;
   cursor: default;
 }
+
+/* Keyboard navigation (keyboardNav.tsx). The selection only exists where
+   there is a pointer to speak of - a touch screen never shows it. It is an
+   inset edge and a tint rather than an outline because the timeline clips
+   anything reaching outside a row, and no transition: these are elements
+   that already carry transitions of their own, and the shorthand would
+   replace them. */
+@media (hover: hover) and (pointer: fine) {
+  [data-kb-selected] {
+    box-shadow: inset 3px 0 0 var(--accent);
+    background-color: color-mix(in srgb, var(--accent) 9%, transparent);
+    outline: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    outline-offset: -1px;
+  }
+}
+
+/* Waiting on the second key of a g sequence. Top centre because every
+   bottom corner is taken, and centred with auto margins rather than a
+   transform so the entrance keyframes can't knock it sideways. */
+.kb-hint {
+  position: fixed;
+  top: 14px;
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  width: fit-content;
+  z-index: 60;
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  pointer-events: none;
+  animation: kb-hint-in 120ms ease both;
+}
+
+.kb-hint.closing {
+  animation: kb-hint-out 140ms ease both;
+}
+
+@keyframes kb-hint-in {
+  from {
+    opacity: 0;
+    translate: 0 -4px;
+  }
+}
+
+@keyframes kb-hint-out {
+  to {
+    opacity: 0;
+  }
+}
+
+.modal.kb-help {
+  max-width: 460px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+}
+
+.kb-list {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.kb-group h3 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  text-transform: lowercase;
+  letter-spacing: 0.04em;
+}
+
+.kb-group dl {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kb-row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 12px;
+  align-items: baseline;
+  font-size: 14px;
+}
+
+.kb-row dt {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.kb-row dd {
+  margin: 0;
+}
+
+.kb-row kbd {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kb-hint,
+  .kb-hint.closing {
+    animation: none;
+  }
+}
