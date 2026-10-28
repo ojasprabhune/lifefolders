@@ -808,7 +808,7 @@ function CheckpointPill({
   onRefresh,
 }: {
   cp: TaskCheckpoint
-  onToggle: () => void
+  onToggle: (next: 'todo' | 'done') => void
   onRefresh: () => void
 }) {
   const [draft, setDraft] = useState<string | null>(null)
@@ -817,6 +817,21 @@ function CheckpointPill({
   // onDoubleClick, which would otherwise flip the checkpoint and flip it back.
   const clickTimer = useRef<number | null>(null)
   useEffect(() => () => window.clearTimeout(clickTimer.current ?? undefined), [])
+  // The toggle is a PATCH and then a refetch of the whole list, so the pill
+  // shows where it is going straight away and lets the server catch up. If the
+  // write fails nothing ever arrives to match, and it falls back after a while.
+  const [optimistic, setOptimistic] = useState<'todo' | 'done' | null>(null)
+  const [flip, setFlip] = useState<'cp-check' | 'cp-uncheck' | null>(null)
+  useEffect(() => {
+    if (optimistic === null) return
+    if (cp.status === optimistic) {
+      setOptimistic(null)
+      return
+    }
+    const t = window.setTimeout(() => setOptimistic(null), 6000)
+    return () => window.clearTimeout(t)
+  }, [cp.status, optimistic])
+  const status = optimistic ?? cp.status
 
   const commit = async () => {
     const offset = Number(draft)
@@ -845,13 +860,17 @@ function CheckpointPill({
 
   return (
     <button
-      className={`checkpoint-pill ${cp.status} ${cp.status === 'todo' && daysUntil(cp.due_date) <= 0 ? 'due' : ''}`}
+      className={`checkpoint-pill ${status} ${status === 'todo' && daysUntil(cp.due_date) <= 0 ? 'due' : ''} ${flip ?? ''}`}
       title="double-click to change how many days out"
+      onAnimationEnd={() => setFlip(null)}
       onClick={() => {
         if (clickTimer.current !== null) return
         clickTimer.current = window.setTimeout(() => {
           clickTimer.current = null
-          onToggle()
+          const next = status === 'todo' ? 'done' : 'todo'
+          setOptimistic(next)
+          setFlip(next === 'done' ? 'cp-check' : 'cp-uncheck')
+          onToggle(next)
         }, 220)
       }}
       onDoubleClick={() => {
@@ -1136,7 +1155,7 @@ function TaskRow({
               <CheckpointPill
                 key={cp.id}
                 cp={cp}
-                onToggle={() => onCheckpoint(cp.id, cp.status === 'todo' ? 'done' : 'todo')}
+                onToggle={(next) => onCheckpoint(cp.id, next)}
                 onRefresh={onRefresh}
               />
             ))}

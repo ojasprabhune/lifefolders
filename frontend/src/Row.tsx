@@ -286,7 +286,7 @@ function rightSide(log: Log, onRate: (log: Log) => void): React.ReactNode {
  * reveal the parsed row - stays the default: it's the one that describes
  * parsing itself, so anything without a better story keeps it.
  */
-type Reveal = 'decode' | 'count' | 'stamp' | 'settle' | 'strike' | 'roll' | 'wake' | 'drift' | 'thud'
+type Reveal = 'decode' | 'count' | 'stamp' | 'settle' | 'roll' | 'wake' | 'drift' | 'thud'
 
 const DOMAIN_REVEAL: Partial<Record<Log['parsed_type'], Reveal>> = {
   nutrition: 'count',
@@ -311,7 +311,10 @@ function revealOf(log: Log): Reveal {
   }
   if (log.parsed_type === 'task') {
     const t = log.data as TaskData
-    if (t.action === 'status') return t.status === 'done' ? 'strike' : 'decode'
+    // Not a strike: the line belongs to the sidequests panel, where the row
+    // then leaves. On the timeline it stays, and a struck-through record of
+    // finishing something read as if the entry itself had been cancelled.
+    if (t.action === 'status') return t.status === 'done' ? 'stamp' : 'decode'
     if (t.action === 'rescheduled') return t.previous_due_date ? 'roll' : 'decode'
     // Same shape as a reschedule: one field changed, so only that field moves.
     if (t.action === 'renamed') return t.previous_title ? 'roll' : 'decode'
@@ -389,11 +392,6 @@ export function Row({
                 {ch}
               </span>
             ))
-          ) : reveal === 'strike' ? (
-            // Wrapped so the line is as wide as the words. `.row-main` is the
-            // flex-grow cell, so drawing across it struck through a foot of
-            // empty space to the right of the text.
-            <span className="row-struck">{text}</span>
           ) : (
             text
           )}

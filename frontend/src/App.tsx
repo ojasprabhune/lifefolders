@@ -608,7 +608,7 @@ function Home() {
   }, [view.date, logs])
 
   // Give a set of rows their arrival animation. The window has to outlast the
-  // longest reveal in styles.css (the completion strike at 620ms) - if it
+  // longest reveal in styles.css - if it
   // fires first the row loses its markup mid-animation.
   const flashParsed = useCallback((ids: string[]) => {
     if (ids.length === 0) return
