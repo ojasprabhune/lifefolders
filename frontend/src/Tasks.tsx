@@ -52,6 +52,21 @@ function diffTask(before: TaskWithCheckpoints, after: TaskWithCheckpoints): Task
   return null
 }
 
+// Checking off the review that put an exam on the day takes it off the day,
+// and that is the day's version of finishing it, so it leaves the same way.
+function reviewedOff(
+  before: TaskWithCheckpoints,
+  after: TaskWithCheckpoints,
+  day: string | null,
+  today: string,
+): TaskChange | null {
+  if (!day || !onPlate(before, day, today) || onPlate(after, day, today)) return null
+  const checked = after.checkpoints.some(
+    (cp) => cp.status === 'done' && before.checkpoints.some((b) => b.id === cp.id && b.status === 'todo'),
+  )
+  return checked ? { kind: 'done' } : null
+}
+
 // A row still on screen after the change that removed it, kept in its old
 // shape so its exit has something to animate.
 type Held = { task: TaskWithCheckpoints; mode: 'done' | 'away' }
@@ -97,10 +112,13 @@ export function Tasks({ open }: { open: boolean }) {
       const today = dateToStr(new Date())
       for (const t of next) {
         const was = before.get(t.id)
-        const change = was && diffTask(was, t)
+        const change = was && (diffTask(was, t) ?? reviewedOff(was, t, day, today))
         if (!was || !change) continue
         found.set(t.id, change)
-        if (change.kind === 'done') held.push({ task: { ...was, status: 'not_started' }, mode: 'done' })
+        if (change.kind === 'done') {
+          // A review is held exactly as it was: the task itself isn't done.
+          held.push({ task: t.status === 'done' ? { ...was, status: 'not_started' } : was, mode: 'done' })
+        }
         // A reschedule that takes the row off the day on screen. Every other
         // change leaves it somewhere you can still see it, and the backlog
         // view has no day to fall off in the first place.
