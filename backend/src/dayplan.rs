@@ -541,6 +541,110 @@ pub async fn delete_block(
     Ok(Json(view(&state, date, row).await?))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ScriptBlock {
+    pub kind: Option<String>,
+    pub label: String,
+    pub minutes: i32,
+    pub pinned_start: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SetScript {
+    pub starts_at: Option<String>,
+    pub ends_at: Option<String>,
+    pub blocks: Vec<ScriptBlock>,
+    /// Insert a break once this many minutes of work have run without one.
+    pub break_every_min: Option<i32>,
+    pub break_min: Option<i32>,
+}
+
+/// Replace the whole script for a date in one request: bounds, ordered blocks,
+/// pins, and optionally automatic breaks. Blocks that name an open sidequest
+/// are linked to it, the same way a generated plan is, so they can still be
+/// started and ticked off from the panel.
+pub async fn set_script(
+    State(state): State<AppState>,
+    Query(q): Query<DateQuery>,
+    Json(body): Json<SetScript>,
+) -> Result<Json<DayPlanView>, AppError> {
+    let offset = q.tz_offset_min.unwrap_or(0);
+    let date = q.date.unwrap_or_else(|| local_today(offset));
+    ensure_row(&state, date, offset, q.goal_min.unwrap_or(480)).await?;
+
+    let row: PlanRow = sqlx::query_as(
+        "UPDATE day_plans SET \
+            starts_at = COALESCE($2, starts_at), \
+            ends_at = COALESCE($3, ends_at), \
+            updated_at = now() \
+         WHERE plan_date = $1 RETURNING starts_at, ends_at",
+    )
+    .bind(date)
+    .bind(body.starts_at.as_deref().and_then(parse_hhmm))
+    .bind(body.ends_at.as_deref().and_then(parse_hhmm))
+    .fetch_one(&state.pool)
+    .await?;
+
+    let open = tasks::open_tasks(&state).await?;
+    let break_min = body.break_min.unwrap_or(5).max(1);
+    let mut run = 0;
+    let mut rows: Vec<(String, Option<Uuid>, String, i32, Option<NaiveTime>)> = Vec::new();
+    let last = body.blocks.len().saturating_sub(1);
+    for (i, b) in body.blocks.iter().enumerate() {
+        let label = clean_label(&b.label);
+        let minutes = b.minutes.clamp(1, 12 * 60);
+        let is_break = b.kind.as_deref() == Some("break");
+        let task_id = (!is_break && b.kind.as_deref() != Some("custom"))
+            .then(|| tasks::best_match(&open, &label).map(|t| t.id))
+            .flatten();
+        let kind = if is_break {
+            "break"
+        } else if task_id.is_some() {
+            "task"
+        } else {
+            "custom"
+        };
+        rows.push((
+            kind.into(),
+            task_id,
+            label,
+            minutes,
+            b.pinned_start.as_deref().and_then(parse_hhmm),
+        ));
+        run = if is_break { 0 } else { run + minutes };
+        let next_is_break = body.blocks.get(i + 1).is_some_and(|n| n.kind.as_deref() == Some("break"));
+        if let Some(every) = body.break_every_min {
+            if run >= every.max(1) && i != last && !next_is_break {
+                rows.push(("break".into(), None, "break".into(), break_min, None));
+                run = 0;
+            }
+        }
+    }
+
+    let mut tx = state.pool.begin().await?;
+    sqlx::query("DELETE FROM plan_blocks WHERE plan_date = $1")
+        .bind(date)
+        .execute(&mut *tx)
+        .await?;
+    for (pos, (kind, task_id, label, minutes, pin)) in rows.iter().enumerate() {
+        sqlx::query(
+            "INSERT INTO plan_blocks (plan_date, position, kind, task_id, label, minutes, pinned_start) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        )
+        .bind(date)
+        .bind(pos as i32)
+        .bind(kind)
+        .bind(task_id)
+        .bind(label)
+        .bind(minutes)
+        .bind(pin)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+    Ok(Json(view(&state, date, row).await?))
+}
+
 /// Take `id` out of the list and put it back at index `to`.
 fn reorder(ids: Vec<Uuid>, id: Uuid, to: i32) -> Vec<Uuid> {
     let mut rest: Vec<Uuid> = ids.into_iter().filter(|x| *x != id).collect();
