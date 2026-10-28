@@ -44,6 +44,9 @@ pub struct CreateFocus {
     pub task_id: Option<Uuid>,
     pub new_task: Option<NewTask>,
     pub cadence_id: Option<Uuid>,
+    /// A session for something that is neither a sidequest nor a cadence, like
+    /// a custom block in the day plan. Only used when no task or cadence is given.
+    pub label: Option<String>,
     pub planned_minutes: i32,
 }
 
@@ -94,13 +97,26 @@ pub async fn create_session(
                 let task = tasks::create_task(&state, &req).await?;
                 (Some(task.id), None, task.title)
             }
-            (None, None) => {
-                return Err(AppError::BadRequest("task_id, cadence_id, or new_task required".into()))
-            }
+            (None, None) => match body.label.as_deref().map(str::trim).filter(|l| !l.is_empty()) {
+                Some(l) => (None, None, l.to_string()),
+                None => {
+                    return Err(AppError::BadRequest(
+                        "task_id, cadence_id, new_task, or label required".into(),
+                    ))
+                }
+            },
         }
     };
 
-    Ok(Json(open_session(&state, task_id, cadence_id, title, body.planned_minutes).await?))
+    let started = open_session(&state, task_id, cadence_id, title, body.planned_minutes).await?;
+    if task_id.is_none() && cadence_id.is_none() {
+        sqlx::query("UPDATE focus_sessions SET label = $2 WHERE id = $1")
+            .bind(started.session.id)
+            .bind(&started.title)
+            .execute(&state.pool)
+            .await?;
+    }
+    Ok(Json(started))
 }
 
 /// Insert the session row and pair it with the display title. Split out of
@@ -165,7 +181,7 @@ pub async fn active_session(
     }
 
     let title: (String,) = sqlx::query_as(
-        "SELECT COALESCE(t.title, c.name, 'something') FROM focus_sessions f \
+        "SELECT COALESCE(t.title, c.name, f.label, 'something') FROM focus_sessions f \
          LEFT JOIN tasks t ON t.id = f.task_id \
          LEFT JOIN cadences c ON c.id = f.cadence_id \
          WHERE f.id = $1",
@@ -192,7 +208,7 @@ pub async fn last_ended_session(
     let Some(session) = ended else { return Ok(Json(None)) };
 
     let title: (String,) = sqlx::query_as(
-        "SELECT COALESCE(t.title, c.name, 'something') FROM focus_sessions f \
+        "SELECT COALESCE(t.title, c.name, f.label, 'something') FROM focus_sessions f \
          LEFT JOIN tasks t ON t.id = f.task_id \
          LEFT JOIN cadences c ON c.id = f.cadence_id \
          WHERE f.id = $1",
@@ -288,12 +304,18 @@ pub async fn end_session(
             .fetch_one(&state.pool)
             .await?;
         title
-    } else {
+    } else if let Some(cadence_id) = session.cadence_id {
         let (name,): (String,) = sqlx::query_as("SELECT name FROM cadences WHERE id = $1")
-            .bind(session.cadence_id)
+            .bind(cadence_id)
             .fetch_one(&state.pool)
             .await?;
         name
+    } else {
+        let (label,): (Option<String>,) = sqlx::query_as("SELECT label FROM focus_sessions WHERE id = $1")
+            .bind(session.id)
+            .fetch_one(&state.pool)
+            .await?;
+        label.unwrap_or_else(|| "something".into())
     };
 
     let data = FocusSessionData {

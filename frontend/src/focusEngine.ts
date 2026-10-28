@@ -117,6 +117,7 @@ export async function beginFocusSession(body: {
   task_id?: string
   new_task?: { title: string; category?: string }
   cadence_id?: string
+  label?: string
   planned_minutes: number
 }): Promise<ActiveFocusSession> {
   // Created/resumed here, inside the click handler that calls this, so the

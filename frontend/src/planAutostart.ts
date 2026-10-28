@@ -1,15 +1,16 @@
-// Starts the focus session for a plan block when the break before it ends, so
-// the schedule drives the timer instead of a tap. It lives at module level, like
-// the focus engine, so it works on every page - but only while the app is open
-// in a tab, since there is no background process to run it.
+// Starts the focus session for a plan block when it begins, so the schedule
+// drives the timer instead of a tap. Blocks linked to a sidequest time that
+// sidequest; custom blocks get a session of their own, named by the block.
+// It lives at module level, like the focus engine, so it works on every page,
+// but only while the app is open in a tab, since there is no background process to run it.
 import { getDayPlan, type DayPlan, type PlanBlock } from './api'
 import { localDateStr } from './dates'
-import { beginFocusSession, getFocusSession } from './focusEngine'
+import { beginFocusSession, getFocusSession, stopFocusSession } from './focusEngine'
 
 const STARTED_KEY = 'life_autostart_block'
 const POLL_MS = 15_000
 const PLAN_TTL_MS = 45_000
-// A block that began longer ago than this is not "the break just ended", it is
+// A block that began longer ago than this is not "just started", it is
 // a page opened halfway through the evening, and a timer should not appear.
 const WINDOW_MS = 5 * 60_000
 
@@ -50,22 +51,25 @@ function withAbsoluteTimes(date: string, plan: DayPlan): { block: PlanBlock; sta
 }
 
 async function check() {
-  if (getFocusSession()) return
   const now = new Date()
   const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
   for (const date of [localDateStr(now), localDateStr(yesterday)]) {
     const plan = await planFor(date)
     if (!plan) continue
     const t = Date.now()
-    for (const { block, startMs, endMs, prev } of withAbsoluteTimes(date, plan)) {
+    for (const { block, startMs, endMs } of withAbsoluteTimes(date, plan)) {
       if (t < startMs || t >= endMs || t - startMs > WINDOW_MS) continue
-      if (block.kind !== 'task' || !block.task_id || prev?.kind !== 'break') continue
+      if (block.kind === 'break') continue
       if (localStorage.getItem(STARTED_KEY) === block.id) return
       localStorage.setItem(STARTED_KEY, block.id)
-      if (getFocusSession()) return
+      // A session still running from the block before is that block's, so it
+      // ends here. One started during this block (by hand) is left alone.
+      const running = getFocusSession()
+      if (running && running.startMs >= startMs - 60_000) return
       try {
+        if (running) await stopFocusSession(true)
         await beginFocusSession({
-          task_id: block.task_id,
+          ...(block.task_id ? { task_id: block.task_id } : { label: block.label }),
           planned_minutes: Math.max(1, Math.ceil((endMs - t) / 60_000)),
         })
       } catch {
