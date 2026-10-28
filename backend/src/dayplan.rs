@@ -29,6 +29,8 @@ pub struct PlanBlock {
     pub label: String,
     pub minutes: i32,
     pub pinned_start: Option<NaiveTime>,
+    /// Who wrote the block when it wasn't the user. Only "instinct" is used.
+    pub source: Option<String>,
 }
 
 /// A block with its clock times filled in. Times are never stored - they fall
@@ -113,7 +115,7 @@ fn lay_out(starts_at: NaiveTime, blocks: Vec<PlanBlock>) -> (Vec<TimedBlock>, i3
 
 async fn load_blocks(state: &AppState, date: NaiveDate) -> Result<Vec<PlanBlock>, AppError> {
     Ok(sqlx::query_as(
-        "SELECT id, position, kind, task_id, label, minutes, pinned_start \
+        "SELECT id, position, kind, task_id, label, minutes, pinned_start, source \
          FROM plan_blocks WHERE plan_date = $1 ORDER BY position",
     )
     .bind(date)
@@ -363,6 +365,7 @@ pub struct NewBlock {
     pub minutes: Option<i32>,
     /// Insert directly after this block. Absent means append to the end.
     pub after: Option<Uuid>,
+    pub source: Option<String>,
 }
 
 pub async fn add_block(
@@ -421,8 +424,8 @@ pub async fn add_block(
         .execute(&state.pool)
         .await?;
     sqlx::query(
-        "INSERT INTO plan_blocks (plan_date, position, kind, task_id, label, minutes) \
-         VALUES ($1, LEAST($2, (SELECT COALESCE(MAX(position) + 1, 0) FROM plan_blocks WHERE plan_date = $1)), $3, $4, $5, $6)",
+        "INSERT INTO plan_blocks (plan_date, position, kind, task_id, label, minutes, source) \
+         VALUES ($1, LEAST($2, (SELECT COALESCE(MAX(position) + 1, 0) FROM plan_blocks WHERE plan_date = $1)), $3, $4, $5, $6, $7)",
     )
     .bind(date)
     .bind(at)
@@ -430,6 +433,7 @@ pub async fn add_block(
     .bind(body.task_id)
     .bind(&label)
     .bind(minutes.max(1))
+    .bind(body.source.as_deref().filter(|s| *s == "instinct"))
     .execute(&state.pool)
     .await?;
     renumber(&state, date).await?;
@@ -628,8 +632,8 @@ pub async fn set_script(
         .await?;
     for (pos, (kind, task_id, label, minutes, pin)) in rows.iter().enumerate() {
         sqlx::query(
-            "INSERT INTO plan_blocks (plan_date, position, kind, task_id, label, minutes, pinned_start) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7)",
+            "INSERT INTO plan_blocks (plan_date, position, kind, task_id, label, minutes, pinned_start, source) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, 'instinct')",
         )
         .bind(date)
         .bind(pos as i32)
@@ -1305,6 +1309,7 @@ mod tests {
             label: "x".into(),
             minutes,
             pinned_start: pin.map(|p| NaiveTime::parse_from_str(p, "%H:%M").unwrap()),
+            source: None,
         }
     }
 

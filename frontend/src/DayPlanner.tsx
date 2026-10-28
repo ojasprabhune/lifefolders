@@ -401,6 +401,11 @@ export function DayPlanner({
                   onSave={(v) => void run(() => patchPlanBlock(date, b.id, { label: v }))}
                 />
                 {b.kind === 'break' && isCurrent(b, isToday) && <BreakCountdown end={b.end} />}
+                {b.source === 'instinct' && (
+                  <span className="instinct-tag" title="set by Instinct">
+                    i
+                  </span>
+                )}
                 <MinutesField
                   value={b.minutes}
                   onSave={(m) => void run(() => patchPlanBlock(date, b.id, { minutes: m }))}

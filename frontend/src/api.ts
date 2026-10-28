@@ -642,6 +642,7 @@ export interface PlanBlock {
   label: string
   minutes: number
   pinned_start: string | null
+  source?: string | null
   start: string
   end: string
 }
@@ -692,7 +693,7 @@ export async function patchDayPlan(
 
 export async function addPlanBlock(
   date: string,
-  body: Partial<{ kind: string; task_id: string; label: string; minutes: number; after: string }>,
+  body: Partial<{ kind: string; task_id: string; label: string; minutes: number; after: string; source: string }>,
 ): Promise<DayPlan> {
   const res = await fetch(`${API}/api/day-plan/blocks?${planParams(date)}`, {
     method: 'POST',
