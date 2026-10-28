@@ -4,6 +4,7 @@
 // read getFocusSession() and listen for 'life-focus-changed' to reflect it;
 // neither owns the timer.
 import {
+  afkFocusSession,
   endFocusSession,
   getActiveFocusSession,
   extendFocusSession,
@@ -19,6 +20,10 @@ export type ActiveFocusSession = {
   startMs: number
   pausedSeconds: number
   pausedAtMs: number | null
+  // Time away. The countdown ignores it so the schedule stays on time; only
+  // the minutes that get counted do.
+  afkSeconds: number
+  afkAtMs: number | null
 }
 
 export type FocusSummary = { title: string; planned: number; actual: number; completed: boolean }
@@ -28,7 +33,9 @@ const STORAGE_KEY = 'life_focus_session'
 function load(): ActiveFocusSession | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? (JSON.parse(raw) as ActiveFocusSession) : null
+    if (!raw) return null
+    const s = JSON.parse(raw) as ActiveFocusSession
+    return { ...s, afkSeconds: s.afkSeconds ?? 0, afkAtMs: s.afkAtMs ?? null }
   } catch {
     return null
   }
@@ -63,6 +70,12 @@ export function getFocusSession(): ActiveFocusSession | null {
 export function elapsedActiveSeconds(s: ActiveFocusSession, now = Date.now()): number {
   const pausedNow = s.pausedAtMs !== null ? (now - s.pausedAtMs) / 1000 : 0
   return (now - s.startMs) / 1000 - s.pausedSeconds - pausedNow
+}
+
+// Worked time: what the countdown has used up, less the time marked afk.
+export function countedSeconds(s: ActiveFocusSession, now = Date.now()): number {
+  const afkNow = s.afkAtMs !== null ? (now - s.afkAtMs) / 1000 : 0
+  return Math.max(0, elapsedActiveSeconds(s, now) - s.afkSeconds - afkNow)
 }
 
 export function remainingSeconds(s: ActiveFocusSession, now = Date.now()): number {
@@ -129,6 +142,8 @@ export async function beginFocusSession(body: {
     startMs: Date.parse(s.started_at),
     pausedSeconds: 0,
     pausedAtMs: null,
+    afkSeconds: 0,
+    afkAtMs: null,
   }
   ended = false
   persist()
@@ -150,6 +165,8 @@ export function adoptFocusSession(s: {
   started_at: string
   paused_at?: string | null
   paused_seconds?: number
+  afk_at?: string | null
+  afk_seconds?: number
 }): ActiveFocusSession {
   if (!audio) {
     const Ctx =
@@ -165,6 +182,8 @@ export function adoptFocusSession(s: {
     startMs: Date.parse(s.started_at),
     pausedSeconds: s.paused_seconds ?? 0,
     pausedAtMs: s.paused_at ? Date.parse(s.paused_at) : null,
+    afkSeconds: s.afk_seconds ?? 0,
+    afkAtMs: s.afk_at ? Date.parse(s.afk_at) : null,
   }
   ended = false
   persist()
@@ -201,6 +220,8 @@ export async function restoreFocusSession(): Promise<void> {
     started_at: active.started_at,
     paused_at: active.paused_at,
     paused_seconds: active.paused_seconds,
+    afk_at: active.afk_at,
+    afk_seconds: active.afk_seconds,
   })
 }
 
@@ -221,6 +242,28 @@ export async function toggleFocusPause(): Promise<void> {
     }
   } catch {
     return // leave local state as-is; the buttons just don't toggle this time
+  }
+  persist()
+  broadcast()
+}
+
+export async function toggleFocusAfk(): Promise<void> {
+  if (!current || current.pausedAtMs !== null) return
+  const now = Date.now()
+  try {
+    if (current.afkAtMs === null) {
+      await afkFocusSession(current.id, true)
+      current = { ...current, afkAtMs: now }
+    } else {
+      await afkFocusSession(current.id, false)
+      current = {
+        ...current,
+        afkSeconds: current.afkSeconds + (now - current.afkAtMs) / 1000,
+        afkAtMs: null,
+      }
+    }
+  } catch {
+    return
   }
   persist()
   broadcast()
@@ -249,7 +292,7 @@ export async function stopFocusSession(completed: boolean, timedOut = false): Pr
   if (!s || ended) return
   ended = true
   window.clearInterval(tickTimer)
-  const actual = Math.round(elapsedActiveSeconds(s) / 60)
+  const actual = Math.round(countedSeconds(s) / 60)
   // A long-backgrounded tab can suspend the AudioContext; resume is a
   // no-op if it's already running, so this is safe to always call.
   if (completed && audio) void audio.resume().then(() => playChime(audio!))

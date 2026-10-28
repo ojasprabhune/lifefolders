@@ -596,6 +596,15 @@ export async function resumeFocusSession(id: string): Promise<FocusSession> {
   return (await check(res)).json()
 }
 
+export async function afkFocusSession(id: string, on: boolean): Promise<FocusSession> {
+  const res = await fetch(`${API}/api/focus-sessions/${id}/afk`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ on }),
+  })
+  return (await check(res)).json()
+}
+
 export async function extendFocusSession(id: string, minutes: number): Promise<FocusSession> {
   const res = await fetch(`${API}/api/focus-sessions/${id}/extend`, {
     method: 'POST',

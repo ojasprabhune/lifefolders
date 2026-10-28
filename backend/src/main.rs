@@ -224,6 +224,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/focus-sessions/{id}/pause", post(focus::pause_session))
         .route("/api/focus-sessions/{id}/resume", post(focus::resume_session))
         .route("/api/focus-sessions/{id}/extend", post(focus::extend_session))
+        .route("/api/focus-sessions/{id}/afk", post(focus::afk_session))
         .route("/api/focus-sessions/{id}", delete(focus::delete_session))
         .route("/api/tasks/{id}/focus-sessions", get(focus::list_for_task))
         .route("/api/recap/send", post(recap::send))

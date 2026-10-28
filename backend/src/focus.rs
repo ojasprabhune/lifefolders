@@ -24,10 +24,12 @@ pub struct FocusSession {
     pub paused_at: Option<DateTime<Utc>>,
     pub paused_seconds: i32,
     pub timed_out: bool,
+    pub afk_seconds: i32,
+    pub afk_at: Option<DateTime<Utc>>,
 }
 
 const SESSION_COLUMNS: &str = "id, task_id, cadence_id, planned_minutes, actual_minutes, \
-    started_at, ended_at, completed, paused_at, paused_seconds, timed_out";
+    started_at, ended_at, completed, paused_at, paused_seconds, timed_out, afk_seconds, afk_at";
 
 #[derive(Debug, Deserialize)]
 pub struct NewTask {
@@ -256,6 +258,7 @@ pub async fn end_session(
             actual_minutes = GREATEST(0, ROUND(( \
                 EXTRACT(EPOCH FROM (now() - started_at)) - paused_seconds \
                 - COALESCE(EXTRACT(EPOCH FROM (now() - paused_at)), 0) \
+                - afk_seconds - COALESCE(EXTRACT(EPOCH FROM (now() - afk_at)), 0) \
             ) / 60.0))::int, \
             completed = $2, \
             timed_out = $3 \
@@ -365,6 +368,42 @@ pub async fn resume_session(
     .bind(id)
     .fetch_optional(&state.pool)
     .await?;
+    session.map(Json).ok_or(AppError::NotFound)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AfkBody {
+    pub on: bool,
+}
+
+/// Away from keyboard. The session keeps running, so the planned end and the
+/// schedule don't move, but the time spent away is left out of
+/// `actual_minutes` when the session ends. Not allowed while paused: a pause
+/// already takes the time off the clock, and doing both would subtract it twice.
+pub async fn afk_session(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<AfkBody>,
+) -> Result<Json<FocusSession>, AppError> {
+    let sql = if body.on {
+        format!(
+            "UPDATE focus_sessions SET afk_at = now() \
+             WHERE id = $1 AND ended_at IS NULL AND afk_at IS NULL AND paused_at IS NULL \
+             RETURNING {SESSION_COLUMNS}"
+        )
+    } else {
+        format!(
+            "UPDATE focus_sessions SET \
+                afk_seconds = afk_seconds + GREATEST(0, EXTRACT(EPOCH FROM (now() - afk_at)))::int, \
+                afk_at = NULL \
+             WHERE id = $1 AND ended_at IS NULL AND afk_at IS NOT NULL \
+             RETURNING {SESSION_COLUMNS}"
+        )
+    };
+    let session: Option<FocusSession> = sqlx::query_as(&sql)
+        .bind(id)
+        .fetch_optional(&state.pool)
+        .await?;
     session.map(Json).ok_or(AppError::NotFound)
 }
 

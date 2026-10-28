@@ -342,6 +342,8 @@ export interface FocusSession {
   paused_at: string | null
   paused_seconds: number
   timed_out: boolean
+  afk_seconds: number
+  afk_at: string | null
 }
 
 export interface StartedSession extends FocusSession {

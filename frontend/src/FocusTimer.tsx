@@ -4,10 +4,12 @@ import { lastPanel } from './lastPanel'
 import type { Cadence, TaskWithCheckpoints } from './types'
 import {
   beginFocusSession,
+  countedSeconds,
   extendFocus,
   getFocusSession,
   remainingSeconds,
   stopFocusSession,
+  toggleFocusAfk,
   toggleFocusPause,
   type ActiveFocusSession,
   type FocusSummary,
@@ -170,6 +172,7 @@ export function FocusTimer() {
         : taskId.length > 0
 
   const paused = active !== null && active.pausedAtMs !== null
+  const afk = active !== null && active.afkAtMs !== null
 
   return (
     <div className="app">
@@ -282,6 +285,9 @@ export function FocusTimer() {
               on screen saying what you asked for in the first place. */}
           <div className="focus-planned">
             {Math.max(0, Math.floor((active.planned * 60 - remaining) / 60))}m of {active.planned}m
+            {(afk || active.afkSeconds > 0) && (
+              <> · {afk ? 'afk, not counting' : `${Math.floor(countedSeconds(active) / 60)}m counted`}</>
+            )}
           </div>
           {/* Stop and "finished early" both end the session but mean opposite
               things - one counts as done, the other doesn't - and stop sat
@@ -303,8 +309,11 @@ export function FocusTimer() {
             </div>
           ) : (
             <div className="focus-running-actions">
-              <button className="focus-pause" onClick={() => void toggleFocusPause()}>
+              <button className="focus-pause" disabled={afk} onClick={() => void toggleFocusPause()}>
                 {paused ? 'resume' : 'pause'}
+              </button>
+              <button className="focus-pause" disabled={paused} onClick={() => void toggleFocusAfk()}>
+                {afk ? 'back' : 'afk'}
               </button>
               <button className="focus-extend" onClick={() => void extendFocus(5)}>
                 +5 min
