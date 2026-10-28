@@ -210,6 +210,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/cadence-completions", get(cadences::all_completions))
         .route("/api/day-plan", get(dayplan::get).patch(dayplan::patch))
         .route("/api/day-plan/generate", post(dayplan::generate))
+        .route("/api/day-plan/script", axum::routing::put(dayplan::set_script))
         .route("/api/day-plan/blocks", post(dayplan::add_block))
         .route(
             "/api/day-plan/blocks/{id}",
