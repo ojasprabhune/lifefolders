@@ -26,6 +26,7 @@ export function runAssemble() {
   // before it can see the "on" one again.
   root.classList.remove('assembling')
   void root.offsetWidth
+  root.style.setProperty('--assemble-gutter', `${window.innerWidth - root.clientWidth}px`)
   root.classList.add('assembling')
   startedAt = performance.now()
   window.clearTimeout(timer)

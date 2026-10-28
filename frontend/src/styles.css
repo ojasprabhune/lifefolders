@@ -3771,6 +3771,12 @@ header > .brand {
   padding: 0 4px;
 }
 
+.task-focus-left {
+  margin-left: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
 .task-sessions {
   padding: 0 0 12px 34px;
   display: flex;
@@ -5960,6 +5966,19 @@ html.paddle-out * {
   syntax: '<angle>';
   inherits: false;
   initial-value: 0deg;
+}
+
+/* The page's own scrollbar has no place on a screen that is meant to be empty.
+   Taking it away would widen the page and shift the centred column, so the
+   gutter it took is handed back as padding (measured in runAssemble; zero
+   wherever scrollbars overlay the page). Scrolling itself still works. */
+html.assembling {
+  scrollbar-width: none;
+  padding-right: var(--assemble-gutter, 0px);
+}
+
+html.assembling::-webkit-scrollbar {
+  display: none;
 }
 
 @keyframes hud-gate {

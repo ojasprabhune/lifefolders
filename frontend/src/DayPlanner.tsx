@@ -48,7 +48,22 @@ function nowHHMM(): string {
 function isCurrent(block: PlanBlock, today: boolean): boolean {
   if (!today) return false
   const now = nowHHMM()
+  // A block that runs past midnight ends at a smaller clock time than it starts.
+  if (block.end < block.start) return block.start <= now || now < block.end
   return block.start <= now && now < block.end
+}
+
+// What a focus session for this block should run for. A block already under
+// way gets what is left of it, so starting halfway through doesn't spill into
+// the next one; the block's own length still shows in its minutes field.
+function minutesLeft(block: PlanBlock, today: boolean): number {
+  if (!isCurrent(block, today)) return block.minutes
+  const [h, m] = block.end.split(':').map(Number)
+  const now = new Date()
+  const end = new Date(now)
+  end.setHours(h, m, 0, 0)
+  if (end <= now) end.setDate(end.getDate() + 1)
+  return Math.min(block.minutes, Math.max(1, Math.ceil((end.getTime() - now.getTime()) / 60_000)))
 }
 
 // A break that is running shows what is left of it, to the second. Its own
@@ -121,7 +136,7 @@ export function DayPlanner({
       window.location.hash = '#/focus'
     }
     if (getFocusSession()) return open()
-    beginFocusSession({ label: b.label, planned_minutes: b.minutes }).then(open, () => {})
+    beginFocusSession({ label: b.label, planned_minutes: minutesLeft(b, isToday) }).then(open, () => {})
   })
   const [held, setHeld] = useState<{ id: string; from: number; height: number } | null>(null)
   const [overIndex, setOverIndex] = useState<number | null>(null)
@@ -403,79 +418,89 @@ export function DayPlanner({
             style={{ ['--n' as string]: blocks.length }}
             data-kb-section="script"
           >
-            {blocks.flatMap((b, i) => [
-              // --i drives the stagger. The body unmounts when collapsed, so
-              // the cascade runs on open; editing a block reuses its element
-              // by key, so it doesn't replay on every change.
-              <li
-                key={b.id}
-                className={`planner-block ${b.kind} ${isCurrent(b, isToday) ? 'now' : ''} ${
-                  held?.id === b.id ? 'plan-held' : ''
-                }`}
-                data-kb-item=""
-                data-block-id={b.id}
-                data-task-id={b.task_id ?? undefined}
-                style={{
-                  ['--i' as string]: i,
-                  ['--r' as string]: blocks.length - 1 - i,
-                  ...(held && held.id !== b.id ? { transform: `translateY(${shiftOf(i)}px)` } : {}),
-                }}
-                onPointerDown={(e) => startDrag(e, b.id, i)}
-                onPointerMove={moveDrag}
-                onPointerUp={endDrag}
-                onPointerCancel={endDrag}
-              >
-                <span className="planner-time">{clockLabel(b.start)}</span>
-                <LabelField
-                  value={b.label}
-                  onSave={(v) => void run(() => patchPlanBlock(date, b.id, { label: v }))}
-                />
-                {b.kind === 'break' && isCurrent(b, isToday) && <BreakCountdown end={b.end} />}
-                <MinutesField
-                  value={b.minutes}
-                  onSave={(m) => void run(() => patchPlanBlock(date, b.id, { minutes: m }))}
-                />
-                {b.task_id && (
-                  <a
-                    className="task-focus"
-                    href={`#/focus?task=${b.task_id}&minutes=${b.minutes}&start=1`}
-                    aria-label="start a clarity session for this block"
-                    data-kb-focus=""
-                  >
-                    ▷
-                  </a>
-                )}
-                <button
-                  className="delete-btn"
-                  aria-label="remove this block"
-                  onClick={() => void run(() => deletePlanBlock(date, b.id))}
+            {blocks.flatMap((b, i) => {
+              const left = minutesLeft(b, isToday)
+              return [
+                // --i drives the stagger. The body unmounts when collapsed, so
+                // the cascade runs on open; editing a block reuses its element
+                // by key, so it doesn't replay on every change.
+                <li
+                  key={b.id}
+                  className={`planner-block ${b.kind} ${isCurrent(b, isToday) ? 'now' : ''} ${
+                    held?.id === b.id ? 'plan-held' : ''
+                  }`}
+                  data-kb-item=""
+                  data-block-id={b.id}
+                  data-task-id={b.task_id ?? undefined}
+                  style={{
+                    ['--i' as string]: i,
+                    ['--r' as string]: blocks.length - 1 - i,
+                    ...(held && held.id !== b.id ? { transform: `translateY(${shiftOf(i)}px)` } : {}),
+                  }}
+                  onPointerDown={(e) => startDrag(e, b.id, i)}
+                  onPointerMove={moveDrag}
+                  onPointerUp={endDrag}
+                  onPointerCancel={endDrag}
                 >
-                  ✕
-                </button>
-                {/* The insert control lives on the seam below each block, so
-                    "put something between these two" is one click where you
-                    are already looking. */}
-                <button
-                  className="planner-insert"
-                  aria-label="insert after this"
-                  onClick={() => setAdding(adding === b.id ? null : b.id)}
-                >
-                  +
-                </button>
-              </li>,
-              adding === b.id ? (
-                <li className="planner-add-row" key={`${b.id}-add`}>
-                  <AddRow
-                    tasks={tasks}
-                    onPick={(body) => {
-                      setAdding(null)
-                      void run(() => addPlanBlock(date, { ...body, after: b.id }))
-                    }}
-                    onCancel={() => setAdding(null)}
+                  <span className="planner-time">{clockLabel(b.start)}</span>
+                  <LabelField
+                    value={b.label}
+                    onSave={(v) => void run(() => patchPlanBlock(date, b.id, { label: v }))}
                   />
-                </li>
-              ) : null,
-            ])}
+                  {b.kind === 'break' && isCurrent(b, isToday) && <BreakCountdown end={b.end} />}
+                  <MinutesField
+                    value={b.minutes}
+                    onSave={(m) => void run(() => patchPlanBlock(date, b.id, { minutes: m }))}
+                  />
+                  {b.task_id && (
+                    <a
+                      className="task-focus"
+                      href={`#/focus?task=${b.task_id}&minutes=${left}&start=1`}
+                      // The href is from the last render, which can be a minute
+                      // old; the click reads the clock itself.
+                      onClick={(e) => {
+                        e.preventDefault()
+                        window.location.hash = `#/focus?task=${b.task_id}&minutes=${minutesLeft(b, isToday)}&start=1`
+                      }}
+                      aria-label="start a clarity session for this block"
+                      data-kb-focus=""
+                    >
+                      ▷
+                      {left < b.minutes && <span className="task-focus-left">{formatEffort(left)}</span>}
+                    </a>
+                  )}
+                  <button
+                    className="delete-btn"
+                    aria-label="remove this block"
+                    onClick={() => void run(() => deletePlanBlock(date, b.id))}
+                  >
+                    ✕
+                  </button>
+                  {/* The insert control lives on the seam below each block, so
+                      "put something between these two" is one click where you
+                      are already looking. */}
+                  <button
+                    className="planner-insert"
+                    aria-label="insert after this"
+                    onClick={() => setAdding(adding === b.id ? null : b.id)}
+                  >
+                    +
+                  </button>
+                </li>,
+                adding === b.id ? (
+                  <li className="planner-add-row" key={`${b.id}-add`}>
+                    <AddRow
+                      tasks={tasks}
+                      onPick={(body) => {
+                        setAdding(null)
+                        void run(() => addPlanBlock(date, { ...body, after: b.id }))
+                      }}
+                      onCancel={() => setAdding(null)}
+                    />
+                  </li>
+                ) : null,
+              ]
+            })}
           </ol>
 
           {adding !== 'end' ? (
