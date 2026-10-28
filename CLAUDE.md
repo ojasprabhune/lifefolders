@@ -246,6 +246,7 @@ Voice input is wired end-to-end: hold the mic button in the input area → `Medi
 ## Constraints
 
 - **Auth**: single shared bearer token (not per-user — all edits share one `AUTH_TOKEN` env var). There is no multi-user account model, no session management, no OAuth.
+- **Database budget**: Neon's free tier is a monthly allowance of compute time, and the compute only sleeps after a few minutes with no queries. Nothing in the frontend may hit a database-backed route on a timer: `planAutostart.ts` once refetched the day plan every 45 seconds from any open tab, which kept the database awake around the clock and exhausted the month's quota ("compute time quota exceeded" — every route 500s while `/health`, which never touches the database, still answers 200). Poll local state, and refetch on visibility or on an edit.
 - **Deployment**: Render free web service (sleeps after 15 min idle, no background worker / cron process). If proactive features (daily email, scheduled reminders) are needed later, they must be triggered externally (e.g. GitHub Actions cron job) hitting an HTTP endpoint.
 - **Frontend deployment**: NOT auto-deployed on push. Run `scripts/deploy-frontend.sh` locally to build and push the static output to the sibling `dotfolders` repo, which GitHub Pages then serves.
 

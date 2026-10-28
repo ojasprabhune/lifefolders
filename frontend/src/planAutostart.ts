@@ -9,13 +9,29 @@ import { beginFocusSession, getFocusSession, stopFocusSession } from './focusEng
 
 const STARTED_KEY = 'life_autostart_block'
 const POLL_MS = 15_000
-const PLAN_TTL_MS = 45_000
 // A block that began longer ago than this is not "just started", it is
 // a page opened halfway through the evening, and a timer should not appear.
 const WINDOW_MS = 5 * 60_000
+const RETRY_MS = 10 * 60_000
 
-type Cached = { at: number; plan: DayPlan }
-const cache = new Map<string, Cached>()
+// The poll reads plans from here and almost never from the server. A plan only
+// changes when it is edited, and edits made in this tab are handed over by the
+// planner through rememberPlan, so the server is asked once per day and again
+// when the tab comes back into view. This used to refetch every 45 seconds,
+// which kept the backend and Neon's free compute awake for as long as a tab
+// was open - a tab left open overnight spent the month's compute allowance.
+const cache = new Map<string, DayPlan>()
+const failedAt = new Map<string, number>()
+
+export function rememberPlan(date: string, plan: DayPlan) {
+  cache.set(date, plan)
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return
+  cache.clear()
+  failedAt.clear()
+})
 
 function minutes(hhmm: string): number {
   const [h, m] = hhmm.split(':').map(Number)
@@ -24,12 +40,14 @@ function minutes(hhmm: string): number {
 
 async function planFor(date: string): Promise<DayPlan | null> {
   const hit = cache.get(date)
-  if (hit && Date.now() - hit.at < PLAN_TTL_MS) return hit.plan
+  if (hit) return hit
+  if (Date.now() - (failedAt.get(date) ?? 0) < RETRY_MS) return null
   try {
     const plan = await getDayPlan(date)
-    cache.set(date, { at: Date.now(), plan })
+    cache.set(date, plan)
     return plan
   } catch {
+    failedAt.set(date, Date.now())
     return null
   }
 }

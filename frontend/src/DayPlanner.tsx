@@ -14,6 +14,7 @@ import { beginFocusSession, getFocusSession } from './focusEngine'
 import { withHistory } from './history'
 import { useKbAction } from './keyboardNav'
 import { collapseAndRemove, prefersReducedMotion } from './motion'
+import { rememberPlan } from './planAutostart'
 import { formatEffort } from './Tasks'
 import type { TaskWithCheckpoints } from './types'
 
@@ -161,6 +162,10 @@ export function DayPlanner({
   useEffect(() => {
     getDayPlan(date).then(setPlan).catch(() => {})
   }, [date])
+
+  useEffect(() => {
+    if (plan) rememberPlan(date, plan)
+  }, [date, plan])
   const arrived = plan !== null
 
   // Has to match the keyframes: one block's duration plus the capped stagger.
