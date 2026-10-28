@@ -47,6 +47,26 @@ function isCurrent(block: PlanBlock, today: boolean): boolean {
   return block.start <= now && now < block.end
 }
 
+// A break that is running shows what is left of it, to the second. Its own
+// one-second tick, because the planner re-renders once a minute.
+function BreakCountdown({ end }: { end: string }) {
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => setTick((n) => n + 1), 1000)
+    return () => clearInterval(t)
+  }, [])
+  const [h, m] = end.split(':').map(Number)
+  const now = new Date()
+  const target = new Date(now)
+  target.setHours(h, m, 0, 0)
+  const left = Math.max(0, Math.round((target.getTime() - now.getTime()) / 1000))
+  return (
+    <span className="break-countdown">
+      {Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')}
+    </span>
+  )
+}
+
 export function DayPlanner({
   date,
   isToday,
@@ -380,6 +400,7 @@ export function DayPlanner({
                   value={b.label}
                   onSave={(v) => void run(() => patchPlanBlock(date, b.id, { label: v }))}
                 />
+                {b.kind === 'break' && isCurrent(b, isToday) && <BreakCountdown end={b.end} />}
                 <MinutesField
                   value={b.minutes}
                   onSave={(m) => void run(() => patchPlanBlock(date, b.id, { minutes: m }))}
