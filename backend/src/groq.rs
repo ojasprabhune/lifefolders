@@ -14,15 +14,23 @@ use crate::usda;
 const CHAT_URL: &str = "https://api.groq.com/openai/v1/chat/completions";
 // Groq meters tokens per minute per model, so each entry in this list is its own
 // budget as much as it is a fallback: one entry costs ~6k tokens of prompt against
-// an 8k/min ceiling, which a burst of typing goes through in seconds.
+// an 8k/min ceiling, which a burst of typing goes through in seconds. The third
+// slot is a different family on purpose, since that is a separate 8k/min pool;
+// it is a preview model, so if Groq retires it swap in the current one from
+// https://console.groq.com/docs/models (llama-3.3-70b-versatile was retired
+// 2026-08-16 and a dead entry here turns rate limiting into entry failures).
 const MODELS: &[&str] = &[
     "openai/gpt-oss-120b",
     "openai/gpt-oss-20b",
-    "llama-3.3-70b-versatile",
+    "qwen/qwen3.8-27b",
 ];
 
 /// How long a 429 may ask us to wait before it is cheaper to try the next model.
 const MAX_RETRY_WAIT: Duration = Duration::from_secs(8);
+
+/// When every model answers 429, wait out the shortest pause Groq asked for
+/// (capped here) and run the ladder once more before failing the entry.
+const MAX_FINAL_WAIT: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Deserialize)]
 struct ChatResponse {
@@ -638,6 +646,7 @@ async fn chat(
     wishlist: bool,
 ) -> Result<Vec<(String, Value)>> {
     let mut last_err = anyhow!("no groq models attempted");
+    let mut shortest_limit_wait: Option<Duration> = None;
     let system = format!("{SYSTEM_PROMPT}\n\n{context}");
     let tool_choice = match forced_tool {
         Some(name) => json!({ "type": "function", "function": { "name": name } }),
@@ -646,85 +655,104 @@ async fn chat(
 
     let request_tools = tools(command_only, wishlist);
 
-    for model in MODELS {
-        let body = json!({
-            "model": model,
-            "messages": [
-                { "role": "system", "content": system },
-                { "role": "user", "content": raw_text }
-            ],
-            "tools": request_tools,
-            "tool_choice": tool_choice,
-            "temperature": 0.2
-        });
+    let mut round = 0;
+    loop {
+        for model in MODELS {
+            let body = json!({
+                "model": model,
+                "messages": [
+                    { "role": "system", "content": system },
+                    { "role": "user", "content": raw_text }
+                ],
+                "tools": request_tools,
+                "tool_choice": tool_choice,
+                "temperature": 0.2
+            });
 
-        let mut waits_left = 2;
-        let resp = loop {
-            let resp = match http
-                .post(CHAT_URL)
-                .bearer_auth(api_key)
-                .json(&body)
-                .send()
-                .await
-            {
-                Ok(r) => r,
-                Err(e) => {
-                    last_err = e.into();
-                    break None;
+            let mut waits_left = 2;
+            let resp = loop {
+                let resp = match http
+                    .post(CHAT_URL)
+                    .bearer_auth(api_key)
+                    .json(&body)
+                    .send()
+                    .await
+                {
+                    Ok(r) => r,
+                    Err(e) => {
+                        last_err = e.into();
+                        break None;
+                    }
+                };
+
+                let status = resp.status();
+                if status.is_success() {
+                    break Some(resp);
                 }
-            };
 
-            let status = resp.status();
-            if status.is_success() {
-                break Some(resp);
-            }
-
-            // A rate-limited request burns none of the budget it was refused, and
-            // Groq says exactly when the next one will fit. Waiting out a short
-            // one here is a pause; failing back to the browser is a pause plus
-            // the retry ladder plus the round trip.
-            if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-                if let Some(wait) = retry_after(&resp).filter(|w| *w <= MAX_RETRY_WAIT) {
-                    if waits_left > 0 {
-                        waits_left -= 1;
-                        let secs = wait.as_secs_f32();
-                        tracing::info!(model, secs, "groq rate limited, waiting");
-                        tokio::time::sleep(wait).await;
-                        continue;
+                // A rate-limited request burns none of the budget it was refused, and
+                // Groq says exactly when the next one will fit. Waiting out a short
+                // one here is a pause; failing back to the browser is a pause plus
+                // the retry ladder plus the round trip.
+                if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                    if let Some(wait) = retry_after(&resp) {
+                        shortest_limit_wait = Some(match shortest_limit_wait {
+                            Some(shortest) => shortest.min(wait),
+                            None => wait,
+                        });
+                        if wait <= MAX_RETRY_WAIT && waits_left > 0 {
+                            waits_left -= 1;
+                            let secs = wait.as_secs_f32();
+                            tracing::info!(model, secs, "groq rate limited, waiting");
+                            tokio::time::sleep(wait).await;
+                            continue;
+                        }
                     }
                 }
+
+                let text = resp.text().await.unwrap_or_default();
+                tracing::warn!(%status, model, "groq request failed: {text}");
+                last_err = anyhow!("groq {model} returned {status}");
+                break None;
+            };
+
+            let Some(resp) = resp else { continue };
+
+            let parsed: ChatResponse = resp.json().await?;
+            let calls = parsed
+                .choices
+                .into_iter()
+                .next()
+                .and_then(|c| c.message.tool_calls)
+                .unwrap_or_default();
+
+            if calls.is_empty() {
+                last_err = anyhow!("groq {model} returned no tool call");
+                continue;
             }
 
-            let text = resp.text().await.unwrap_or_default();
-            tracing::warn!(%status, model, "groq request failed: {text}");
-            last_err = anyhow!("groq {model} returned {status}");
-            break None;
-        };
-
-        let Some(resp) = resp else { continue };
-
-        let parsed: ChatResponse = resp.json().await?;
-        let calls = parsed
-            .choices
-            .into_iter()
-            .next()
-            .and_then(|c| c.message.tool_calls)
-            .unwrap_or_default();
-
-        if calls.is_empty() {
-            last_err = anyhow!("groq {model} returned no tool call");
-            continue;
+            return calls
+                .into_iter()
+                .take(8)
+                .map(|call| {
+                    let args: Value = serde_json::from_str(&call.function.arguments)
+                        .context("tool call arguments were not valid JSON")?;
+                    Ok((call.function.name, args))
+                })
+                .collect();
         }
-
-        return calls
-            .into_iter()
-            .take(8)
-            .map(|call| {
-                let args: Value = serde_json::from_str(&call.function.arguments)
-                    .context("tool call arguments were not valid JSON")?;
-                Ok((call.function.name, args))
-            })
-            .collect();
+        round += 1;
+        match shortest_limit_wait {
+            // Every model was rate limited: the minute window is shared, so one
+            // capped pause and a second pass beats failing the entry outright.
+            Some(wait) if round < 2 => {
+                let wait = wait.min(MAX_FINAL_WAIT);
+                tracing::info!(secs = wait.as_secs_f32(), "every groq model rate limited, waiting out the window");
+                tokio::time::sleep(wait).await;
+                shortest_limit_wait = None;
+            }
+            _ => break,
+        }
     }
 
     Err(last_err)

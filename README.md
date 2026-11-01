@@ -357,7 +357,7 @@ roughly 6k tokens of fixed overhead (system prompt plus tool definitions)
 however short your sentence is, against a budget of about 8k per minute. Two
 or three entries in a row exhaust one model, which is why `groq.rs` tries
 three (`openai/gpt-oss-120b` → `openai/gpt-oss-20b` →
-`llama-3.3-70b-versatile`), each with its own bucket, and waits out short
+`qwen/qwen3.8-27b`), each with its own bucket, and waits out short
 `retry-after` windows rather than failing. It's usable; it isn't unlimited.
 Typed sidequests are parsed in the browser first (`frontend/src/localParse.ts`)
 and often never hit the model at all.
