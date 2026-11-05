@@ -129,8 +129,10 @@ async fn view(state: &AppState, date: NaiveDate, row: PlanRow) -> Result<DayPlan
 
     let overflow = match row.ends_at {
         Some(limit) => {
-            // The limit is a bedtime, so it is routinely past midnight from
-            // the plan's point of view - compare on the same side of the day.
+            // The limit is where the plan was meant to stop - maybe a bedtime,
+            // maybe just the end of a bounded segment. Either way it is routinely
+            // past midnight from the plan's point of view - compare on the same
+            // side of the day.
             let mut limit_min = minutes_of(limit);
             if limit_min < minutes_of(row.starts_at) {
                 limit_min += 1440;

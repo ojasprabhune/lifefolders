@@ -555,8 +555,8 @@ export function DayPlanner({
           {note && (
             <div className="planner-overflow" ref={noteRef}>
               <span>
-                {formatEffort(note.overflow_minutes)} past {clockLabel(note.ends_at ?? '00:00')}, when
-                you wanted to be asleep.
+                {formatEffort(note.overflow_minutes)} past {clockLabel(note.ends_at ?? '00:00')}, where
+                the plan was meant to end.
               </span>
               {note.push_suggestion && (
                 <button
