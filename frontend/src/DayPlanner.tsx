@@ -124,10 +124,10 @@ export function DayPlanner({
     const status = t.status === 'done' ? 'not_started' : 'done'
     void withHistory(t, { status }, () => patchTask(t.id, { status }).then((r) => r.history)).then(onChanged)
   })
-  // f on a sidequest's block is its ▷. A custom block has no ▷ - it only
-  // ever started on its own, when its time came - so f starts the same
-  // session the autostart would, named by the block. One already running is
-  // left alone and shown instead; replacing it is the autostart's call.
+  // f on a block is its ▷. A custom block's ▷ starts the same session the
+  // autostart would, named by the block; the begin below is the fallback for
+  // a row whose link isn't there. One already running is left alone and
+  // shown instead; replacing it is the autostart's call.
   useKbAction(listRef, 'focus', (item) => {
     const link = item.querySelector<HTMLElement>('[data-kb-focus]')
     if (link) return link.click()
@@ -468,6 +468,35 @@ export function DayPlanner({
                         window.location.hash = `#/focus?task=${b.task_id}&minutes=${minutesLeft(b, isToday)}&start=1`
                       }}
                       aria-label="start a clarity session for this block"
+                      data-kb-focus=""
+                    >
+                      ▷
+                      {left < b.minutes && <span className="task-focus-left">{formatEffort(left)}</span>}
+                    </a>
+                  )}
+                  {b.kind !== 'break' && !b.task_id && (
+                    <a
+                      className="task-focus"
+                      href="#/focus"
+                      // No sidequest to link: the session is named by the
+                      // block, the same one the autostart would begin.
+                      onClick={(e) => {
+                        e.preventDefault()
+                        if (getFocusSession()) {
+                          window.location.hash = '#/focus'
+                          return
+                        }
+                        void beginFocusSession({
+                          label: b.label,
+                          planned_minutes: minutesLeft(b, isToday),
+                        }).then(
+                          () => {
+                            window.location.hash = '#/focus'
+                          },
+                          () => {},
+                        )
+                      }}
+                      aria-label="start a focus session for this block"
                       data-kb-focus=""
                     >
                       ▷
