@@ -108,21 +108,19 @@ pub async fn create_session(
         }
     };
 
-    let started = open_session(&state, task_id, cadence_id, title, body.planned_minutes).await?;
-    if task_id.is_none() && cadence_id.is_none() {
-        sqlx::query("UPDATE focus_sessions SET label = $2 WHERE id = $1")
-            .bind(started.session.id)
-            .bind(&started.title)
-            .execute(&state.pool)
-            .await?;
-    }
+    let started =
+        open_session(&state, task_id, cadence_id, title, body.planned_minutes).await?;
     Ok(Json(started))
 }
 
 /// Insert the session row and pair it with the display title. Split out of
 /// create_session so a command ("/start 30 on psych notes") starts a timer
 /// through exactly the same path the picker does, having resolved the
-/// task or cadence its own way.
+/// task or cadence its own way. `label` is the display target when the session
+/// is for neither a task nor a cadence (a custom plan block) — otherwise the
+/// title is read from the task or cadence at read time — and it is written in
+/// the insert itself rather than a follow-up UPDATE, so the row is never
+/// observable without it.
 pub(crate) async fn open_session(
     state: &AppState,
     task_id: Option<Uuid>,
@@ -130,12 +128,19 @@ pub(crate) async fn open_session(
     title: String,
     planned_minutes: i32,
 ) -> Result<StartedSession, AppError> {
+    let label: Option<&str> = if task_id.is_none() && cadence_id.is_none() {
+        Some(&title)
+    } else {
+        None
+    };
     let session: FocusSession = sqlx::query_as(&format!(
-        "INSERT INTO focus_sessions (task_id, cadence_id, planned_minutes) VALUES ($1, $2, $3) \
+        "INSERT INTO focus_sessions (task_id, cadence_id, label, planned_minutes) \
+         VALUES ($1, $2, $3, $4) \
          RETURNING {SESSION_COLUMNS}"
     ))
     .bind(task_id)
     .bind(cadence_id)
+    .bind(label)
     .bind(planned_minutes)
     .fetch_one(&state.pool)
     .await?;

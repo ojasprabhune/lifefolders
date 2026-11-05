@@ -91,6 +91,22 @@ function withAbsoluteTimes(date: string, plan: DayPlan): { block: PlanBlock; sta
 }
 
 async function check() {
+  // One check at a time. A request against a sleeping backend can take longer
+  // than POLL_MS (waking it up is the slow part, see cache.ts), so two checks
+  // would otherwise be awaiting plans at once and both reach begin
+  // FocusSession - which creates two sessions for one block.
+  if (checking) return
+  checking = true
+  try {
+    await checkOnce()
+  } finally {
+    checking = false
+  }
+}
+
+let checking = false
+
+async function checkOnce() {
   const now = new Date()
   const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
   const t = Date.now()
