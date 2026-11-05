@@ -13,6 +13,9 @@ const POLL_MS = 15_000
 // a page opened halfway through the evening, and a timer should not appear.
 const WINDOW_MS = 5 * 60_000
 const RETRY_MS = 10 * 60_000
+// How long a cached empty-or-finished plan is trusted before the server is
+// asked once more. Only plans with nothing left to start pay this.
+const REVALIDATE_MS = 60_000
 
 // The poll reads plans from here and almost never from the server. A plan only
 // changes when it is edited, and edits made in this tab are handed over by the
@@ -20,7 +23,16 @@ const RETRY_MS = 10 * 60_000
 // when the tab comes back into view. This used to refetch every 45 seconds,
 // which kept the backend and Neon's free compute awake for as long as a tab
 // was open - a tab left open overnight spent the month's compute allowance.
+//
+// The exception is a plan that says nothing is coming: no blocks, or
+// everything in it already over. That is exactly the state an edit made from
+// OUTSIDE this tab hides behind - a script written through the API while the
+// app was already open used to stay invisible until the tab was reloaded, so
+// the auto-start missed every block in it. A plan like that is re-asked for
+// every REVALIDATE_MS; a plan with blocks still ahead stays fully cached, so
+// an ordinary evening still costs the server nothing.
 const cache = new Map<string, DayPlan>()
+const fetchedAt = new Map<string, number>()
 const failedAt = new Map<string, number>()
 
 export function rememberPlan(date: string, plan: DayPlan) {
@@ -30,6 +42,7 @@ export function rememberPlan(date: string, plan: DayPlan) {
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return
   cache.clear()
+  fetchedAt.clear()
   failedAt.clear()
 })
 
@@ -38,17 +51,26 @@ function minutes(hhmm: string): number {
   return h * 60 + m
 }
 
-async function planFor(date: string): Promise<DayPlan | null> {
+function hasUpcoming(date: string, plan: DayPlan, now: number): boolean {
+  return withAbsoluteTimes(date, plan).some(({ endMs }) => endMs > now)
+}
+
+async function planFor(date: string, now: number): Promise<DayPlan | null> {
   const hit = cache.get(date)
-  if (hit) return hit
-  if (Date.now() - (failedAt.get(date) ?? 0) < RETRY_MS) return null
+  if (hit) {
+    const fresh = now - (fetchedAt.get(date) ?? 0) < REVALIDATE_MS
+    if (fresh || hasUpcoming(date, hit, now)) return hit
+    // Empty or finished and due a re-check: fall through and ask the server.
+  }
+  if (now - (failedAt.get(date) ?? 0) < RETRY_MS) return hit ?? null
   try {
     const plan = await getDayPlan(date)
     cache.set(date, plan)
+    fetchedAt.set(date, Date.now())
     return plan
   } catch {
     failedAt.set(date, Date.now())
-    return null
+    return hit ?? null
   }
 }
 
@@ -71,10 +93,10 @@ function withAbsoluteTimes(date: string, plan: DayPlan): { block: PlanBlock; sta
 async function check() {
   const now = new Date()
   const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+  const t = Date.now()
   for (const date of [localDateStr(now), localDateStr(yesterday)]) {
-    const plan = await planFor(date)
+    const plan = await planFor(date, t)
     if (!plan) continue
-    const t = Date.now()
     for (const { block, startMs, endMs } of withAbsoluteTimes(date, plan)) {
       if (t < startMs || t >= endMs || t - startMs > WINDOW_MS) continue
       if (block.kind === 'break') continue
@@ -91,7 +113,10 @@ async function check() {
           planned_minutes: Math.max(1, Math.ceil((endMs - t) / 60_000)),
         })
       } catch {
-        // leave it; the play button on the block still works
+        // Unmark the block so the next poll can try the begin again; the id
+        // is written before the attempt so two polls can't begin at once.
+        // The play button on the block still works either way.
+        if (localStorage.getItem(STARTED_KEY) === block.id) localStorage.removeItem(STARTED_KEY)
       }
       return
     }
