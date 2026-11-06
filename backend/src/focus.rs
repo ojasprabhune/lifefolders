@@ -1,4 +1,4 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{header::AUTHORIZATION, HeaderMap, StatusCode};
 use axum::Json;
 use chrono::{DateTime, Utc};
@@ -473,6 +473,55 @@ pub async fn list_for_task(
     Ok(Json(sessions))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct HistoryQuery {
+    pub days: Option<i64>,
+}
+
+/// One ended session with everything the clarity wall needs in a single round
+/// trip: the display title (task title, cadence name, or free label) and the
+/// task's due date when it has one, so the deadline-proximity chart can be
+/// computed client-side from the same list.
+#[derive(Debug, Serialize, FromRow)]
+pub struct SessionHistory {
+    pub id: Uuid,
+    pub task_id: Option<Uuid>,
+    pub cadence_id: Option<Uuid>,
+    pub planned_minutes: i32,
+    pub actual_minutes: Option<i32>,
+    pub started_at: DateTime<Utc>,
+    pub ended_at: Option<DateTime<Utc>>,
+    pub completed: bool,
+    pub paused_at: Option<DateTime<Utc>>,
+    pub paused_seconds: i32,
+    pub timed_out: bool,
+    pub afk_seconds: i32,
+    pub afk_at: Option<DateTime<Utc>>,
+    pub title: String,
+    pub due_date: Option<chrono::NaiveDate>,
+}
+
+pub async fn list_sessions(
+    State(state): State<AppState>,
+    Query(q): Query<HistoryQuery>,
+) -> Result<Json<Vec<SessionHistory>>, AppError> {
+    let days = q.days.unwrap_or(180).clamp(7, 730);
+    let sessions: Vec<SessionHistory> = sqlx::query_as(
+        "SELECT f.id, f.task_id, f.cadence_id, f.planned_minutes, f.actual_minutes, \
+                f.started_at, f.ended_at, f.completed, f.paused_at, f.paused_seconds, \
+                f.timed_out, f.afk_seconds, f.afk_at, \
+                COALESCE(t.title, c.name, f.label, 'something') AS title, t.due_date AS due_date \
+         FROM focus_sessions f \
+         LEFT JOIN tasks t ON t.id = f.task_id \
+         LEFT JOIN cadences c ON c.id = f.cadence_id \
+         WHERE f.ended_at IS NOT NULL AND f.started_at >= $1 \
+         ORDER BY f.started_at DESC",
+    )
+    .bind(Utc::now() - chrono::Duration::days(days))
+    .fetch_all(&state.pool)
+    .await?;
+    Ok(Json(sessions))
+}
 /// Minutes already sunk into each task over the last `days`, as
 /// (task_id, minutes, sessions, last date). Lets the day plan tell a sidequest
 /// that's nearly finished apart from one that hasn't been started.

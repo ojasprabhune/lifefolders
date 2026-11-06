@@ -218,7 +218,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .route("/api/daily-notes", get(daily::list))
         .route("/api/daily-notes/{date}", axum::routing::patch(daily::patch))
-        .route("/api/focus-sessions", post(focus::create_session))
+        .route("/api/focus-sessions", get(focus::list_sessions).post(focus::create_session))
         .route("/api/focus-sessions/active", get(focus::active_session))
         .route("/api/focus-sessions/last-ended", get(focus::last_ended_session))
         .route("/api/focus-sessions/{id}/pause", post(focus::pause_session))

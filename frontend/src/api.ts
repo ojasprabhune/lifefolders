@@ -11,6 +11,7 @@ import type {
   CadenceSchedule,
   FocusSession,
   Log,
+  SessionHistory,
   StartedSession,
   ProposedTopic,
   RankComparison,
@@ -644,6 +645,13 @@ export async function deleteFocusSession(id: string): Promise<void> {
     headers: authHeaders(),
   })
   await check(res)
+}
+
+// Every ended session in one request — the clarity wall works the whole page
+// from this list, the same way the solace wall works from listSleep().
+export async function listFocusSessions(days = 180): Promise<SessionHistory[]> {
+  const res = await fetch(`${API}/api/focus-sessions?days=${days}`, { headers: authHeaders() })
+  return (await check(res)).json()
 }
 
 export interface PlanBlock {

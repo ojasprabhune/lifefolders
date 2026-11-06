@@ -178,9 +178,14 @@ export function FocusTimer() {
     <div className="app">
       <header>
         <h1 className="brand">clarity</h1>
-        <a className="guide-link" href={lastPanel()}>
-          back
-        </a>
+        <div className="header-nav">
+          <a className="guide-link" href="#/focus/all">
+            stats
+          </a>
+          <a className="guide-link" href={lastPanel()}>
+            back
+          </a>
+        </div>
       </header>
 
       {mode === 'setup' && (

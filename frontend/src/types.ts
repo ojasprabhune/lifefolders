@@ -350,6 +350,14 @@ export interface StartedSession extends FocusSession {
   title: string
 }
 
+// A historical (ended) focus session with the joined display title and, when
+// the session was tied to a sidequest that had one, its due date — what the
+// clarity wall's deadline-proximity chart needs.
+export interface SessionHistory extends FocusSession {
+  title: string
+  due_date: string | null
+}
+
 export type Tier = 'loved' | 'fine' | 'disliked'
 
 export interface Opponent {
