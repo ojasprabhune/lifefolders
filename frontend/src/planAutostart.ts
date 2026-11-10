@@ -14,8 +14,13 @@ const POLL_MS = 15_000
 const WINDOW_MS = 5 * 60_000
 const RETRY_MS = 10 * 60_000
 // How long a cached empty-or-finished plan is trusted before the server is
-// asked once more. Only plans with nothing left to start pay this.
-const REVALIDATE_MS = 60_000
+// asked once more. Only plans with nothing left to start pay this, and only
+// today's (or a future day's) plan ever pays it: a past day's finished plan
+// can never gain blocks worth starting, so it is final. Five minutes means a
+// plan written through the API while this tab is open is seen within five
+// minutes, not instantly - the price of not polling the database around the
+// clock.
+const REVALIDATE_MS = 5 * 60_000
 
 // The poll reads plans from here and almost never from the server. A plan only
 // changes when it is edited, and edits made in this tab are handed over by the
@@ -29,8 +34,11 @@ const REVALIDATE_MS = 60_000
 // OUTSIDE this tab hides behind - a script written through the API while the
 // app was already open used to stay invisible until the tab was reloaded, so
 // the auto-start missed every block in it. A plan like that is re-asked for
-// every REVALIDATE_MS; a plan with blocks still ahead stays fully cached, so
-// an ordinary evening still costs the server nothing.
+// every REVALIDATE_MS, but only for today onward; a plan with blocks still
+// ahead stays fully cached, so an ordinary evening still costs the server
+// nothing. Past days are never re-asked: yesterday always reads as finished,
+// so re-checking it was a request every minute for the life of any open tab -
+// enough to keep the backend and Neon's free compute awake all day.
 const cache = new Map<string, DayPlan>()
 const fetchedAt = new Map<string, number>()
 const failedAt = new Map<string, number>()
@@ -60,7 +68,10 @@ async function planFor(date: string, now: number): Promise<DayPlan | null> {
   if (hit) {
     const fresh = now - (fetchedAt.get(date) ?? 0) < REVALIDATE_MS
     if (fresh || hasUpcoming(date, hit, now)) return hit
-    // Empty or finished and due a re-check: fall through and ask the server.
+    // A past day's finished plan is final - it can never gain blocks to
+    // start, so there is nothing a re-check could find. Fall through and ask
+    // the server only for today or later, when due a re-check.
+    if (date < localDateStr(new Date(now))) return hit
   }
   if (now - (failedAt.get(date) ?? 0) < RETRY_MS) return hit ?? null
   try {
