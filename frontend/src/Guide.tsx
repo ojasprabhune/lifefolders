@@ -207,7 +207,8 @@ export function Guide() {
       <section>
         <h2>sidequests</h2>
         <ul>
-          <li>Anything with a deadline. A new title creates one; a known title updates it.</li>
+          <li>A new title creates one; a known title updates it.</li>
+          <li>The grey text after the caret is the next words it thinks you want - <em>Tab</em> takes them, keep typing to ignore.</li>
           <li><em>task:</em> forces a sidequest.</li>
           <li><em>#tag</em> sets the category, <em>@3pm</em> the time.</li>
           <li><em>note:</em> makes the rest of the entry the note.</li>
@@ -268,6 +269,7 @@ export function Guide() {
         <h2>commands</h2>
         <ul>
           <li>Change tracked things instead of logging: reschedule, mark done, recategorize, delete.</li>
+          <li>"reschedule chem lab" offers its date before you type it; late work comes back "tomorrow".</li>
           <li><em>/</em> forces a command. cmd+Z undoes it.</li>
           <li>"what should i do first" builds today's script in the sidequests panel.</li>
           <li>Resize, add or remove blocks and the rest re-times itself.</li>

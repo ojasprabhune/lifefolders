@@ -2,10 +2,13 @@ import { LOCAL_ID_PREFIX } from './optimistic'
 import type { Log, TaskData, TaskWithCheckpoints } from './types'
 
 /**
- * A sidequest changed by clicking leaves the same timeline row a typed change
- * does, and it is on the timeline before the request has left the browser -
- * clicking a status circle and waiting a round trip for its record to appear
- * is the delay the typed path already got rid of.
+ * A sidequest changed by clicking can leave the same timeline row a typed
+ * change does - for the milestones only: finishing, reopening, rescheduling,
+ * deleting. Starting, dragging between sections, renaming and note edits
+ * write nothing, here or on the server; the tasks table carries the result.
+ * A milestone's row is on the timeline before the request has left the
+ * browser - clicking a status circle and waiting a round trip for its record
+ * to appear is the delay the typed path already got rid of.
  *
  * The words are worked out here and again by `tasks::history_of` on the
  * server, which writes the real row. They have to agree exactly: the drawn
@@ -49,27 +52,21 @@ function historyOf(before: TaskWithCheckpoints, change: Patch | 'deleted'): { ra
   const title = after.title
   if (change === 'deleted') return { raw: `deleted ${title}`, data: { ...data, action: 'deleted' } }
   if (after.status !== before.status) {
-    const raw =
-      after.status === 'done' ? `finished ${title}` : after.status === 'in_progress' ? `started ${title}` : `reopened ${title}`
+    // Starting is state, not an event - the pill flips it freely. Finishing
+    // and reopening (which undoes a finished row) are the milestones, the
+    // same ones the server keeps (`tasks::history_of`).
+    if (after.status !== 'done' && !(after.status === 'not_started' && before.status === 'done')) return null
+    const raw = after.status === 'done' ? `finished ${title}` : `reopened ${title}`
     return { raw, data }
   }
   if (after.due_date !== before.due_date) {
     const raw = after.due_date ? `moved ${title} to ${prettyDate(after.due_date)}` : `cleared the due date on ${title}`
     return { raw, data: { ...data, action: 'rescheduled', previous_due_date: before.due_date } }
   }
-  if (after.is_exam !== before.is_exam || after.category !== before.category) {
-    return { raw: `moved ${title} to ${after.is_exam ? 'exam' : after.category}`, data: { ...data, action: 'moved' } }
-  }
-  if (after.title !== before.title) {
-    return {
-      raw: `renamed ${before.title} to ${title}`,
-      data: { ...data, action: 'renamed', previous_title: before.title },
-    }
-  }
-  if (change.note !== undefined && after.note !== before.note) {
-    const raw = after.note ? `${title}: ${after.note}` : `cleared the note on ${title}`
-    return { raw, data: { ...data, action: 'note', note: after.note } }
-  }
+  // Dragging between sections, renaming and note edits write nothing - the
+  // server writes none either, and a drawn row it doesn't answer would be
+  // removed the moment the response landed. The tasks table carries the
+  // result; reorganizing isn't an event.
   return null
 }
 

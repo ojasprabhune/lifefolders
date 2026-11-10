@@ -219,13 +219,19 @@ pub async fn apply(
             patch.status = Some(status.clone());
             let (updated, _) = tasks::update_task(state, &existing, &patch).await?;
             undo::record(state, Effect::TasksUpdated(vec![snapshot]));
-            let log = write_history(state, raw, &updated, "status").await?;
+            // Same rule as the pill click (`tasks::history_of`): starting a
+            // sidequest is state, not an event. The timeline keeps finishing,
+            // and reopening - which undoes a "finished" row.
+            let mut logs = Vec::new();
+            if status == "done" || (status == "not_started" && existing.status == "done") {
+                logs.push(write_history(state, raw, &updated, "status").await?);
+            }
             let worded = match status.as_str() {
                 "done" => "done",
                 "in_progress" => "in progress",
                 _ => "not started",
             };
-            Ok(undoable(format!("marked {} {worded}", existing.title), vec![log]))
+            Ok(undoable(format!("marked {} {worded}", existing.title), logs))
         }
 
         CommandRequest::DeleteTask { title } => {
@@ -257,10 +263,12 @@ pub async fn apply(
             if !to_exam {
                 patch.category = Some(category.clone());
             }
-            let (updated, _) = tasks::update_task(state, &existing, &patch).await?;
+            // No timeline row for a drag between sections - same rule as the
+            // panel's own drag (`tasks::history_of`). Organizing a batch used
+            // to leave a row per card; the section lives on the task itself.
+            tasks::update_task(state, &existing, &patch).await?;
             undo::record(state, Effect::TasksUpdated(vec![snapshot]));
-            let log = write_history(state, raw, &updated, "moved").await?;
-            Ok(undoable(format!("moved {} to {category}", existing.title), vec![log]))
+            Ok(undoable(format!("moved {} to {category}", existing.title), Vec::new()))
         }
 
         CommandRequest::EditWish(edit) => Ok(say(wishlist::edit(state, edit).await?)),

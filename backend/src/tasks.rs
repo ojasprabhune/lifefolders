@@ -768,12 +768,17 @@ pub struct PatchTask {
 }
 
 /// What a click in the sidequests panel did, worded the way the timeline
-/// words the same change typed. One row per click, so a patch touching
-/// several fields reports the one you would see: status, then the date, the
-/// section, the name, the note. The frontend draws its own copy of this row
-/// before the response lands (`history.ts`), so the two have to agree word
-/// for word or the swap reads as an edit.
-pub(crate) fn history_of(before: &Task, after: &Task, note_changed: bool) -> Option<(String, TaskData)> {
+/// words the same change typed — but only for the milestones: a finish, a
+/// reopen, a reschedule. Starting a sidequest, dragging it between sections,
+/// renaming it and editing its note write nothing: the tasks table already
+/// carries the result, none of those clicks say anything about the past, and
+/// a batch of organizing used to leave a row per drag flooding the timeline
+/// and search. A patch touching several fields reports the first change that
+/// counts, in that order. The frontend draws its own copy of this row before
+/// the response lands (`history.ts`), so the two must agree on *which clicks
+/// write* as well as word for word — a drawn row the server never answers is
+/// removed the moment the response lands.
+pub(crate) fn history_of(before: &Task, after: &Task) -> Option<(String, TaskData)> {
     let mut data = TaskData {
         task_id: after.id,
         title: after.title.clone(),
@@ -788,38 +793,33 @@ pub(crate) fn history_of(before: &Task, after: &Task, note_changed: bool) -> Opt
         previous_title: None,
     };
     let title = &after.title;
-    let raw = if after.status != before.status {
-        data.action = "status".into();
-        match after.status.as_str() {
-            "done" => format!("finished {title}"),
-            "in_progress" => format!("started {title}"),
-            _ => format!("reopened {title}"),
+    if after.status != before.status {
+        // Flipping to in_progress (and back off it) is state, not an event -
+        // the pill does it freely. Reopening a finished sidequest undoes its
+        // "finished" row, so it is kept; the timeline would otherwise say
+        // something was done that no longer is.
+        let finished = after.status == "done";
+        let reopened = after.status == "not_started" && before.status == "done";
+        if finished || reopened {
+            data.action = "status".into();
+            let raw = if finished {
+                format!("finished {title}")
+            } else {
+                format!("reopened {title}")
+            };
+            return Some((raw, data));
         }
-    } else if after.due_date != before.due_date {
+    }
+    if after.due_date != before.due_date {
         data.action = "rescheduled".into();
         data.previous_due_date = before.due_date;
-        match after.due_date {
+        let raw = match after.due_date {
             Some(d) => format!("moved {title} to {}", d.format("%a %b %-d")),
             None => format!("cleared the due date on {title}"),
-        }
-    } else if after.is_exam != before.is_exam || after.category != before.category {
-        data.action = "moved".into();
-        format!("moved {title} to {}", if after.is_exam { "exam" } else { &after.category })
-    } else if after.title != before.title {
-        data.action = "renamed".into();
-        data.previous_title = Some(before.title.clone());
-        format!("renamed {} to {title}", before.title)
-    } else if note_changed && after.note != before.note {
-        data.action = "note".into();
-        data.note = after.note.clone();
-        match &after.note {
-            Some(n) => format!("{title}: {n}"),
-            None => format!("cleared the note on {title}"),
-        }
-    } else {
-        return None;
-    };
-    Some((raw, data))
+        };
+        return Some((raw, data));
+    }
+    None
 }
 
 async fn insert_history(state: &AppState, raw: &str, data: &TaskData) -> Result<Log, AppError> {
@@ -921,7 +921,7 @@ pub async fn patch_task(
         }
     }
 
-    let history = match history_of(&existing, &task, body.note.is_some()) {
+    let history = match history_of(&existing, &task) {
         Some((raw, data)) if !body.quiet => Some(insert_history(&state, &raw, &data).await?),
         _ => None,
     };
@@ -1226,28 +1226,30 @@ mod tests {
     #[test]
     fn history_wording() {
         let before = task();
-        let raw = |after: Task, note: bool| history_of(&before, &after, note).map(|(r, d)| (r, d.action));
+        let raw = |after: Task| history_of(&before, &after).map(|(r, d)| (r, d.action));
 
         let done = Task { status: "done".into(), ..task() };
-        assert_eq!(raw(done, false), Some(("finished chem lab".into(), "status".into())));
+        assert_eq!(raw(done), Some(("finished chem lab".into(), "status".into())));
+        // Starting is state, not an event - the pill flips it freely.
         let started = Task { status: "in_progress".into(), ..task() };
-        assert_eq!(raw(started, false), Some(("started chem lab".into(), "status".into())));
-        let exam = Task { is_exam: true, ..task() };
-        assert_eq!(raw(exam, false), Some(("moved chem lab to exam".into(), "moved".into())));
-        let club = Task { category: "club".into(), ..task() };
-        assert_eq!(raw(club, false), Some(("moved chem lab to club".into(), "moved".into())));
+        assert_eq!(raw(started), None);
+        // Reopening a finished sidequest undoes its "finished" row, so it stays.
+        let was_done = Task { status: "done".into(), ..task() };
+        let reopened = history_of(&was_done, &task()).map(|(r, d)| (r, d.action));
+        assert_eq!(reopened, Some(("reopened chem lab".into(), "status".into())));
         let later = Task { due_date: day("2026-11-02"), ..task() };
-        assert_eq!(raw(later, false), Some(("moved chem lab to Mon Nov 2".into(), "rescheduled".into())));
+        assert_eq!(raw(later), Some(("moved chem lab to Mon Nov 2".into(), "rescheduled".into())));
+        // Dragging between sections, renaming and note edits write nothing -
+        // the tasks table carries the result, and a batch of organizing used
+        // to leave a row per drag.
+        let exam = Task { is_exam: true, ..task() };
+        assert_eq!(raw(exam), None);
+        let club = Task { category: "club".into(), ..task() };
+        assert_eq!(raw(club), None);
         let renamed = Task { title: "chem writeup".into(), ..task() };
-        assert_eq!(
-            raw(renamed, false),
-            Some(("renamed chem lab to chem writeup".into(), "renamed".into()))
-        );
+        assert_eq!(raw(renamed), None);
         let noted = Task { note: Some("just the graphs".into()), ..task() };
-        assert_eq!(raw(noted.clone(), true), Some(("chem lab: just the graphs".into(), "note".into())));
-        // A patch that names the note but leaves it as it was writes nothing.
-        assert_eq!(raw(task(), true), None);
-        assert_eq!(raw(noted, false), None);
+        assert_eq!(raw(noted), None);
     }
 
     #[test]

@@ -878,6 +878,30 @@ header {
   padding-right: 76px;
 }
 
+/* The predicted remainder of the entry, grey right after the caret. Top and
+   font mirror `.entry-input`'s padding-top and type so the span's first line
+   lands on the input's own line box, and `white-space: pre` because chunks
+   like " due" begin with the space the caret hasn't got to yet. */
+.entry-ghost {
+  position: absolute;
+  top: 10px;
+  font-family: inherit;
+  font-weight: 500;
+  font-size: 21px;
+  color: var(--faint);
+  pointer-events: auto;
+  white-space: pre;
+  cursor: pointer;
+  user-select: none;
+  animation: entry-ghost-in 120ms ease both;
+}
+
+@keyframes entry-ghost-in {
+  from {
+    opacity: 0;
+  }
+}
+
 .input-actions {
   position: absolute;
   right: 0;
@@ -954,7 +978,8 @@ header {
    at equal specificity if the two ever targeted the same selector. */
 @media (prefers-reduced-motion: reduce) {
   .task-autocomplete,
-  .task-autocomplete.closing {
+  .task-autocomplete.closing,
+  .entry-ghost {
     animation: none;
   }
 }
@@ -2472,6 +2497,10 @@ header > .brand {
   }
 
   .entry-input {
+    font-size: 18px;
+  }
+
+  .entry-ghost {
     font-size: 18px;
   }
 

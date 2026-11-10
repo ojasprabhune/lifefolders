@@ -15,7 +15,8 @@ import { getBackendState, markBackendOffline, markBackendOnline, type BackendSta
 import type { Category, Log, PendingLog, TaskData } from './types'
 import { cacheLogs, cacheTasks, cacheWishlist, cachedLogs, cachedTasks, cachedWishlist } from './cache'
 import { parseTaskEntry, suggestFromEntry } from './localParse'
-import { measureCaretOffset } from './caret'
+import { ghostFor } from './ghost'
+import { measureCaretOffset, measureTextWidth } from './caret'
 import { TaskAutocomplete, type Suggestion } from './TaskAutocomplete'
 import {
   LOCAL_ID_PREFIX,
@@ -515,6 +516,12 @@ function Home() {
   // setText doesn't move the DOM caret - the restore has to happen after
   // React has actually committed the new value to the input.
   const pendingCaretRef = useRef<number | null>(null)
+  // Grey "this is what comes next" text sits after the caret where clearing
+  // it and dismissing the dropdown are different gestures: the dropdown is
+  // the offer, the ghost is the app's guess. An IME reports composition as
+  // ordinary text changes, so the value is provisional until the end event.
+  const [ghost, setGhost] = useState<{ text: string; left: number } | null>(null)
+  const composingRef = useRef(false)
   const today = localDateStr(new Date())
   const isToday = date === today
   const { ref: listRef, capture: captureRows } = useFlipList<HTMLElement>()
@@ -908,6 +915,52 @@ function Home() {
     el.setSelectionRange(pos, pos)
   }, [text])
 
+  // The ghost's whole lifecycle hangs off this one effect: every path that
+  // changes the text - typing, a spliced-in title, an accepted ghost chunk,
+  // an appended transcript - lands here after the commit, when selectionStart
+  // is real. Rules are recomputed from the live caches; they are only good
+  // for the beat they were read in, which is how the dropdown treats them too.
+  const refreshGhost = useCallback(
+    (value: string) => {
+      const el = inputRef.current
+      if (!el || document.activeElement !== el || composingRef.current) {
+        setGhost(null)
+        return
+      }
+      if ((el.selectionStart ?? value.length) !== value.length || !value.trim()) {
+        setGhost(null)
+        return
+      }
+      const guess = ghostFor(value, today, cachedTasks() ?? [], cachedWishlist() ?? [])
+      if (!guess) {
+        setGhost(null)
+        return
+      }
+      // Measured from the candidate string, not input.value, for the same
+      // staleness reason the layout effect restores the caret after commit.
+      const visible = measureTextWidth(el, value) - el.scrollLeft
+      // Nothing left between the caret and the mic/send buttons: better no
+      // hint than one bleeding under them.
+      if (visible > el.clientWidth - 90) {
+        setGhost(null)
+        return
+      }
+      setGhost({ text: guess, left: Math.max(0, visible) })
+    },
+    [today],
+  )
+
+  useEffect(() => {
+    refreshGhost(text)
+  }, [text, refreshGhost])
+
+  const acceptGhost = useCallback(() => {
+    if (!ghost) return
+    const next = text + ghost.text
+    pendingCaretRef.current = next.length
+    setText(next)
+  }, [ghost, text])
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (ac) {
       if (e.key === 'ArrowDown' || (e.ctrlKey && e.key === 'j')) {
@@ -928,6 +981,21 @@ function Home() {
       if (e.key === 'Escape') {
         e.preventDefault()
         closeAutocomplete()
+        return
+      }
+    }
+    // The dropdown takes Tab when it is open; the ghost only gets the keys
+    // the dropdown isn't offering for. ArrowRight accepts the same way
+    // Chrome's inline completions do, Escape is a plain dismissal.
+    if (ghost) {
+      if (e.key === 'Tab' || e.key === 'ArrowRight') {
+        e.preventDefault()
+        acceptGhost()
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setGhost(null)
         return
       }
     }
@@ -1069,15 +1137,26 @@ function Home() {
               updateAutocomplete(e.target.value, e.target.selectionStart ?? e.target.value.length)
             }
           }}
-          onCompositionEnd={(e) =>
+          onCompositionStart={() => {
+            composingRef.current = true
+          }}
+          onCompositionEnd={(e) => {
+            composingRef.current = false
             updateAutocomplete(e.currentTarget.value, e.currentTarget.selectionStart ?? e.currentTarget.value.length)
-          }
+          }}
           onSelect={(e) => {
             // A caret moved away from the end without a text change (arrow
-            // keys, a click) leaves a stale dropdown open at the old spot.
-            if (ac && e.currentTarget.selectionStart !== text.length) closeAutocomplete()
+            // keys, a click) leaves a stale dropdown open at the old spot,
+            // and a stale ghost that no longer keys on the middle of the
+            // line. Moving back to the end revives both from live state.
+            const el = e.currentTarget
+            if (ac && el.selectionStart !== text.length) closeAutocomplete()
+            refreshGhost(el.value)
           }}
-          onBlur={closeAutocomplete}
+          onBlur={() => {
+            closeAutocomplete()
+            setGhost(null)
+          }}
           onKeyDown={onKeyDown}
           placeholder={
             recState === 'recording'
@@ -1091,6 +1170,21 @@ function Home() {
           autoFocus
           enterKeyHint="send"
         />
+        {ghost && (
+          <span
+            className="entry-ghost"
+            key={ghost.text}
+            aria-hidden
+            style={{ left: ghost.left }}
+            // Like the dropdown's own rows - the preventDefault keeps focus
+            // in the input, else clicking the hint would blur it before the
+            // click ever fired. On touch this is the only way to take it.
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={acceptGhost}
+          >
+            {ghost.text}
+          </span>
+        )}
         {ac && (
           <TaskAutocomplete
             items={ac.items}

@@ -312,14 +312,16 @@ function categoryFor(words: string[]): string {
 }
 
 /** Port of `tasks::best_match`, so the decision to skip an entry here is the
- *  same decision the server would make about updating rather than creating. */
-export function bestMatch(
-  items: TaskWithCheckpoints[],
+ *  same decision the server would make about updating rather than creating.
+ *  Generic on the item so the ghost-text engine can run the same loose matcher
+ *  against the task cache; everything it reads is the title. */
+export function bestMatch<T extends { title: string }>(
+  items: T[],
   query: string,
-): TaskWithCheckpoints | null {
+): T | null {
   const q = query.trim().toLowerCase()
   if (!q) return null
-  let best: { item: TaskWithCheckpoints; score: number } | null = null
+  let best: { item: T; score: number } | null = null
   for (const item of items) {
     const n = item.title.trim().toLowerCase()
     const score = n === q ? 2 : n.includes(q) || q.includes(n) ? 1 : 0
