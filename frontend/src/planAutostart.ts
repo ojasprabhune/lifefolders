@@ -21,6 +21,11 @@ const RETRY_MS = 10 * 60_000
 // minutes, not instantly - the price of not polling the database around the
 // clock.
 const REVALIDATE_MS = 5 * 60_000
+// A hidden tab re-checks on a slower cadence. The database only suspends
+// after five idle minutes, so an unattended tab asking every five minutes
+// keeps it awake forever; fifteen lets it actually sleep between checks, at
+// the price of seeing an API-written plan up to fifteen minutes late.
+const REVALIDATE_HIDDEN_MS = 15 * 60_000
 
 // The poll reads plans from here and almost never from the server. A plan only
 // changes when it is edited, and edits made in this tab are handed over by the
@@ -66,7 +71,8 @@ function hasUpcoming(date: string, plan: DayPlan, now: number): boolean {
 async function planFor(date: string, now: number): Promise<DayPlan | null> {
   const hit = cache.get(date)
   if (hit) {
-    const fresh = now - (fetchedAt.get(date) ?? 0) < REVALIDATE_MS
+    const interval = document.visibilityState === 'visible' ? REVALIDATE_MS : REVALIDATE_HIDDEN_MS
+    const fresh = now - (fetchedAt.get(date) ?? 0) < interval
     if (fresh || hasUpcoming(date, hit, now)) return hit
     // A past day's finished plan is final - it can never gain blocks to
     // start, so there is nothing a re-check could find. Fall through and ask
